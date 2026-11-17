@@ -152,7 +152,8 @@ describe("sevdesk_records_summarize (community fixtures, fake data)", () => {
     expect(report.filters).toEqual({ status: "paid", from: "2026-10-01", to: "2026-10-31" });
     expect(report.notes).toContain(
       "6 rows sevDesk returned did not pass the filters re-checked after reading (date range, " +
-        "voucher type, transaction status) and were left out; recordsScanned counts them.",
+        "voucher type, transaction status, tag, cost centre) and were left out; recordsScanned " +
+        "counts them.",
     );
     expect(report.notes.some((note) => note.includes("draft"))).toBe(false);
   });
@@ -213,7 +214,8 @@ describe("sevdesk_records_summarize (community fixtures, fake data)", () => {
     expect(report.recordsCounted).toBe(1);
     expect(report.notes).toContain(
       "1 row sevDesk returned did not pass the filters re-checked after reading (date range, " +
-        "voucher type, transaction status) and were left out; recordsScanned counts them.",
+        "voucher type, transaction status, tag, cost centre) and were left out; recordsScanned " +
+        "counts them.",
     );
   });
 

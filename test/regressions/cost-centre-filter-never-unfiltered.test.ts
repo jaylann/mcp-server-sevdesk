@@ -1,6 +1,6 @@
 /**
- * Regression (spec/deviations.md D-092): `GET /Invoice` and `GET /Voucher` filter by cost centre
- * only with `costCentre[id]` + `costCentre[objectName]=CostCentre`; `costCentre=<id>` alone is
+ * Regression (spec/deviations.md D-092): `GET /Invoice`, `GET /Voucher` and `GET /CreditNote`
+ * (recorded 2026-11-17) filter by cost centre only with `costCentre[id]` + `costCentre[objectName]=CostCentre`; `costCentre=<id>` alone is
  * refused (422), and an unknown spelling would be ignored like the tag filter's (D-090, D-003),
  * answering the whole list as if it were the cost centre's documents. Each list tool must
  * (a) refuse a cost centre the account does not have instead of listing without a filter,
@@ -9,6 +9,7 @@
  */
 import { describe, expect, it } from "vitest";
 
+import { creditNotesListTool } from "../../src/tools/credit-notes/list.js";
 import { invoicesListTool } from "../../src/tools/invoices/list.js";
 import type { ToolContext } from "../../src/tools/types.js";
 import { vouchersListTool } from "../../src/tools/vouchers/list.js";
@@ -19,7 +20,7 @@ import {
   loadFixture,
   testContext,
 } from "../helpers/fake-client.js";
-import { invoiceRow, type Row } from "../unit/tools/lifecycle/helpers.js";
+import { creditNoteRow, invoiceRow, type Row } from "../unit/tools/lifecycle/helpers.js";
 
 function voucherRow(overrides: Row): Row {
   const objects = (loadFixture("vouchers/voucher-2001.json").body as { objects: Row[] }).objects;
@@ -57,6 +58,15 @@ const CASES: readonly ListCase[] = [
     list: async (ctx, costCentre) =>
       listed(
         (await vouchersListTool.handler(vouchersListTool.input.parse({ costCentre }), ctx)).data,
+      ),
+  },
+  {
+    path: "/CreditNote",
+    row: (id, costCentre) => creditNoteRow({ id, costCentre }),
+    list: async (ctx, costCentre) =>
+      listed(
+        (await creditNotesListTool.handler(creditNotesListTool.input.parse({ costCentre }), ctx))
+          .data,
       ),
   },
 ];

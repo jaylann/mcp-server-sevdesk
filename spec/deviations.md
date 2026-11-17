@@ -3467,15 +3467,28 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   run twice).
 - **Impact:** #87's `tag` filter on the list tools must send `tags[0][id]` and
   `tags[0][objectName]`; an ignored filter would return every document, so the parameter names are
-  pinned by tests and the rows are checked against the tag's relations where the tool can.
+  pinned by tests and the rows are checked against the tag's relations where the tool can. The
+  reports (#87): `sevdesk_records_summarize` resolves `tag` before any list read and filters the
+  lists as the list tools do; `sevdesk_profit_and_loss` sends no list filter and checks every
+  document against the keys of the tag's relations itself (more than 10,000 uses make the figures
+  truncated). Their breakdown by tag reads all of the account's relations (up to 10,000; beyond
+  that it is marked incomplete), counts a document with several tags in each tag group and says
+  that the groups overlap.
 - **Test:** `test/unit/scripts/gaps-contacts-probes.test.ts` ("tells honoured list filters from
   ignored ones, with an untagged control"); `test/regressions/tag-filter-never-unfiltered.test.ts`
   (per list tool: an unknown name is refused before any list request; `tags[0][id]` is sent and
   rows the tag's relations do not name are dropped even when every row comes back);
   `test/unit/tools/documents/tags-list.test.ts` ("keeps rows on sevDesk's word beyond 10,000 uses
   and says so", "finds the tag by a spelling with other accents and case (CAFE → Café)", "refuses
-  a name several tags fold to when none is spelled exactly so"). Live: probe
-  `write-tag-list-filters`.
+  a name several tags fold to when none is spelled exactly so");
+  `test/regressions/report-filters-never-unfiltered.test.ts` (both reports: an unknown tag is
+  refused before any document list, and only the tagged documents count when every row comes
+  back); `test/unit/tools/reports/summarize-tags-cost-centres.test.ts` ("filters by tag with the
+  measured list filter and checks every row", "counts a document with several tags in each tag
+  group and says the groups overlap", "marks the breakdown incomplete when the account has more
+  relations than were read"); `test/unit/domain/reports/pnl-tags-cost-centres.test.ts` ("limits
+  the figures to the documents of every kind that carry the tag", "reports the figures as
+  truncated when the tag has more uses than were read"). Live: probe `write-tag-list-filters`.
 
 ### D-091: Cost centres are managed through the undocumented `/CostCentre` endpoints
 
@@ -3535,29 +3548,40 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   objectName". An update with the id and `costCentre: null` removes the cost centre: a draft
   invoice (`saveInvoice`), voucher (`saveVoucher`, `status: 50`) and credit note
   (`saveCreditNote`) that had one each answered 2xx and read back with `costCentre` null.
+  `GET /CreditNote` list rows carry `costCentre: {id, objectName}` when the credit note has one
+  (43 rows, 4 with a cost centre; the tested draft's row matched its read by id), and the list
+  honours `costCentre[id]` + `costCentre[objectName]=CostCentre` like the invoice and voucher
+  lists: it answered exactly one row, the draft, carrying that cost centre.
 - **Sources:** spec (`Model_Voucher`, `Model_VoucherUpdate`, `Model_InvoiceResponse`); recorded
   2026-11-16, trial account, Update 2.0 (probes `write-cost-centre-documents`,
   `write-cost-centre-list-filters`); recorded 2026-11-17, trial account, Update 2.0 (one-off check
-  by the orchestrator: `costCentre: null` on updates).
+  by the orchestrator: `costCentre: null` on updates); recorded 2026-11-17, trial account, Update
+  2.0 (one-off check by the orchestrator: credit-note list rows and the credit-note list filter).
 - **Impact:** `costCentre` is an argument of the create and update draft tools of invoices,
   vouchers and credit notes (`sevdesk_invoice_create_draft`, `sevdesk_invoice_update_draft`,
   `sevdesk_voucher_create_draft`, `sevdesk_voucher_update_draft`,
   `sevdesk_credit_note_create_draft`, `sevdesk_credit_note_update_draft`) only, never of the
   order tools; the strict `saveOrder` body has no such key. An invoice or voucher update without
   it carries the stored one over (D-052, D-054); a credit-note update leaves the key out, and
-  sevDesk keeps the stored one. `sevdesk_invoices_list` and `sevdesk_vouchers_list` filter with
-  both keys and check every row's `costCentre` again, so a filter sevDesk ignored cannot answer
-  the whole list; the credit-note list has no filter (not measured). The three update tools take
-  `removeCostCentre: true`, which sends `costCentre: null` (refused together with `costCentre`);
-  the preview names the cost centre that is removed (`costCentreUpdate` in
-  `src/domain/cost-centres.ts`). No update saves a draft unchanged for it:
+  sevDesk keeps the stored one. `sevdesk_invoices_list`, `sevdesk_vouchers_list` and
+  `sevdesk_credit_notes_list` filter with both keys and check every row's `costCentre` again, so
+  a filter sevDesk ignored cannot answer the whole list; credit-note rows show `costCentreId`.
+  The three update tools take `removeCostCentre: true`, which sends `costCentre: null` (refused
+  together with `costCentre`); the preview names the cost centre that is removed
+  (`costCentreUpdate` in `src/domain/cost-centres.ts`). No update saves a draft unchanged for it:
   `removeCostCentre: false` asks for nothing (a call with nothing else is refused as nothing to
   change), and `removeCostCentre: true` on a draft without a cost centre is refused ("This draft
   has no cost centre.") when the call asks for nothing else. Not recorded, so not offered: cost
-  centres on voucher positions.
+  centres on voucher positions. The reports (#87) treat the cost centre as a property of the
+  whole document: `sevdesk_records_summarize` filters invoices, vouchers and credit notes through
+  these lists (both keys and the row check); `sevdesk_profit_and_loss` checks every document's
+  head itself. Their breakdown by cost centre has one group per document ("none" without one), so
+  the groups add up to the totals.
 - **Test:** `test/unit/scripts/gaps-contacts-probes.test.ts` ("checks costCentre on create and on
   updates with the id, per document kind", "tells honoured list filters from ignored ones, with an
-  untagged control"); `test/regressions/cost-centre-filter-never-unfiltered.test.ts`;
+  untagged control"); `test/regressions/cost-centre-filter-never-unfiltered.test.ts` (per list
+  tool, the credit-note list included: an unknown cost centre is refused before any list request;
+  both keys are sent and rows on another cost centre or none are dropped);
   `test/regressions/order-never-sends-cost-centre.test.ts`;
   `test/unit/tools/drafts/cost-centre-drafts.test.ts` ("keeps the stored cost centre when the
   call leaves it out (D-052, D-054)", "removes the stored cost centre with removeCostCentre:
@@ -3569,8 +3593,17 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   name one: sevDesk keeps it (D-092)", "removes the stored cost centre with removeCostCentre:
   costCentre null (D-092)");
   `test/unit/domain/cost-centres.test.ts` ("costCentreUpdate (set, remove or keep)");
-  `test/unit/tools/documents/cost-centre-reads.test.ts`. Live: the two probes above; the removal
-  by the 2026-11-17 one-off check (no probe).
+  `test/unit/tools/documents/cost-centre-reads.test.ts` ("sevdesk_credit_notes_list, with the
+  filter recorded on 2026-11-17 (D-092)");
+  `test/regressions/report-filters-never-unfiltered.test.ts` (both reports: an unknown cost
+  centre is refused before any document list, and only its documents count when every row comes
+  back); `test/unit/tools/reports/summarize-tags-cost-centres.test.ts` ("answers this month's
+  expenses for one cost centre (issue #87 acceptance)", "groups by cost centre with a none group,
+  and the groups add up to the totals", "filters credit notes with the measured list filter and
+  each row's own cost centre"); `test/unit/domain/reports/pnl-tags-cost-centres.test.ts` ("breaks
+  the result down per cost centre; the groups, none included, add up", "answers through the tool
+  with costCentre by name"). Live: the two probes above; the removal, the credit-note list rows
+  and the credit-note list filter by the 2026-11-17 one-off checks (no probe).
 
 ### D-095: On a cash register `resetToOpen` books a counter-entry instead of deleting
 

@@ -16,6 +16,7 @@ import { sevdeskPath, toSevdeskId } from "../sevdesk/paths.js";
 import { parseUpstream, zId } from "../sevdesk/schema.js";
 import type { QueryValue, SevdeskClient } from "../sevdesk/types.js";
 import { documentDateFilter } from "./common.js";
+import { type CostCentre, costCentreFilterQuery, inCostCentre } from "./cost-centres.js";
 import {
   countryCodeSchema,
   type CountryReadOptions,
@@ -143,6 +144,11 @@ export const creditNoteRowSchema = z.object({
   header: z.string().optional(),
   sent: sentDtoSchema.optional().describe("Left out when the credit note was not sent."),
   enshrined: z.boolean().optional().describe("Festgeschrieben (locked); only shown when true."),
+  costCentreId: z
+    .number()
+    .int()
+    .optional()
+    .describe("Kostenstelle id; see sevdesk_reference_lookup kind=cost_centres."),
   link: z.string().optional().describe("Opens the credit note in the sevDesk web app."),
 });
 
@@ -163,11 +169,6 @@ export const creditNoteDetailSchema = creditNoteRowSchema
       })
       .optional(),
     contactPersonId: z.number().int().optional(),
-    costCentreId: z
-      .number()
-      .int()
-      .optional()
-      .describe("Kostenstelle id; see sevdesk_reference_lookup kind=cost_centres."),
     internalNote: z.string().optional(),
     headText: z.string().optional(),
     footText: z.string().optional(),
@@ -205,6 +206,7 @@ function toCreditNoteRow(record: CreditNoteRecord): CreditNoteRow {
     header: cleanText(record.header, TEXT_MAX.short),
     sent: sentDto(record),
     enshrined: berlinDate(record.enshrined) === undefined ? undefined : true,
+    costCentreId: record.costCentre?.id,
     link: creditNoteLink(record.id, record.status),
   });
 }
@@ -219,7 +221,6 @@ function toCreditNoteDetail(record: CreditNoteRecord): CreditNoteDetail {
     tax: taxDto(record),
     address: addressDto(record),
     contactPersonId: refId(record.contactPerson, "a credit note's contact person"),
-    costCentreId: record.costCentre?.id,
     internalNote: cleanText(record.customerInternalNote, TEXT_MAX.long),
     headText: cleanText(record.headText, TEXT_MAX.long),
     footText: cleanText(record.footText, TEXT_MAX.long),
@@ -252,15 +253,18 @@ export interface CreditNoteListParams {
   readonly to?: string | undefined;
   /** Only credit notes with this tag (`resolveTagFilter`), re-checked on every row. */
   readonly tagFilter?: TagListFilter | undefined;
+  /** Only credit notes on this cost centre (`resolveCostCentreFilter`), re-checked on every row. */
+  readonly costCentreFilter?: CostCentre | undefined;
   readonly limit: number;
   readonly offset: number;
 }
 
 /**
  * Lists credit notes (`GET /CreditNote`) with sevDesk's filters `status`, `contact[id]`,
- * `creditNoteNumber`, `startDate`/`endDate` (Unix seconds, Berlin days) and the tag. The number is
- * re-checked on every row (`matchesNumber`), the date range and the tag without a scan
- * (`documentDateFilter`, `carriesTag`).
+ * `creditNoteNumber`, `startDate`/`endDate` (Unix seconds, Berlin days), the tag and the cost
+ * centre (`costCentre[id]` + `costCentre[objectName]`, recorded 2026-11-17, D-092). The number is
+ * re-checked on every row (`matchesNumber`), the date range, the tag and the cost centre without
+ * a scan (`documentDateFilter`, `carriesTag`, `inCostCentre`).
  */
 export async function listCreditNotes(
   client: SevdeskClient,
@@ -272,6 +276,7 @@ export async function listCreditNotes(
     embed: EMBED_CONTACT,
     ...dates.query,
     ...tagFilterQuery(params.tagFilter),
+    ...costCentreFilterQuery(params.costCentreFilter),
   };
   if (params.status !== undefined) query["status"] = CREDIT_NOTE_STATUS_FILTERS[params.status];
   if (params.contactId !== undefined) {
@@ -287,7 +292,10 @@ export async function listCreditNotes(
     offset: params.offset,
     map: (raw) => toCreditNoteRow(parseCreditNoteRecord(raw)),
     keep: matchesNumber(params.number),
-    recheck: (row) => dates.contains(row.date) && carriesTag(params.tagFilter, row.id),
+    recheck: (row) =>
+      dates.contains(row.date) &&
+      carriesTag(params.tagFilter, row.id) &&
+      inCostCentre(params.costCentreFilter, row.costCentreId),
     signal,
   });
 }

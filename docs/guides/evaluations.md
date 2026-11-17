@@ -46,6 +46,28 @@ more. Recurring templates and payment reminders are left out unless you ask for 
 records the list tools remain the way, for example
 [`sevdesk_invoices_list`](../tools.md#sevdesk_invoices_list).
 
+### By project tag or cost centre
+
+> What did project Website Relaunch cost this year?
+
+> Show this month's expenses for cost centre Munich.
+
+Invoices, credit notes and vouchers can be limited to one tag (`tag`, by name) or one cost centre
+(Kostenstelle, `costCentre`, by id, number or name), and grouped by `tag` or `cost_centre`. A name
+the account does not have, or one that fits several tags or cost centres, is refused before
+anything is counted: you never get the totals of all documents labelled as one project's.
+
+- **Tags overlap.** A document can carry several tags, so it counts in each of its tag groups, and
+  the tag groups add up to more than the totals. The result says so (`groupsOverlap`).
+- **Cost centres split.** sevDesk keeps one cost centre per document, so the cost-centre groups add
+  up to the totals. Cost centres on single voucher positions are not read: the whole document
+  counts for the cost centre on its head.
+- **None.** Documents without a tag or without a cost centre form their own group, `none`.
+- **Incomplete reads.** The tags come from the account's tag assignments, read up to 10,000. With
+  more, or when the row cap stops reading, the breakdown is marked incomplete
+  (`groupsComplete: false`) instead of passing partial sums off as final. The tag names are read
+  up to 10,000 tags as well; beyond that a group shows only its tag id, and the result says so.
+
 ## Open items and cash
 
 > Who owes us money, and how much is more than 60 days overdue?
@@ -89,6 +111,16 @@ an Einnahmenüberschussrechnung (EÜR): net income by tax rule, net expenses by 
 result, and the VAT flows apart (VAT collected, input VAT paid, VAT paid to or refunded by the
 Finanzamt). The basis is cash by default (the day the money moved, from the payments sevDesk links
 to documents) or accrual (by document date).
+
+> What was the profit of cost centre Munich in the third quarter?
+
+With `costCentre` or `tag` it counts only the documents on that cost centre or with that tag, on
+both bases; the result names the filter (`filters`). `groupBy: "cost_centre"` or `"tag"` adds the
+income, expenses and result of each cost centre or tag (`breakdown`). The cost-centre groups,
+`none` included, add up to the totals; tag groups overlap when a document has several tags, and
+the breakdown says so. A group's document count includes documents without income or expenses,
+such as a VAT payment to the Finanzamt, so a group can hold documents and show no income or
+expenses. Unknown or ambiguous names are refused, as in the summary.
 
 ## Audits
 

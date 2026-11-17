@@ -1,4 +1,4 @@
-<!-- translated-from: docs/faq.md sha256:b6974694240b -->
+<!-- translated-from: docs/faq.md sha256:2567a70c4b72 -->
 
 # Häufige Fragen
 
@@ -288,12 +288,25 @@ Ja. Die Werkzeuge, die Entwürfe von Rechnungen, Belegen und Gutschriften anlege
 ihre Nummer oder ihren Namen als Text, verglichen ohne Rücksicht auf Groß- und Kleinschreibung und
 Akzente. `sevdesk_reference_lookup` mit der Art `cost_centres` listet die Kostenstellen des
 Kontos. Ein unbekannter Name oder einer, der zu mehreren Kostenstellen passt, wird abgelehnt, bevor
-etwas gespeichert wird. `sevdesk_invoices_list` und `sevdesk_vouchers_list` filtern nach
-Kostenstelle („die Ausgaben dieses Monats auf der Kostenstelle München“), die Abrufwerkzeuge zeigen
-sie, und die Freigabe beim Fertigstellen nennt sie. Aufträge nehmen keine: sevDesk nimmt eine
-Kostenstelle am Auftrag an, speichert sie aber nicht. Eine Änderung ohne `costCentre` behält die
-gespeicherte, und `removeCostCentre: true` nimmt sie mit den drei Änderungswerkzeugen von einem
-Entwurf. Die Kostenstellen selbst verwaltest du in sevDesk.
+etwas gespeichert wird. `sevdesk_invoices_list`, `sevdesk_vouchers_list` und
+`sevdesk_credit_notes_list` filtern nach Kostenstelle („die Ausgaben dieses Monats auf der
+Kostenstelle München“), die Abrufwerkzeuge zeigen sie, und die Freigabe beim Fertigstellen nennt
+sie. Aufträge nehmen keine: sevDesk nimmt eine Kostenstelle am Auftrag an, speichert sie aber
+nicht. Eine Änderung ohne `costCentre` behält die gespeicherte, und `removeCostCentre: true` nimmt
+sie mit den drei Änderungswerkzeugen von einem Entwurf. Die Kostenstellen selbst verwaltest du in
+sevDesk.
+
+### Was hat Projekt X gekostet?
+
+Frag danach: „Was hat das Projekt Website-Relaunch dieses Jahr gekostet?“ oder „Zeig die Ausgaben
+dieses Monats auf der Kostenstelle München“. `sevdesk_records_summarize` und
+`sevdesk_profit_and_loss` nehmen einen `tag` oder eine `costCentre` und zählen nur diese
+Dokumente; `groupBy` `tag` oder `cost_centre` zeigt alle Projekte oder Kostenstellen
+nebeneinander. Ein Name, den das Konto nicht hat, wird abgelehnt, statt mit den Summen aller
+Dokumente beantwortet zu werden. Ein Dokument mit mehreren Tags zählt für jeden davon, deshalb
+ergeben die Tag-Gruppen zusammen mehr als die Gesamtsumme, und die Antwort sagt es; Kostenstellen,
+eine je Dokument, gehen in der Summe auf. Mehr dazu:
+[Auswertungen und Exporte](guides/evaluations.de.md#nach-projekt-tag-oder-kostenstelle).
 
 ## Hilfe
 

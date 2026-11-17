@@ -24,7 +24,7 @@ import {
   loadFixture,
   testContext,
 } from "../../../helpers/fake-client.js";
-import { invoiceRow, noDiscountsRoute, type Row } from "../lifecycle/helpers.js";
+import { creditNoteRow, invoiceRow, noDiscountsRoute, type Row } from "../lifecycle/helpers.js";
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-11-07T12:00:00+01:00") });
@@ -224,7 +224,28 @@ describe("the list rows carry costCentreId", () => {
     expect(filtered.data.costCentreFilter).toEqual(first);
   });
 
-  it("the credit-note list offers no cost-centre filter (not recorded, D-092)", () => {
-    expect(creditNotesListTool.input.safeParse({ costCentre: 1 }).success).toBe(false);
+  it("sevdesk_credit_notes_list, with the filter recorded on 2026-11-17 (D-092)", async () => {
+    const rows = [
+      creditNoteRow({ id: "701", costCentre: storedCostCentre(third.id) }),
+      creditNoteRow({ id: "702" }),
+    ];
+    const client = new FakeSevdeskClient([
+      costCentresRoute,
+      { path: "/CreditNote", response: { body: { objects: rows } } },
+    ]);
+    const tool = creditNotesListTool;
+    const filtered = await tool.handler(
+      tool.input.parse({ costCentre: "MCP1" }),
+      testContext(client),
+    );
+    expect(tool.output.parse(filtered.data)).toEqual(filtered.data);
+    expect(filtered.data.items).toEqual([
+      expect.objectContaining({ id: 701, costCentreId: third.id }),
+    ]);
+    expect(filtered.data.costCentreFilter).toEqual(third);
+    expect(client.callsTo("/CreditNote")[0]?.query).toMatchObject({
+      "costCentre[id]": third.id,
+      "costCentre[objectName]": "CostCentre",
+    });
   });
 });

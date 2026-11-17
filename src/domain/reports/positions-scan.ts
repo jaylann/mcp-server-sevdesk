@@ -181,6 +181,8 @@ export interface DocumentHeader {
   readonly eur: EurTotals | undefined;
   /** Gross in the document's currency (for the share a payment settles). */
   readonly gross: Decimal | undefined;
+  /** The document's cost centre (Kostenstelle, D-092): one per document, none on orders. */
+  readonly costCentreId?: number | undefined;
   /** Day the document was created in sevDesk (Europe/Berlin), YYYY-MM-DD, when sevDesk says. */
   readonly createdAt?: string | undefined;
   /**
@@ -313,6 +315,7 @@ function invoiceHeader(raw: unknown, today: string): DocumentHeader {
     countryId: dto.address?.countryId,
     eur: eurTotals(foreign ? dto.totalsEur : dto.totals),
     gross: moneyDecimal(dto.totals.gross),
+    costCentreId: dto.costCentreId,
     createdAt: dto.createdAt,
     excluded:
       type === "WKR" || dto.status.code === 50
@@ -363,6 +366,7 @@ function creditNoteHeader(raw: unknown): DocumentHeader {
     countryId: dto.address?.countryId,
     eur: eurTotals(foreign ? dto.totalsEur : dto.totals),
     gross: moneyDecimal(dto.totals.gross),
+    costCentreId: dto.costCentreId,
     createdAt: dto.createdAt,
     excluded: dto.status.code === CREDIT_NOTE_DRAFT ? "draft" : undefined,
   };
@@ -390,6 +394,7 @@ function voucherHeader(raw: unknown): DocumentHeader {
     contact: dto.supplier,
     eur: eurTotals(foreign ? dto.totalsEur : totals),
     gross: moneyDecimal(dto.totals.gross),
+    costCentreId: dto.costCentreId,
     createdAt: dto.createdAt,
     receipt: voucherReceiptOf(raw),
     excluded:
@@ -439,6 +444,11 @@ export interface HeaderListParams {
   readonly kinds?: readonly ScanDocumentKind[] | undefined;
   /** Row cap across all kinds; defaults to {@link MAX_HEADER_ROWS}. */
   readonly maxRows?: number | undefined;
+  /**
+   * A report filter (tag, cost centre): documents it refuses are neither returned nor counted in
+   * `excluded`; their rows still count in `rowsRead`. Every document passes without it.
+   */
+  readonly accept?: ((header: DocumentHeader) => boolean) | undefined;
   /** Berlin `YYYY-MM-DD` for the invoice mapper's `overdue` (irrelevant here); tests pin it. */
   readonly today?: string | undefined;
   /** Also return the drafts (still counted in `excluded`), for the checks that look at them. */
@@ -523,6 +533,7 @@ export async function listDocumentHeaders(
     rowsRead += scan.scanned;
     truncated ||= scan.truncated;
     for (const header of scan.items) {
+      if (params.accept !== undefined && !params.accept(header)) continue;
       if (header.excluded === undefined) headers.push(header);
       else excluded[header.excluded] += 1;
       if (header.excluded === "draft" && params.keepDrafts === true) drafts.push(header);
