@@ -157,6 +157,7 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
 | [D-114](#d-114-docserver-layout-lists-sit-under-objects-and-carry-large-base64-fields)             | DocServer layout lists sit under `objects` and carry large base64 fields               | Open                  |
 | [D-115](#d-115-post-and-delete-texttemplate-create-and-delete-text-templates)                      | `POST` and `DELETE /TextTemplate` create and delete text templates                     | Open                  |
 | [D-116](#d-116-document-discounts-discountsave-takes-a-list-getdiscounts-reads-them)               | Document discounts: `discountSave` takes a list; `getDiscounts` reads them             | Open                  |
+| [D-119](#d-119-the-account-factories-refuse-an-accountingnumber-in-use-or-not-allowed-422)         | The account factories refuse an `accountingNumber` in use or not allowed (422)         | Open                  |
 | [D-132](#d-132-recurring-templates-generation-and-auto-sending-are-switches-read-by-embed)         | Recurring templates: generation and auto-sending are switches read by `embed`          | Open                  |
 | [D-135](#d-135-saveinvoice-keeps-the-price-of-a-position-sent-by-its-id-without-an-error)          | `saveInvoice` keeps the price of a position sent by its id, without an error           | Open                  |
 | [D-140](#d-140-languages-invoices-store-en-orders-and-credit-notes-the-locale-or-german)           | Languages: invoices store `en`, orders and credit notes the locale or German           | Open                  |
@@ -3707,11 +3708,25 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   cash register is set up in the web app, describe "delete" as archiving (the account and its
   rows stay readable by id, but leave the transaction list), and tell a file-import account by `importType`, never by `type`
   alone. `listBankAccounts` already hides status 0 unless asked (`includeArchived`), which fits
-  archived accounts that sevDesk's list leaves out anyway.
+  archived accounts that sevDesk's list leaves out anyway. Handling (#88):
+  `sevdesk_bank_account_create` (tier `write`) creates file-import and clearing accounts through
+  the two factories, says that a cash register is set up in the web app and that an account is
+  only archived, refuses a name an active account has (no human confirms this tier, and a second
+  account could not be deleted again), and takes the created account from sevDesk's answer.
+  The account list's `fileImport` (with `importType`) is true only for an `online` account with
+  `importType` `CSV` or `MT940` and no `bankServer` (how a connected account reads is not
+  recorded, so one that names a data provider never counts as a file-import account); `type`
+  keeps its meaning.
 - **Test:** `test/contract/recorded-gaps-banking.test.ts` (the recorded list through
-  `listBankAccounts`: file-import accounts as `bank`, the offline account as `clearing`, only
-  active rows, an incomplete page); `test/unit/scripts/gaps-banking-probes.test.ts` (archiving,
-  the refusal text). Live: probes `write-check-account-factories`, `read-check-account-kinds`.
+  `listBankAccounts`: file-import accounts as `bank` with `fileImport` and `importType` `CSV`,
+  the offline account as `clearing`, only active rows, an incomplete page);
+  `test/unit/tools/banking/accounts.test.ts` ("tells file-import accounts by importType without a
+  bankServer, never by type alone"); `test/unit/domain/bank-account-create.test.ts` (the two
+  factories and their bodies, the account read from the answer, the refusal of a same-named
+  active account); `test/unit/tools/banking/account-create.test.ts` (no cash register,
+  archive-only wording); `test/regressions/concurrent-check-then-write.test.ts` (two creations at
+  once make one account); `test/unit/scripts/gaps-banking-probes.test.ts` (archiving, the refusal
+  text). Live: probes `write-check-account-factories`, `read-check-account-kinds`.
 
 ### D-098: An enshrined transaction locks itself and the payment it books
 
@@ -4595,6 +4610,54 @@ pdf, sevClient, name, default, img}]}`, `GET /DocServer/getTemplatesWithThumb?ty
   and binds the offer's document discounts in both languages (review of #112, L5)"),
   `test/unit/tools/invoices/recurring-update.test.ts` ("a discount on the whole template (D-116;
   review of #124, M2)"). Live: probes `write-document-discount`, `read-order-get-discounts`.
+
+### D-119: The account factories refuse an `accountingNumber` in use or not allowed (422)
+
+- **Status:** Open. **Evidence:** spec + recorded.
+- **Spec says:** `createFileImportAccount` and `createClearingAccount` take an optional integer
+  `accountingNumber`, the booking account of the new account, which "must be unique among all
+  your CheckAccounts" ("Ignore to use a sensible default" for a file-import account, "Ask your tax
+  consultant what to choose" for a clearing account). Neither says that other numbers are
+  refused, nor how a refusal reads. `createFileImportAccount` also takes `importType` (`CSV` or
+  `MT940`) and `iban`.
+- **Actual behavior:** On the trial account (active numbers 1800, 1801, 1802, 1805, 1806 for
+  file-import accounts and 1820 for the offline account; archived test accounts held 1803 and
+  1804):
+  - A free, allowed number is stored as sent: `clearingAccount` with 1830 and with 1460 created
+    an `offline` account (`importType` null, status 100) reading `accountingNumber` `"1830"` /
+    `"1460"`; `fileImportAccount {name, importType: "CSV", accountingNumber: 1811}` created an
+    `online` account with `importType` `CSV` and `"1811"`. The number reads back as a string.
+  - A number in use is refused with 422 "The given account number is already used" (1800 on
+    `clearingAccount`, 1801 on `fileImportAccount`).
+  - Other numbers are refused with 422 "The given account number 3321 is invalid": 3321 (sent
+    as a number and, as `"3322"`, as a string) and 99999, on both factories. sevDesk checks the
+    number against a set of allowed booking accounts; that set is known only by these samples
+    (1460, 1811, 1830 accepted; 3321, 3322, 99999 refused).
+  - Without a number, `fileImportAccount` took `"1807"`, the next free number of the 18xx range;
+    it skipped 1803 and 1804, which the archived accounts hold, so an archived account keeps its
+    number (D-097: archived accounts are not listed).
+  - Whether `MT940` and `iban` are taken is still not recorded.
+- **Sources:** spec (`createFileImportAccount`, `createClearingAccount`); recorded 2026-11-16,
+  trial account, Update 2.0 (one-off checks by the orchestrator, run tags
+  `MCP-E2E 20261116-2324-hg4n` and `MCP-E2E 20261116-2325-tgpq`; every account created was
+  archived again); recorded 2026-11-16 (probe `write-check-account-factories`).
+- **Impact:** `sevdesk_bank_account_create` (#88) sends `accountingNumber` only when the user
+  gives one, as a JSON integer, after checking that no listed account has it (archived accounts
+  hold their numbers but are not listed, so sevDesk's own check remains the last word). The two
+  422 refusals become the tool's own sentences ("already used, possibly by an archived account";
+  "not accepted as the booking account of a payment account"), without sevDesk's text but with
+  the request and sevDesk's exception id; they advise leaving the number out so that sevDesk
+  picks one, and name the 18xx range only as recorded on SKR04 (the trial account's chart; which
+  number another chart gets is not recorded). The result takes the number from sevDesk's
+  answer and reports a different or missing one. The tool always sends `importType` `CSV`, the
+  recorded value, and never `iban` or `MT940`.
+- **Test:** `test/unit/domain/bank-account-create.test.ts` ("sends a file-import account as CSV,
+  with a booking account number when given", "refuses a booking account number another account
+  (archived ones too) already has", "reads a given booking account back as stored, a string",
+  "turns sevDesk's 'already used' refusal into its own sentence without sevDesk's text", "turns
+  sevDesk's 'is invalid' refusal into its own sentence without sevDesk's text", "leaves other
+  refusals, and refusals without a booking account, as sevDesk sent them"). Live: the one-off
+  checks above; no probe in `pnpm probe` yet.
 
 ### D-132: Recurring templates: generation and auto-sending are switches read by `embed`
 

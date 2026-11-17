@@ -70,6 +70,18 @@ const ACCOUNT_TYPE_BY_SEVDESK: Readonly<Record<string, AccountType>> = {
   register: "cash",
 };
 
+/**
+ * Spec `importType` of an `online` account "not connected to a data provider": the file format
+ * transactions are imported in. Recorded: a file-import account reads as type `online`,
+ * `importType` `CSV`, `bankServer` null (spec/deviations.md D-097); `MT940` is the spec's word.
+ */
+const FILE_IMPORT_TYPES = ["CSV", "MT940"] as const;
+type FileImportType = (typeof FILE_IMPORT_TYPES)[number];
+
+function fileImportTypeOf(value: string | undefined): FileImportType | undefined {
+  return FILE_IMPORT_TYPES.find((known) => known === value);
+}
+
 /** Spec `Model_CheckAccountResponse.status`: 0 archived, 100 active. */
 const ACCOUNT_STATUS_LABELS: Readonly<Record<number, string>> = { 0: "Archived", 100: "Active" };
 const ARCHIVED_STATUS = 0;
@@ -105,6 +117,9 @@ const accountRecordSchema = z.object({
   name: zText,
   iban: zText,
   type: zText,
+  importType: zText,
+  /** Spec: the data provider (e.g. `FINAPI`), "only set if the account is connected" to one. */
+  bankServer: zText,
   currency: zText,
   defaultAccount: zBool01.optional(),
   status: zNullableInt,
@@ -142,10 +157,23 @@ export const bankAccountDtoSchema = z.object({
   type: z
     .enum(ACCOUNT_TYPES)
     .describe(
-      "bank (sevDesk 'online': bank/PayPal connection or CSV/MT940 import), clearing " +
-        "('offline': Verrechnungskonto kept by hand), cash ('register': Kasse).",
+      "bank (sevDesk 'online': bank/PayPal connection or CSV/MT940 import; fileImport tells " +
+        "them apart), clearing ('offline': Verrechnungskonto kept by hand), cash ('register': " +
+        "Kasse).",
     ),
   sevdeskType: z.string().optional().describe("sevDesk's own type value."),
+  fileImport: z
+    .boolean()
+    .describe(
+      "True for a file-import account (Dateiimport-Konto: type bank, fed by CSV or MT940 files, " +
+        "no bank connection): the kind for transactions entered by hand. sevDesk refuses those on " +
+        "clearing accounts and cash registers, and a bank-connected account gets its rows from " +
+        "the bank.",
+    ),
+  importType: z
+    .enum(FILE_IMPORT_TYPES)
+    .optional()
+    .describe("File format of a file-import account (sevDesk importType)."),
   currency: z.string(),
   status: statusDtoSchema.optional(),
   isDefault: z.boolean().describe("Standardkonto."),
@@ -226,14 +254,27 @@ export function maskIban(iban: string | undefined): string | undefined {
   return characters.length < 5 ? undefined : `****${characters.slice(-4).toUpperCase()}`;
 }
 
+/**
+ * A file-import account is told by its `importType` (CSV or MT940) on an `online` account without
+ * a `bankServer`, never by `type` alone: a bank connection is `online` too (D-097). How a
+ * connected account reads is not recorded, so one that names a data provider is never taken for a
+ * file-import account, whatever its `importType` says.
+ */
 function toAccountDto(record: AccountRecord): BankAccountDto {
   const sevdeskType = cleanText(record.type, 20);
   const currency = currencyCode(record.currency);
+  const unconnected = cleanText(record.bankServer, 40) === undefined;
+  const importType =
+    sevdeskType === "online" && unconnected
+      ? fileImportTypeOf(cleanText(record.importType, 10))
+      : undefined;
   return compact({
     id: record.id,
     name: accountName(record),
     type: ACCOUNT_TYPE_BY_SEVDESK[sevdeskType ?? ""] ?? "unknown",
     sevdeskType,
+    fileImport: importType !== undefined,
+    importType,
     currency,
     status:
       record.status === undefined
@@ -328,11 +369,10 @@ export async function listBankAccounts(
     }),
   );
 
-  const received = page.items.length;
   return {
     items,
     archivedHidden: records.length - visible.length,
-    complete: page.total === undefined ? received < ACCOUNT_PAGE_SIZE : page.total <= received,
+    complete: accountPageComplete(page.items.length, page.total),
   };
 }
 
@@ -408,6 +448,48 @@ export async function getBankAccount(
     ...(signal === undefined ? {} : { signal }),
   });
   return toAccountDto(parseAccount(expectSingle(payload, `check account ${String(id)}`)));
+}
+
+/** A check account as sevDesk answered it to a write (one object, or an array of one). */
+export function bankAccountFromAnswer(payload: unknown, what: string): BankAccountDto {
+  return toAccountDto(parseAccount(expectSingle(payload, what)));
+}
+
+/** One listed check account, with its stored name for comparisons (see below). */
+export interface CheckAccountEntry {
+  readonly account: BankAccountDto;
+  /**
+   * The name exactly as stored (trimmed), for comparing with a name the user typed. Untrusted:
+   * never put it into a message; show `account.name` instead.
+   */
+  readonly storedName: string | undefined;
+  readonly archived: boolean;
+}
+
+/**
+ * Every check account `GET /CheckAccount` lists (one page of 1000, without balances). sevDesk
+ * leaves archived accounts out of this list (D-097); `complete` is false when it has more than
+ * one page.
+ */
+export async function listCheckAccountEntries(
+  client: SevdeskClient,
+  signal?: AbortSignal,
+): Promise<{ readonly entries: readonly CheckAccountEntry[]; readonly complete: boolean }> {
+  const page = await client.list("/CheckAccount", undefined, {
+    limit: ACCOUNT_PAGE_SIZE,
+    ...(signal === undefined ? {} : { signal }),
+  });
+  const entries = page.items.map(parseAccount).map((record) => ({
+    account: toAccountDto(record),
+    storedName: record.name?.trim(),
+    archived: record.status === ARCHIVED_STATUS,
+  }));
+  return { entries, complete: accountPageComplete(page.items.length, page.total) };
+}
+
+/** Whether one page of {@link ACCOUNT_PAGE_SIZE} holds every account sevDesk has. */
+function accountPageComplete(received: number, total: number | undefined): boolean {
+  return total === undefined ? received < ACCOUNT_PAGE_SIZE : total <= received;
 }
 
 // ---------------------------------------------------------------------------------------------

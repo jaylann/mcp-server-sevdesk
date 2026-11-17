@@ -8,6 +8,12 @@ exports[`advertises additive output keys, countries and lookup paging 1`] = `
       "type": "boolean",
     },
   },
+  "sevdesk_bank_account_create": {
+    "/properties/result/properties/account/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+  },
   "sevdesk_bank_accounts_list": {
     "/properties/items/items/properties/status/properties/key": {
       "description": "Accepted status filter key; absent when no filter accepts this code.",
@@ -931,6 +937,52 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
     },
     "name": "sevdesk_api_get",
     "title": "Read any sevDesk API endpoint (advanced)",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Create a sevDesk payment account",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "accountingNumber": {
+          "description": "Booking account (Buchungskonto) number, unused by other payment accounts; default: sevDesk picks a free one (recorded on SKR04: the next free 18xx number). Ask the tax consultant.",
+          "exclusiveMinimum": 0,
+          "maximum": 99999999,
+          "type": "integer",
+        },
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "kind": {
+          "description": "file_import: bank account fed by CSV files (for transactions entered by hand); clearing: Verrechnungskonto.",
+          "enum": [
+            "file_import",
+            "clearing",
+          ],
+          "type": "string",
+        },
+        "name": {
+          "description": "Account name; no active payment account may have it.",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "required": [
+        "kind",
+        "name",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_bank_account_create",
+    "title": "Create a sevDesk payment account",
   },
   {
     "annotations": {
@@ -6894,6 +6946,52 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
     },
     "name": "sevdesk_account_info",
     "title": "sevDesk account overview",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Create a sevDesk payment account",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "accountingNumber": {
+          "description": "Booking account (Buchungskonto) number, unused by other payment accounts; default: sevDesk picks a free one (recorded on SKR04: the next free 18xx number). Ask the tax consultant.",
+          "exclusiveMinimum": 0,
+          "maximum": 99999999,
+          "type": "integer",
+        },
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "kind": {
+          "description": "file_import: bank account fed by CSV files (for transactions entered by hand); clearing: Verrechnungskonto.",
+          "enum": [
+            "file_import",
+            "clearing",
+          ],
+          "type": "string",
+        },
+        "name": {
+          "description": "Account name; no active payment account may have it.",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "required": [
+        "kind",
+        "name",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_bank_account_create",
+    "title": "Create a sevDesk payment account",
   },
   {
     "annotations": {

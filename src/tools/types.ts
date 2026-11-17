@@ -98,6 +98,16 @@ export const ACCOUNT_CONTACT_NUMBERS: SevdeskObjectRef = {
 export const ACCOUNT_PART_NUMBERS: SevdeskObjectRef = { objectName: "PartNumbers", id: "account" };
 
 /**
+ * The same for payment accounts (Zahlungskonten): creating one checks first that no listed
+ * account has its name or booking account number, then creates it. Two such calls at once would
+ * both pass, and an account cannot be deleted again, only archived.
+ */
+export const ACCOUNT_CHECK_ACCOUNTS: SevdeskObjectRef = {
+  objectName: "CheckAccounts",
+  id: "account",
+};
+
+/**
  * A lock key for an account's tags: tagging checks whether a name is new and untagging whether it
  * removes a tag's last use (which deletes the tag), then writes. Two such calls at once would
  * each preview what the other changes.

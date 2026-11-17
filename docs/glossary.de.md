@@ -1,4 +1,4 @@
-<!-- translated-from: docs/glossary.md sha256:4546ceb88538 -->
+<!-- translated-from: docs/glossary.md sha256:d5e7228be909 -->
 
 # Glossar
 
@@ -76,6 +76,8 @@ jeder Begriff wichtig ist. Die Begriffe des Servers selbst stehen am Ende.
 | ----------------------------- | --------------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
 | Zahlung buchen                | book a payment              | Festhalten, dass ein Dokument bezahlt wurde, auf einem Zahlungskonto.                | [`sevdesk_invoice_book_payment`](tools.md#sevdesk_invoice_book_payment)                                                  |
 | Zahlungskonto                 | payment account             | Ein Bankkonto, Verrechnungskonto oder eine Kasse in sevDesk.                         | [`sevdesk_bank_accounts_list`](tools.md#sevdesk_bank_accounts_list)                                                      |
+| Verrechnungskonto             | clearing account            | Ein Zahlungskonto ohne Bank dahinter; Buchungen erzeugen seine Umsätze.              | [`sevdesk_bank_account_create`](tools.md#sevdesk_bank_account_create)                                                    |
+| Dateiimport-Konto             | file-import account         | Bankkonto für CSV-Importe ohne Bankanbindung; nimmt von Hand erfasste Umsätze an.    | [`sevdesk_bank_account_create`](tools.md#sevdesk_bank_account_create)                                                    |
 | Kontoumsatz, Umsatz           | bank transaction            | Eine importierte Bewegung auf einem Zahlungskonto.                                   | [`sevdesk_transactions_list`](tools.md#sevdesk_transactions_list)                                                        |
 | Kontoabgleich, Zuordnung      | reconciliation              | Kontoumsätze auf die Dokumente buchen, die sie bezahlen.                             | [`sevdesk_reconcile_suggest`](tools.md#sevdesk_reconcile_suggest), [`bank_reconciliation`](tools.md#bank_reconciliation) |
 | Privatentnahme, Privateinlage | owner's withdrawal, deposit | Privates Geld vom oder auf das Geschäftskonto; keine Betriebsausgabe oder -einnahme. | [`sevdesk_transaction_mark_private`](tools.md#sevdesk_transaction_mark_private)                                          |

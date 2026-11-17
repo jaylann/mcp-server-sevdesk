@@ -42,6 +42,7 @@ const account = (overrides: Partial<BankAccountDto> = {}): BankAccountDto => ({
   id: 4002,
   name: "Geschäftskonto Musterbank",
   type: "bank",
+  fileImport: false,
   currency: "EUR",
   status: { code: 100, label: "Active" },
   isDefault: false,

@@ -1,0 +1,43 @@
+{
+  "_provenance": {
+    "source": "spec",
+    "ref": "spec/openapi.yaml#/components/schemas/createClearingAccountResponse",
+    "date": "2026-11-16",
+    "systemVersion": "2.0",
+    "note": "Answer of POST /CheckAccount/Factory/clearingAccount {name}. Key set and scalar types of the recorded list rows (recorded/2026-11-16/banking/check-accounts.json); per spec/deviations.md D-097 the account comes as one object in objects, type offline, importType null, the next free number of the 18xx range. The recorded answer embeds the whole sevClient; it is abbreviated here. Fake values."
+  },
+  "status": 201,
+  "body": {
+    "objects": {
+      "id": "4101",
+      "objectName": "CheckAccount",
+      "additionalInformation": null,
+      "create": "2026-11-16T22:10:00+01:00",
+      "update": "2026-11-16T22:10:00+01:00",
+      "sevClient": {
+        "id": "9001",
+        "objectName": "SevClient"
+      },
+      "name": "Verrechnung Zahlungsanbieter",
+      "type": "offline",
+      "importType": null,
+      "currency": "EUR",
+      "checkAccId": null,
+      "pin": null,
+      "defaultAccount": "0",
+      "status": "100",
+      "translationCode": null,
+      "bankServer": null,
+      "balance": null,
+      "accountingNumber": "1803",
+      "iban": null,
+      "bic": null,
+      "baseAccount": "0",
+      "priority": "0",
+      "countryCode": null,
+      "autoMapTransaction": "1",
+      "autoSyncTransactions": "0",
+      "lastSync": null
+    }
+  }
+}

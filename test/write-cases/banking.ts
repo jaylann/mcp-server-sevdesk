@@ -1,3 +1,4 @@
+import { bankAccountCreateTool } from "../../src/tools/banking/account-create.js";
 import { transactionBookTool } from "../../src/tools/banking/transaction-book.js";
 import { transactionMarkPrivateTool } from "../../src/tools/banking/transaction-private.js";
 import { transactionResetTool } from "../../src/tools/banking/transaction-reset.js";
@@ -59,5 +60,19 @@ export const BANKING_CASES: readonly WriteToolCase[] = [
       { method: "PUT", path: "/Invoice/1001/resetToOpen", response: { body: { objects: null } } },
     ],
     writes: [{ method: "PUT", path: "/Invoice/1001/resetToOpen" }],
+  },
+  {
+    label: "create a file-import account",
+    tool: bankAccountCreateTool,
+    args: { kind: "file_import", name: "Kasse Import" },
+    routes: [
+      { path: "/CheckAccount", response: { fixture: "banking/check-accounts.json" } },
+      {
+        method: "POST",
+        path: "/CheckAccount/Factory/fileImportAccount",
+        response: { fixture: "banking/file-import-account-create-4102.json" },
+      },
+    ],
+    writes: [{ method: "POST", path: "/CheckAccount/Factory/fileImportAccount" }],
   },
 ];
