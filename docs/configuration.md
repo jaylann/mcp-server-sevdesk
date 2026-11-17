@@ -107,10 +107,10 @@ sevDesk keeps the file under that name. Nothing else of the link is shown, and t
 records it as its host only (`https://host/…?[redacted]`). The real call downloads the file again
 after a dry run: pass the SHA-256 from the dry run's preview as `fileSha256`, and a file with other
 bytes is refused before anything reaches sevDesk (this works for local files and uploads too).
-List hosts exactly
-(internationalized names in their `xn--` form). `*.example.com` allows every subdomain of
-example.com: name a shared domain (a cloud provider's storage) only if you trust every file on it,
-since anyone can put a file there.
+
+List hosts exactly (internationalized names in their `xn--` form). `*.example.com` allows every
+subdomain of example.com: name a shared domain (a cloud provider's storage) only if you trust every
+file on it, since anyone can put a file there.
 
 ### Connection
 

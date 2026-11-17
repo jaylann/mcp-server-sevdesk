@@ -1,4 +1,4 @@
-<!-- translated-from: docs/configuration.md sha256:a3b3a7afd3fb -->
+<!-- translated-from: docs/configuration.md sha256:62a8fcef2999 -->
 
 # Konfiguration
 
@@ -115,10 +115,11 @@ auf `.pdf`, `.png`, `.jpg`, `.jpeg` oder `.xml` endet, sonst `download.pdf` (ode
 Audit-Log hält nur seinen Host fest (`https://host/…?[redacted]`). Der echte Aufruf lädt die Datei
 nach einem Probelauf erneut: Übergib die SHA-256 aus der Vorschau des Probelaufs als `fileSha256`,
 dann wird eine Datei mit anderen Bytes abgelehnt, bevor etwas sevDesk erreicht (das gilt auch für
-lokale Dateien und Uploads). Trage Hosts genau ein
-(internationalisierte Namen in ihrer `xn--`-Form). `*.example.com` erlaubt jede Subdomain von
-example.com: Nenne eine geteilte Domain (den Speicher eines Cloud-Anbieters) nur, wenn du jeder
-Datei darauf traust, denn dort kann jeder eine Datei ablegen.
+lokale Dateien und Uploads).
+
+Trage Hosts genau ein (internationalisierte Namen in ihrer `xn--`-Form). `*.example.com` erlaubt
+jede Subdomain von example.com: Nenne eine geteilte Domain (den Speicher eines Cloud-Anbieters)
+nur, wenn du jeder Datei darauf traust, denn dort kann jeder eine Datei ablegen.
 
 ### Verbindung
 
