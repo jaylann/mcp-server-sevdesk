@@ -149,7 +149,7 @@ export const datevSettingsUpdateTool = defineWriteTool({
       .optional()
       .describe(
         "First day of the current fiscal year (Wirtschaftsjahresbeginn), YYYY-MM-DD, usually " +
-          "January 1st.",
+          "January 1st; the preview warns when it is more than a year away from today.",
       ),
     ...dryRunInputShape,
   }),
@@ -185,6 +185,18 @@ export const datevSettingsUpdateTool = defineWriteTool({
             ? "Der Wirtschaftsjahresbeginn bestimmt, wie DATEV-Exporte nach Wirtschaftsjahren " +
               "getrennt werden."
             : "The fiscal-year start decides how DATEV exports are split by fiscal year.",
+          ...(plan.yearBeginFarFromToday
+            ? [
+                lang === "de"
+                  ? `Der Wirtschaftsjahresbeginn ${dateText(yearBegin, lang)} liegt mehr als ein ` +
+                    "Jahr vom heutigen Tag entfernt; gemeint ist der erste Tag des laufenden " +
+                    "Wirtschaftsjahres. Setz ein anderes Datum nur, wenn die Steuerkanzlei es so " +
+                    "will: Jeder spätere DATEV-Export wird danach getrennt."
+                  : `The fiscal-year start ${yearBegin} is more than a year away from today; it ` +
+                    "should be the first day of the current fiscal year. Set another date only " +
+                    "when the tax adviser asks for it: every later DATEV export is split by it.",
+              ]
+            : []),
           ...(unusualStart
             ? [
                 lang === "de"

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { DatevExportConfig } from "../../../../src/domain/exports/datev.js";
 import {
+  moreThanAYearAway,
   planDatevSettings,
   storedDifferently,
   updateDatevExportConfig,
@@ -118,6 +119,25 @@ describe("planDatevSettings", () => {
     expect(planDatevSettings(SET, { accountantClientNumber: 54321 }).keptOutOfRange).toEqual([]);
   });
 
+  it.each([
+    ["2031-01-01", true],
+    ["1990-01-01", true],
+    ["2026-07-01", false],
+    ["2027-01-01", false],
+  ] as const)("flags a given fiscal-year start of %s on 2026-11-17: %s", (date, far) => {
+    expect(
+      planDatevSettings(SET, { accountingYearBegin: date }, "2026-11-17").yearBeginFarFromToday,
+    ).toBe(far);
+  });
+
+  it("does not flag a fiscal-year start the caller left out", () => {
+    // An old start in sevDesk is resent unchanged; only a date given now is checked.
+    const old: DatevExportConfig = { ...SET, accountingYearBegin: "2019-01-01" };
+    expect(
+      planDatevSettings(old, { accountantClientNumber: 54321 }, "2026-11-17").yearBeginFarFromToday,
+    ).toBe(false);
+  });
+
   it("refuses when the account id is unknown", () => {
     expect(() =>
       planDatevSettings({ ...SET, clientId: undefined }, { accountantClientNumber: 2 }),
@@ -139,6 +159,23 @@ describe("updateDatevExportConfig", () => {
       expect.objectContaining({ method: "PUT", path, body: plan.body, tier: "commit" }),
     ]);
     expect(minimumWriteTier(path, undefined, plan.body)).toBe("write");
+  });
+});
+
+describe("moreThanAYearAway", () => {
+  it.each([
+    ["2025-11-17", false],
+    ["2025-11-16", true],
+    ["2027-11-17", false],
+    ["2027-11-18", true],
+    ["2026-01-01", false],
+  ] as const)("%s from 2026-11-17: %s", (date, far) => {
+    expect(moreThanAYearAway(date, "2026-11-17")).toBe(far);
+  });
+
+  it("handles a leap day as today", () => {
+    expect(moreThanAYearAway("2027-02-28", "2028-02-29")).toBe(true);
+    expect(moreThanAYearAway("2027-03-01", "2028-02-29")).toBe(false);
   });
 });
 

@@ -1856,7 +1856,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "type": "integer",
         },
         "accountingYearBegin": {
-          "description": "First day of the current fiscal year (Wirtschaftsjahresbeginn), YYYY-MM-DD, usually January 1st.",
+          "description": "First day of the current fiscal year (Wirtschaftsjahresbeginn), YYYY-MM-DD, usually January 1st; the preview warns when it is more than a year away from today.",
           "type": "string",
         },
         "dryRun": {

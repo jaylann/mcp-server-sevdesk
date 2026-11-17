@@ -1,9 +1,18 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { SevdeskClient, SevdeskRequest } from "../../../../src/sevdesk/types.js";
 import { datevSettingsUpdateTool } from "../../../../src/tools/reports/datev-settings.js";
 import { type FakeRoute, FakeSevdeskClient } from "../../../helpers/fake-client.js";
 import { executeWrite, prepareWrite } from "../../../helpers/write-tools.js";
+
+// The preview checks the fiscal-year start against today: pin it (Berlin 2026-11-17).
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-11-17T10:00:00Z"));
+});
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 const PUT_PATH = "/SevClient/9001/updateExportConfig";
 
@@ -126,6 +135,39 @@ describe("sevdesk_datev_settings_update: prepare", () => {
     expect(plan.previewDe.facts[0]?.value).toBe("(nicht gesetzt) → 1001");
     expect(plan.preview.warnings.at(-1)).toContain("2026-03-15 is not the first day of a month");
     expect(plan.previewDe.warnings.at(-1)).toContain("15.03.2026");
+  });
+
+  it.each(["2031-01-01", "1990-01-01"])(
+    "warns in both languages about a fiscal-year start of %s, more than a year away",
+    async (date) => {
+      const plan = await prepareWrite(
+        datevSettingsUpdateTool,
+        { accountingYearBegin: date },
+        new FakeSevdeskClient([CONFIGURED]),
+      );
+      const german = `${date.slice(8)}.${date.slice(5, 7)}.${date.slice(0, 4)}`;
+      expect(plan.preview.warnings).toContain(
+        `The fiscal-year start ${date} is more than a year away from today; it should be the ` +
+          "first day of the current fiscal year. Set another date only when the tax adviser " +
+          "asks for it: every later DATEV export is split by it.",
+      );
+      expect(plan.previewDe.warnings).toContain(
+        `Der Wirtschaftsjahresbeginn ${german} liegt mehr als ein Jahr vom heutigen Tag ` +
+          "entfernt; gemeint ist der erste Tag des laufenden Wirtschaftsjahres. Setz ein anderes " +
+          "Datum nur, wenn die Steuerkanzlei es so will: Jeder spätere DATEV-Export wird danach " +
+          "getrennt.",
+      );
+      expect(plan.preview.warnings).toHaveLength(plan.previewDe.warnings.length);
+    },
+  );
+
+  it("does not warn about a fiscal-year start within a year", async () => {
+    const plan = await prepareWrite(
+      datevSettingsUpdateTool,
+      { accountingYearBegin: "2026-07-01" },
+      new FakeSevdeskClient([CONFIGURED]),
+    );
+    expect(plan.preview.warnings.join(" ")).not.toContain("more than a year");
   });
 
   it("warns in both languages when it resends a current number outside DATEV's range", async () => {

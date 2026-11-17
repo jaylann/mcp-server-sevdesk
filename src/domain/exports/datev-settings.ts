@@ -14,7 +14,7 @@
  * DATEV import files the data under them. Hence the tool is `commit` tier with a preview of the
  * current values next to the new ones, and reads the settings back afterwards.
  */
-import { toUnixSeconds } from "../../sevdesk/dates.js";
+import { berlinDateOf, toUnixSeconds } from "../../sevdesk/dates.js";
 import { SevdeskError } from "../../sevdesk/errors.js";
 import { sevdeskPath } from "../../sevdesk/paths.js";
 import type { SevdeskClient } from "../../sevdesk/types.js";
@@ -86,6 +86,11 @@ export interface DatevSettingsPlan {
    * range).
    */
   readonly keptOutOfRange: readonly ("accountantNumber" | "accountantClientNumber")[];
+  /**
+   * The caller gave a fiscal-year start more than a year before or after today
+   * ({@link moreThanAYearAway}); the preview warns.
+   */
+  readonly yearBeginFarFromToday: boolean;
 }
 
 /** Readable names, for errors. */
@@ -112,10 +117,12 @@ export function currentDatevSettings(config: DatevExportConfig): DatevSettingVal
  * Plans the update: checks the formats, fills what the caller left out from the current values,
  * and refuses (local `validation` error, nothing sent) when nothing was given, a value is out of
  * range, a setting would stay unset, nothing would change, or the account id is unknown.
+ * `today` (Berlin `YYYY-MM-DD`, default the current day) dates the fiscal-year start check.
  */
 export function planDatevSettings(
   config: DatevExportConfig,
   input: DatevSettingsInput,
+  today: string = berlinDateOf(Date.now()),
 ): DatevSettingsPlan {
   const given = DATEV_SETTING_KEYS.filter((key) => input[key] !== undefined);
   if (given.length === 0) {
@@ -189,12 +196,28 @@ export function planDatevSettings(
     changes,
     sent,
     keptOutOfRange,
+    yearBeginFarFromToday:
+      input.accountingYearBegin !== undefined &&
+      moreThanAYearAway(input.accountingYearBegin, today),
     body: {
       accountantNumber: Number(sent.accountantNumber),
       accountantClientNumber: Number(sent.accountantClientNumber),
       accountingYearBegin: toUnixSeconds(sent.accountingYearBegin, "start"),
     },
   };
+}
+
+/**
+ * Whether `date` lies more than a year before or after `today` (both `YYYY-MM-DD`, compared as
+ * text, which orders ISO dates). The fiscal-year start should be the first day of the current
+ * fiscal year, which began within the last twelve months; a start set ahead for the next one lies
+ * within a year as well. Further away it changes how every later DATEV export is split by fiscal
+ * year, but a late export of an earlier year might want it, so the tool warns instead of refusing.
+ */
+export function moreThanAYearAway(date: string, today: string): boolean {
+  const year = Number(today.slice(0, 4));
+  const monthDay = today.slice(4);
+  return date < `${String(year - 1)}${monthDay}` || date > `${String(year + 1)}${monthDay}`;
 }
 
 /**

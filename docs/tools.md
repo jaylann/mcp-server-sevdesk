@@ -1098,12 +1098,12 @@ DATEV-Export: let sevDesk build the DATEV booking data (Buchungsstapel, CSV in a
 
 DATEV-Einstellungen: set the accountant number (Beraternummer, 1001–9999999), the client number (Mandantennummer, 1–99999) and the start of the fiscal year (Wirtschaftsjahresbeginn) that sevDesk's DATEV export needs (sevdesk_datev_export refuses without them). Give only what changes; the others keep sevDesk's values. Take the numbers from the tax adviser (Steuerberater), never guess them: the adviser's DATEV files every export under them. Account-wide; commit tier: a human confirms a preview of the current and new values; dryRun only previews. Reads the settings back and reports what sevDesk stored.
 
-| Argument                 | Type    | Required | Description                                                                                                                                              |
-| ------------------------ | ------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `accountantNumber`       | integer | no       | Beraternummer of the tax adviser, 1001–9999999.                                                                                                          |
-| `accountantClientNumber` | integer | no       | Mandantennummer at the adviser, 1–99999.                                                                                                                 |
-| `accountingYearBegin`    | string  | no       | First day of the current fiscal year (Wirtschaftsjahresbeginn), YYYY-MM-DD, usually January 1st.                                                         |
-| `dryRun`                 | boolean | no       | Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false. |
+| Argument                 | Type    | Required | Description                                                                                                                                                     |
+| ------------------------ | ------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `accountantNumber`       | integer | no       | Beraternummer of the tax adviser, 1001–9999999.                                                                                                                 |
+| `accountantClientNumber` | integer | no       | Mandantennummer at the adviser, 1–99999.                                                                                                                        |
+| `accountingYearBegin`    | string  | no       | First day of the current fiscal year (Wirtschaftsjahresbeginn), YYYY-MM-DD, usually January 1st; the preview warns when it is more than a year away from today. |
+| `dryRun`                 | boolean | no       | Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.        |
 
 ### `sevdesk_payables_aging`
 
