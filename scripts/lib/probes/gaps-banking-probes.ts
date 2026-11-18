@@ -848,6 +848,19 @@ async function transactionCreateAnswer(
   return recordedOutcome(checks, `On ${account.note}`);
 }
 
+/** The page size the rule-storage probe reads the rule list with. */
+const RULE_PAGE = 1000;
+
+/** Whether one page of the rule list holds every rule of the account. */
+function listsEveryRule(page: {
+  readonly rows: readonly Row[];
+  readonly total: number | undefined;
+}): boolean {
+  return (
+    page.rows.length < RULE_PAGE || (page.total !== undefined && page.total <= page.rows.length)
+  );
+}
+
 /** What a stored rule text is, compared with the text sent; never the text itself. */
 function storedText(row: Row | undefined, key: string, sent: string): string {
   if (row === undefined) return "rule not listed";
@@ -894,7 +907,7 @@ async function ruleStorage(ctx: ProbeContext, own: number[]): Promise<ProbeOutco
   const cut = await create({ paymentPurpose: long });
 
   // No read by id is recorded: the stored texts come from the list.
-  const list = await ctx.read.page("/PrivateTransactionRule", undefined, 1000);
+  const list = await ctx.read.page("/PrivateTransactionRule", undefined, RULE_PAGE);
   if (!list.result.ok) {
     return inconclusive(
       `The rules were created, but GET /PrivateTransactionRule ${outcomeOf(list.result)}.`,
@@ -902,6 +915,16 @@ async function ruleStorage(ctx: ProbeContext, own: number[]): Promise<ProbeOutco
   }
   const listed = (id: number | undefined) =>
     id === undefined ? undefined : list.rows.find((row) => str(row, "id") === String(id));
+  // The list's order is not recorded: on an account with more rules than one page, a new rule
+  // missing from the page says nothing about how sevDesk stored it.
+  const missing = [first, duplicate, kept, cut].filter(
+    (rule) => rule.id !== undefined && listed(rule.id) === undefined,
+  ).length;
+  if (missing > 0 && !listsEveryRule(list)) {
+    return inconclusive(
+      `${missing} of the new rules are not among the first ${RULE_PAGE} of the account's rules (total ${list.total ?? "unknown"}), so their stored texts could not be read.`,
+    );
+  }
   const checks: RecordedCheck[] = [
     {
       fact: "a counterpartName with two leading spaces and one trailing is stored exactly as sent",
@@ -964,7 +987,11 @@ async function archiveAccounts(ctx: ProbeContext, ids: readonly number[]): Promi
   return notes;
 }
 
-/** Deletes the rules of `own` (commit) and confirms with one list read that none is listed. */
+/**
+ * Deletes the rules of `own` (commit) and confirms with one list read that none is listed. A rule
+ * missing from the list counts as deleted only when its DELETE answered 2xx or the page holds every
+ * rule: on a longer list it may just be on a later page.
+ */
 async function deleteRules(ctx: ProbeContext, own: readonly number[]): Promise<string[]> {
   if (own.length === 0) return [];
   const answers = new Map<number, HttpResult>();
@@ -974,13 +1001,19 @@ async function deleteRules(ctx: ProbeContext, own: readonly number[]): Promise<s
       await ctx.http.write("DELETE", `/PrivateTransactionRule/${id}`, { tier: "commit" }),
     );
   }
-  const after = await ctx.read.page("/PrivateTransactionRule", undefined, 1000);
+  const after = await ctx.read.page("/PrivateTransactionRule", undefined, RULE_PAGE);
   const listed = new Set(after.rows.map((row) => str(row, "id")));
   return own.map((id) => {
     const answer = answers.get(id);
-    const gone = after.result.ok && !listed.has(String(id));
+    const unlisted = after.result.ok && !listed.has(String(id));
+    const gone = unlisted && (answer?.ok === true || listsEveryRule(after));
     if (gone) data(ctx).mark("PrivateTransactionRule", id, "deleted by the probe");
-    return `rule ${id} ${gone ? "deleted" : `not confirmed deleted (DELETE ${answer === undefined ? "not sent" : outcomeOf(answer)}, list ${after.result.ok ? "still shows it" : outcomeOf(after.result)})`}`;
+    const list = !after.result.ok
+      ? outcomeOf(after.result)
+      : unlisted
+        ? `not among the first ${RULE_PAGE} of ${after.total ?? "more"} rules`
+        : "still shows it";
+    return `rule ${id} ${gone ? "deleted" : `not confirmed deleted (DELETE ${answer === undefined ? "not sent" : outcomeOf(answer)}, list ${list})`}`;
   });
 }
 

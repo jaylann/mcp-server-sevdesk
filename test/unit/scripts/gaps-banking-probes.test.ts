@@ -119,6 +119,13 @@ function gapsAccount(
     transactionAnswerList?: boolean;
     /** Synthetic (not recorded): rules trim their texts and refuse a duplicate (D-099). */
     rulesTrimAndRefuseDuplicates?: boolean;
+    /**
+     * Rules the account already holds, listed before new ones; the rule list then honours
+     * `limit`/`offset` and answers `total` (D-099).
+     */
+    existingRules?: number;
+    /** Synthetic (not recorded): DELETE /PrivateTransactionRule/{id} is refused. */
+    ruleDeleteRefused?: boolean;
   } = {},
 ) {
   // Far from the digits PERSONAL looks for, so a generated id never matches it.
@@ -187,6 +194,14 @@ function gapsAccount(
   ]);
   const uploads = new Map<string, Uint8Array>();
   const rules = new Map<number, Rec>();
+  for (let index = 1; index <= (settings.existingRules ?? 0); index += 1) {
+    rules.set(index, {
+      id: String(index),
+      objectName: "PrivateTransactionRule",
+      paymentPurpose: null,
+      counterpartName: `Bestandsregel ${index}`,
+    });
+  }
   /** transaction id → voucher id it pays. */
   const links = new Map<number, number>();
   /** transaction id → voucher whose booking created it. */
@@ -428,9 +443,18 @@ function gapsAccount(
         rules.set(ruleId, row);
         return { objects: { ...row } };
       }
+      if (settings.existingRules !== undefined) {
+        const offset = Number(query["offset"] ?? 0);
+        const all = [...rules.values()];
+        return {
+          total: String(all.length),
+          objects: all.slice(offset, offset + Number(query["limit"])),
+        };
+      }
       return { objects: [...rules.values()] };
     }
     if (/^\/PrivateTransactionRule\/\d+$/.test(path) && method === "DELETE") {
+      if (settings.ruleDeleteRefused === true) refused(409, "Rule cannot be deleted");
       rules.delete(id);
       return { objects: [null] };
     }
@@ -1141,6 +1165,39 @@ describe("gap probes on a simulated trial account", () => {
       /second row: DIFFERS \(refused \(422: A rule with these values already exists\)\)/,
     );
     expect(account.rules.size).toBe(0);
+  });
+
+  it("never takes a rule beyond the first 1000 for a changed storage or a deleted rule (#135)", async () => {
+    const id = "write-private-transaction-rule-storage";
+    // A few rules of the account's own: the page holds them all, the facts are confirmed.
+    const few = gapsAccount({ existingRules: 3 });
+    const fewReport = await run(few, [id]);
+    expect(fewReport.results.find((item) => item.id === id)?.status).toBe("confirmed");
+    expect(few.rules.size).toBe(3);
+
+    // 1000 rules of its own: the new ones are on a later page, which proves nothing either way.
+    const many = gapsAccount({ existingRules: 1000 });
+    const manyReport = await run(many, [id]);
+    const result = manyReport.results.find((item) => item.id === id);
+    expect(result?.status, result?.finding).toBe("inconclusive");
+    expect(result?.finding).toMatch(
+      /^4 of the new rules are not among the first 1000 of the account's rules \(total 1004\)/,
+    );
+    // Each DELETE answered 2xx: deleted, though the list cannot show it.
+    expect(result?.finding).toMatch(/Cleanup: (rule \d+ deleted(; |\.$)){4}/);
+    expect(many.rules.size).toBe(1000);
+
+    // A refused DELETE of a rule off the first page is not reported as deleted.
+    const stuck = gapsAccount({ existingRules: 1000, ruleDeleteRefused: true });
+    const stuckReport = await run(stuck, [id]);
+    expect(finding(stuckReport, id)).toMatch(
+      /rule \d+ not confirmed deleted \(DELETE refused \(409: Rule cannot be deleted\), list not among the first 1000 of 1004 rules\)/,
+    );
+    expect(
+      stuckReport.created
+        .filter((record) => record.objectName === "PrivateTransactionRule")
+        .map((record) => record.state),
+    ).toEqual(Array<string>(4).fill("rule (deleted at the end of the probe)"));
   });
 
   it("compares receipt hashes without showing them", async () => {
