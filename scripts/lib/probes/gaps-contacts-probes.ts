@@ -15,6 +15,12 @@
  * Findings carry ids, statuses, counts, key names and booleans, never names or values from the
  * account: values such as tag names, custom field values or customer numbers are compared locally
  * and reported as "same"/"changed".
+ *
+ * Five probes answer open live questions of #136 and #134 on a trial account (cost centres on
+ * voucher positions, tag spellings and two tag filters, the paging of the relation list, the
+ * contact name search, and what deleting an organisation does to its contact persons). They report
+ * `observed` and delete everything they made in a `finally` ({@link withCleanup}), also when a step
+ * fails.
  */
 import { rowsOf } from "../fixture-plan.js";
 import {
@@ -42,6 +48,7 @@ import {
   shapeOf,
   voucherHeader,
   voucherPosition,
+  voucherPositions,
   withCleanup,
 } from "./m4-shared-probes.js";
 
@@ -732,6 +739,485 @@ function saveWithId(
       [`${key}PosDelete`]: null,
     },
   });
+}
+
+// ---------------------------------------------------------------------------------------------
+// Open live questions of #136 and #134 (trial probes)
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * The cleanup order of the trial probes: tags before the documents they sit on (`DELETE /Tag`
+ * removes its relations, D-089), documents before the cost centres and contacts they name (a used
+ * cost centre or a referenced contact is not deleted, D-085), contacts last.
+ */
+const CLEANUP_ORDER = ["Tag", "Invoice", "Voucher", "CostCentre", "Contact"];
+
+/** {@link deleteOwn} of `own` without duplicates, in {@link CLEANUP_ORDER} (stable otherwise). */
+function cleanupOwn(ctx: ProbeContext, own: readonly OwnRecord[]): Promise<string[]> {
+  const unique = own.filter(
+    (record, index) =>
+      own.findIndex((item) => item.objectName === record.objectName && item.id === record.id) ===
+      index,
+  );
+  const rank = (record: OwnRecord) => {
+    const at = CLEANUP_ORDER.indexOf(record.objectName);
+    return at === -1 ? CLEANUP_ORDER.length : at;
+  };
+  return deleteOwn(
+    ctx,
+    [...unique].sort((a, b) => rank(a) - rank(b)),
+  );
+}
+
+/** A tagged draft invoice of {@link draftOf}, kept in `own` for the cleanup. */
+async function ownInvoice(
+  ctx: ProbeContext,
+  label: string,
+  own: OwnRecord[],
+  fields: Readonly<Record<string, unknown>> = {},
+): Promise<{ readonly id: number | undefined; readonly failure: string }> {
+  const draft = await draftOf(ctx, "Invoice", label, fields);
+  if (draft.id !== undefined) own.push({ objectName: "Invoice", id: draft.id });
+  return draft;
+}
+
+/** {@link tagByName}, with the tag kept in `own` for the cleanup. */
+async function ownTag(
+  ctx: ProbeContext,
+  name: string,
+  invoiceId: number,
+  own: OwnRecord[],
+): Promise<TagResult> {
+  const tagged = await tagByName(ctx, name, "Invoice", invoiceId);
+  if (tagged.tagId !== undefined) own.push({ objectName: "Tag", id: tagged.tagId });
+  return tagged;
+}
+
+/** The ids of a list answer's rows (none when refused or empty). */
+function answerIds(result: HttpResult): number[] {
+  return result.ok && result.objects !== undefined && result.objects !== null
+    ? rowIds(rowsOf(result.objects))
+    : [];
+}
+
+/** `ascending`, `descending` or `neither` for a list of ids. */
+function idOrder(ids: readonly number[]): string {
+  if (ids.length < 2) return "too few rows to tell";
+  const pairs = ids.slice(1).map((id, index) => id - (ids[index] ?? id));
+  if (pairs.every((step) => step > 0)) return "ascending";
+  if (pairs.every((step) => step < 0)) return "descending";
+  return "neither ascending nor descending";
+}
+
+/**
+ * A draft voucher (`saveVoucher`, status 50, one position of 119.00 gross) whose head carries the
+ * cost centre `head` and whose position carries `position` (`undefined`: none), kept in `own`.
+ */
+async function voucherWithCostCentres(
+  ctx: ProbeContext,
+  label: string,
+  centres: { readonly head: number | undefined; readonly position: number },
+  own: OwnRecord[],
+): Promise<{ readonly id: number | undefined; readonly failure: string }> {
+  const accounts = await bookingAccounts(ctx);
+  if (accounts.expense === undefined) {
+    return { id: undefined, failure: `no expense booking account (${accounts.note})` };
+  }
+  const position = voucherPosition(data(ctx).tag, accounts.expense, {
+    net: false,
+    amount: 119,
+    label: `${label} position`,
+  });
+  const result = await ctx.http.write("POST", "/Voucher/Factory/saveVoucher", {
+    tier: "write",
+    body: {
+      voucher: {
+        ...voucherHeader(ctx, { label }),
+        ...(centres.head === undefined ? {} : { costCentre: ref("CostCentre", centres.head) }),
+      },
+      voucherPosSave: [{ ...position, costCentre: ref("CostCentre", centres.position) }],
+      voucherPosDelete: null,
+    },
+  });
+  const id = createdId(result.objects, "voucher");
+  if (id !== undefined) {
+    data(ctx).register("Voucher", id, "draft voucher (deletable)");
+    own.push({ objectName: "Voucher", id });
+  }
+  return { id, failure: id === undefined ? `saveVoucher ${outcomeOf(result)}` : "" };
+}
+
+/** The body of `write-voucher-position-cost-centre`. */
+async function positionCostCentres(ctx: ProbeContext, own: OwnRecord[]): Promise<ProbeOutcome> {
+  const head = await createCostCentre(ctx, "KST Kopf", "D");
+  if (head.id !== undefined) own.push({ objectName: "CostCentre", id: head.id });
+  const position = await createCostCentre(ctx, "KST Position", "E");
+  if (position.id !== undefined) own.push({ objectName: "CostCentre", id: position.id });
+  if (head.id === undefined || position.id === undefined) {
+    return inconclusive(
+      `POST /CostCentre ${outcomeOf(head.result)} / ${outcomeOf(position.result)}: the probe needs two cost centres of its own.`,
+    );
+  }
+  const names = new Map([
+    [head.id, "the head's"],
+    [position.id, "the position's"],
+  ]);
+  const which = (row: Row | undefined) => {
+    const id = refId(row, "costCentre");
+    return `${describeRef(row, "costCentre")}${id === undefined ? "" : ` (${names.get(id) ?? "another"})`}`;
+  };
+  const lines = [`Cost centres ${head.id} (sent on the head) and ${position.id} (on the position)`];
+  for (const variant of [
+    { label: "head and position", head: head.id },
+    { label: "position only", head: undefined },
+  ]) {
+    const voucher = await voucherWithCostCentres(
+      ctx,
+      `cost centre ${variant.label}`,
+      { head: variant.head, position: position.id },
+      own,
+    );
+    if (voucher.id === undefined) {
+      lines.push(`${variant.label}: ${voucher.failure}`);
+      continue;
+    }
+    const row = await ctx.read.byId("Voucher", voucher.id);
+    const positions = await voucherPositions(ctx, voucher.id);
+    lines.push(
+      `${variant.label} (voucher ${voucher.id}): the head reads ${which(row)}; ${positions.length} position(s) read ${positions.map(which).join(", ") || "nothing"}`,
+    );
+  }
+  return { verdict: "observed", finding: `${lines.join(". ")}.` };
+}
+
+/**
+ * Pairs of tag names that differ in one way sevDesk may or may not fold when it looks for an
+ * existing tag (#105; only case and é/e are recorded, D-088). The base is sent first, the variant
+ * second, both after the run tag. The special characters are built from their code points, so
+ * that none hides in the source.
+ */
+const TAG_SPELLINGS: readonly {
+  readonly label: string;
+  readonly base: string;
+  readonly variant: string;
+}[] = [
+  { label: "ß then ss", base: "Maß", variant: "Mass" },
+  {
+    label: "fi then the ligature U+FB01",
+    base: "Profil",
+    variant: `Pro${String.fromCodePoint(0xfb01)}l`,
+  },
+  {
+    label: "a zero-width space inside",
+    base: "Nullbreite",
+    variant: `Null${String.fromCodePoint(0x200b)}breite`,
+  },
+  {
+    label: "a soft hyphen inside",
+    base: "Trennung",
+    variant: `Tren${String.fromCodePoint(0xad)}nung`,
+  },
+  { label: "a doubled inner space", base: "Zwei Teile", variant: "Zwei  Teile" },
+];
+
+/** How a stored tag name compares with the names sent; never the name itself. */
+function spelledAs(stored: string, sent: string, base: string): string {
+  if (stored === "") return "unreadable";
+  if (stored === sent) return `as sent (${stored.length} characters)`;
+  if (stored === base) return `as the base (${stored.length} characters)`;
+  return `another text (${stored.length} characters for ${sent.length} sent)`;
+}
+
+/** Which of three drafts a list filtered by two tags answered, as a rule. */
+function twoTagRule(found: {
+  readonly onlyFirst: boolean;
+  readonly onlySecond: boolean;
+  readonly both: boolean;
+  readonly control: boolean;
+}): string {
+  if (found.control) return "ignored (an untagged draft is listed)";
+  if (found.onlyFirst && found.onlySecond && found.both) return "either tag (OR)";
+  if (!found.onlyFirst && !found.onlySecond && found.both) return "both tags (AND)";
+  if (found.onlyFirst && !found.onlySecond && found.both) return "the first tag only";
+  if (!found.onlyFirst && found.onlySecond && found.both) return "the second tag only";
+  if (!found.onlyFirst && !found.onlySecond && !found.both) return "no draft listed";
+  return "unclear";
+}
+
+/** The body of `write-tag-name-matching`. */
+async function tagNameMatching(ctx: ProbeContext, own: OwnRecord[]): Promise<ProbeOutcome> {
+  const baseDoc = await ownInvoice(ctx, "tag spelling base", own);
+  const variantDoc = await ownInvoice(ctx, "tag spelling variant", own);
+  if (baseDoc.id === undefined || variantDoc.id === undefined) {
+    return inconclusive(`Could not prepare: ${baseDoc.failure || variantDoc.failure}.`);
+  }
+  const lines: string[] = [];
+  for (const spelling of TAG_SPELLINGS) {
+    const baseName = tagName(ctx, spelling.base);
+    const variantName = tagName(ctx, spelling.variant);
+    const base = await ownTag(ctx, baseName, baseDoc.id, own);
+    const variant = await ownTag(ctx, variantName, variantDoc.id, own);
+    if (base.tagId === undefined || variant.tagId === undefined) {
+      lines.push(`${spelling.label}: ${outcomeOf(base.result)} / ${outcomeOf(variant.result)}`);
+      continue;
+    }
+    const stored = str(await ctx.read.byId("Tag", variant.tagId), "name");
+    const named = await ctx.read.page("/Tag", { name: variantName }, 100);
+    const ids = rowIds(named.rows);
+    lines.push(
+      `${spelling.label}: ${variant.tagId === base.tagId ? "reuses the base's tag" : "a new tag"}, named ${spelledAs(stored, variantName, baseName)}; ` +
+        `GET /Tag?name=<variant> ${named.result.ok ? `${ids.length} row(s), the base's tag ${ids.includes(base.tagId)}, the variant's ${ids.includes(variant.tagId)}` : outcomeOf(named.result)}`,
+    );
+  }
+
+  // Two tags at once on the invoice list (D-090 recorded only tags[0]).
+  const onlyFirst = await ownInvoice(ctx, "two tags first", own);
+  const onlySecond = await ownInvoice(ctx, "two tags second", own);
+  const both = await ownInvoice(ctx, "two tags both", own);
+  if (onlyFirst.id === undefined || onlySecond.id === undefined || both.id === undefined) {
+    lines.push(
+      `two tags: could not prepare (${onlyFirst.failure || onlySecond.failure || both.failure})`,
+    );
+    return { verdict: "observed", finding: `${lines.join(". ")}.` };
+  }
+  const first = tagName(ctx, "Filter Erster");
+  const second = tagName(ctx, "Filter Zweiter");
+  const a = await ownTag(ctx, first, onlyFirst.id, own);
+  const b = await ownTag(ctx, second, onlySecond.id, own);
+  const bothA = await ownTag(ctx, first, both.id, own);
+  const bothB = await ownTag(ctx, second, both.id, own);
+  if (a.tagId === undefined || b.tagId === undefined || !bothA.result.ok || !bothB.result.ok) {
+    lines.push(
+      `two tags: tagging ${[a, b, bothA, bothB].map((item) => outcomeOf(item.result)).join(" / ")}`,
+    );
+    return { verdict: "observed", finding: `${lines.join(". ")}.` };
+  }
+  const page = await ctx.read.page(
+    "/Invoice",
+    {
+      "tags[0][id]": a.tagId,
+      "tags[0][objectName]": "Tag",
+      "tags[1][id]": b.tagId,
+      "tags[1][objectName]": "Tag",
+    },
+    1000,
+  );
+  const ids = rowIds(page.rows);
+  const found = {
+    onlyFirst: ids.includes(onlyFirst.id),
+    onlySecond: ids.includes(onlySecond.id),
+    both: ids.includes(both.id),
+    control: ids.includes(baseDoc.id) || ids.includes(variantDoc.id),
+  };
+  lines.push(
+    `GET /Invoice with tags[0] and tags[1]: ${
+      page.result.ok
+        ? `${twoTagRule(found)} (first only ${found.onlyFirst}, second only ${found.onlySecond}, both ${found.both}, untagged ${found.control}; ${ids.length} row(s), total ${page.total ?? "none"})`
+        : outcomeOf(page.result)
+    }`,
+  );
+  return { verdict: "observed", finding: `${lines.join(". ")}.` };
+}
+
+/** Page size and reach of the paged reads of `write-tag-relation-paging`. */
+const RELATION_PAGE = 3;
+const RELATION_PAGED_ROWS = 60;
+
+/** The body of `write-tag-relation-paging`. */
+async function tagRelationPaging(ctx: ProbeContext, own: OwnRecord[]): Promise<ProbeOutcome> {
+  // Six relations of this run: two tags on three drafts each.
+  const relations: number[] = [];
+  const failures: string[] = [];
+  for (const label of ["paging 1", "paging 2", "paging 3"]) {
+    const draft = await ownInvoice(ctx, label, own);
+    if (draft.id === undefined) {
+      failures.push(draft.failure);
+      continue;
+    }
+    for (const name of [tagName(ctx, "Seite A"), tagName(ctx, "Seite B")]) {
+      const tagged = await ownTag(ctx, name, draft.id, own);
+      if (tagged.relationId === undefined) failures.push(`tagging ${outcomeOf(tagged.result)}`);
+      else relations.push(tagged.relationId);
+    }
+  }
+  if (relations.length < 2) {
+    return inconclusive(
+      `Only ${relations.length} relation(s) could be made: ${failures.join("; ") || "no reason"}.`,
+    );
+  }
+  const full = await ctx.http.get("/TagRelation", { limit: 1000, offset: 0, countAll: true });
+  if (!full.ok) return inconclusive(`GET /TagRelation ${outcomeOf(full)}.`);
+  const fullIds = answerIds(full);
+  const rawTotal = (full.json as { total?: unknown } | undefined)?.total;
+  const again = answerIds(await ctx.http.get("/TagRelation", { limit: 1000, offset: 0 }));
+  const covered = Math.min(fullIds.length, RELATION_PAGED_ROWS);
+  const paged: number[] = [];
+  let pageFailure: string | undefined;
+  for (let offset = 0; offset < covered; offset += RELATION_PAGE) {
+    const page = await ctx.http.get("/TagRelation", { limit: RELATION_PAGE, offset });
+    if (!page.ok) {
+      pageFailure = `the page at offset ${offset} ${outcomeOf(page)}`;
+      break;
+    }
+    paged.push(...answerIds(page));
+  }
+  const expected = fullIds.slice(0, covered);
+  const shown = paged.slice(0, covered);
+  const sameOrder = JSON.stringify(shown) === JSON.stringify(expected);
+  const missing = expected.filter((id) => !paged.includes(id)).length;
+  const twice = paged.length - new Set(paged).size;
+  const positions = relations.map((id) => fullIds.indexOf(id));
+  const where = positions.some((at) => at === -1)
+    ? "not all among the rows read"
+    : positions.every((at) => at >= fullIds.length - relations.length)
+      ? "the last rows"
+      : positions.every((at) => at < relations.length)
+        ? "the first rows"
+        : "in between";
+  const paging =
+    pageFailure ??
+    (sameOrder
+      ? `the same ids in the same order`
+      : `differ (${missing} missing, ${twice} listed twice, ${shown.length} row(s) read)`);
+  return {
+    verdict: "observed",
+    finding:
+      `GET /TagRelation (limit 1000): ${fullIds.length} row(s), total ${rawTotal === undefined || rawTotal === null ? "none" : str({ total: rawTotal }, "total")}; ids ${idOrder(fullIds)}; ` +
+      `a second read ${JSON.stringify(again) === JSON.stringify(fullIds) ? "the same ids in the same order" : "differs"}; ` +
+      `pages of ${RELATION_PAGE} over the first ${covered}: ${paging}; this run's ${relations.length} relations are ${where}` +
+      `${failures.length === 0 ? "" : ` (not made: ${failures.join("; ")})`}.`,
+  };
+}
+
+/** The body of `write-contact-name-search`. */
+async function contactNameSearch(ctx: ProbeContext, own: OwnRecord[]): Promise<ProbeOutcome> {
+  const tag = data(ctx).tag;
+  const org = await organisation(ctx, "Namensuche Holding");
+  if (org.id !== undefined) own.push({ objectName: "Contact", id: org.id });
+  const per = await person(ctx, "Suchperson");
+  if (per.id !== undefined) own.push({ objectName: "Contact", id: per.id });
+  if (org.id === undefined || per.id === undefined) {
+    return inconclusive(
+      `Could not create the contacts: ${outcomeOf(org.result)} / ${outcomeOf(per.result)}.`,
+    );
+  }
+  const orgName = `${tag} Namensuche Holding`;
+  const familyname = `${tag} Suchperson`;
+  const variants: readonly {
+    readonly label: string;
+    readonly name: string;
+    readonly target: number;
+    readonly depth?: false;
+  }[] = [
+    { label: "organisation, full name", name: orgName, target: org.id },
+    { label: "organisation, lower case", name: orgName.toLowerCase(), target: org.id },
+    { label: "organisation, upper case", name: orgName.toUpperCase(), target: org.id },
+    { label: "organisation, a middle part", name: "ensuche Hold", target: org.id },
+    {
+      label: "organisation, full name without depth=1",
+      name: orgName,
+      target: org.id,
+      depth: false,
+    },
+    { label: "person, familyname", name: familyname, target: per.id },
+    { label: "person, shown name (first last)", name: `Probe ${familyname}`, target: per.id },
+    { label: "person, familyname in lower case", name: familyname.toLowerCase(), target: per.id },
+    { label: "person, a middle part of the familyname", name: "uchperso", target: per.id },
+    { label: "person, first name only", name: "Probe", target: per.id },
+    { label: "person, familyname without depth=1", name: familyname, target: per.id, depth: false },
+  ];
+  const lines: string[] = [];
+  for (const variant of variants) {
+    const page = await ctx.read.page(
+      "/Contact",
+      { ...(variant.depth === false ? {} : { depth: 1 }), name: variant.name },
+      1000,
+    );
+    lines.push(
+      `${variant.label}: ${page.result.ok ? `${rowIds(page.rows).includes(variant.target) ? "found" : "not found"} (${page.rows.length} row(s))` : outcomeOf(page.result)}`,
+    );
+  }
+  return {
+    verdict: "observed",
+    finding: `GET /Contact?name=… for organisation ${org.id} and person ${per.id} (depth=1 unless said): ${lines.join("; ")}.`,
+  };
+}
+
+/** A contact read by id after a delete: presence, and its parent when still there. */
+async function contactAfter(ctx: ProbeContext, id: number): Promise<string> {
+  const after = await ctx.http.get(`/Contact/${id}`);
+  markIfGone(ctx, "Contact", id, after);
+  return `${presence(after)}${after.ok && !isGone(after) ? `, parent ${describeRef(firstRow(after.objects), "parent")}` : ""}`;
+}
+
+/**
+ * The body of `write-contact-delete-cascade`. Persons go into `persons` and organisations into
+ * `orgs`, so that the cleanup deletes the draft, then the persons, then the organisations.
+ */
+async function contactDeleteCascade(
+  ctx: ProbeContext,
+  documents: OwnRecord[],
+  persons: OwnRecord[],
+  orgs: OwnRecord[],
+): Promise<ProbeOutcome> {
+  const lines: string[] = [];
+
+  // (a) An organisation with two contact persons and no document.
+  const plain = await organisation(ctx, "Kaskade Firma");
+  if (plain.id === undefined) {
+    lines.push(`organisation with persons: ${outcomeOf(plain.result)}`);
+  } else {
+    orgs.push({ objectName: "Contact", id: plain.id });
+    const children: number[] = [];
+    for (const label of ["Kaskade Person 1", "Kaskade Person 2"]) {
+      const child = await person(ctx, label, { parent: ref("Contact", plain.id) });
+      if (child.id === undefined) continue;
+      persons.push({ objectName: "Contact", id: child.id });
+      children.push(child.id);
+    }
+    const deleted = await ctx.http.write("DELETE", `/Contact/${plain.id}`, { tier: "write" });
+    const states: string[] = [];
+    for (const id of children) states.push(`person ${id} ${await contactAfter(ctx, id)}`);
+    lines.push(
+      `organisation ${plain.id} with ${children.length} contact person(s), no document: DELETE ${outcomeOf(deleted)}, answer ${shapeOf(deleted.objects)}; ` +
+        `organisation afterwards ${await contactAfter(ctx, plain.id)}; ${states.join("; ") || "no person made"}`,
+    );
+  }
+
+  // (b) An organisation whose contact person a draft invoice names as its contact.
+  /** Stops before (b)'s DELETE: without (a)'s DELETE either, a setup failure, not an answer. */
+  const stop = (line: string): ProbeOutcome => {
+    lines.push(line);
+    const finding = `${lines.join(". ")}.`;
+    return plain.id === undefined ? inconclusive(finding) : { verdict: "observed", finding };
+  };
+  const referenced = await organisation(ctx, "Kaskade Referenz");
+  if (referenced.id === undefined) {
+    return stop(`organisation with a referenced person: ${outcomeOf(referenced.result)}`);
+  }
+  orgs.push({ objectName: "Contact", id: referenced.id });
+  const child = await person(ctx, "Kaskade Referenzperson", {
+    parent: ref("Contact", referenced.id),
+  });
+  if (child.id === undefined) return stop(`the referenced person: ${outcomeOf(child.result)}`);
+  persons.push({ objectName: "Contact", id: child.id });
+  const draft = await ownInvoice(ctx, "cascade", documents, {
+    contact: ref("Contact", child.id),
+  });
+  if (draft.id === undefined) return stop(`the draft naming the person: ${draft.failure}`);
+  const before = await ctx.read.byId("Invoice", draft.id);
+  const deleted = await ctx.http.write("DELETE", `/Contact/${referenced.id}`, { tier: "write" });
+  const orgState = await contactAfter(ctx, referenced.id);
+  const personState = await contactAfter(ctx, child.id);
+  const invoice = await ctx.http.get(`/Invoice/${draft.id}`);
+  if (isGone(invoice)) data(ctx).mark("Invoice", draft.id, "deleted by the probe");
+  const row = firstRow(invoice.objects);
+  lines.push(
+    `organisation ${referenced.id} whose contact person ${child.id} draft invoice ${draft.id} names (read contact ${describeRef(before, "contact")}): ` +
+      `DELETE ${outcomeOf(deleted)}, answer ${shapeOf(deleted.objects)}; organisation afterwards ${orgState}; person afterwards ${personState}; ` +
+      `invoice afterwards ${presence(invoice)}${invoice.ok && !isGone(invoice) ? `, status ${str(row, "status")}, contact ${describeRef(row, "contact")}` : ""}`,
+  );
+  return { verdict: "observed", finding: `${lines.join(". ")}.` };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1774,6 +2260,91 @@ export const GAPS_CONTACTS_PROBES: readonly ProbeDefinition[] = [
         finding: `${lines.join(". ")}.`,
         deviations: { "D-024": "informs" },
       };
+    },
+  },
+  {
+    id: "write-voucher-position-cost-centre",
+    title: "A cost centre on a voucher position, other than the head's",
+    mode: "write",
+    question:
+      "Can a voucher position carry a cost centre of its own (#119)? Two tagged cost centres; a draft voucher (saveVoucher, status 50) with cost centre A on the head and B on its one position, and a second one with B on the position only. " +
+      "Which cost centre do the voucher and GET /VoucherPos read back (B, A, none)? Both vouchers and both cost centres are deleted at the end, also when a step fails.",
+    deviations: ["D-092", "D-091"],
+    async run(ctx) {
+      const own: OwnRecord[] = [];
+      return withCleanup(
+        () => positionCostCentres(ctx, own),
+        () => cleanupOwn(ctx, own),
+      );
+    },
+  },
+  {
+    id: "write-tag-name-matching",
+    title:
+      "Tag names sevDesk may fold (ß, ligatures, invisible characters, spaces) and two tag filters",
+    mode: "write",
+    question:
+      "Does Tag/Factory/create reuse a tag whose name differs only by ß/ss, the ligature U+FB01 for fi, a zero-width space, a soft hyphen or a doubled inner space (#105; case and é/e are recorded, D-088)? " +
+      "Per pair: the same tag id or a new one, the variant's stored name compared with both names sent (as sent, as the base, other; lengths only), and whether GET /Tag?name=<variant> finds either tag. " +
+      "Then GET /Invoice with tags[0] and tags[1] (D-090 recorded tags[0] only) against three drafts (first tag only, second only, both) and two untagged ones: AND, OR, one of them, or ignored? Every tag and draft is deleted at the end, also when a step fails.",
+    deviations: ["D-088", "D-090"],
+    async run(ctx) {
+      const own: OwnRecord[] = [];
+      return withCleanup(
+        () => tagNameMatching(ctx, own),
+        () => cleanupOwn(ctx, own),
+      );
+    },
+  },
+  {
+    id: "write-tag-relation-paging",
+    title: "Is the unfiltered GET /TagRelation stable across offsets?",
+    mode: "write",
+    question:
+      "Is an unfiltered GET /TagRelation stable across offsets (#119: the tag breakdown reads it in pages)? After six tagged relations (two tags on three drafts), the list is read with limit 1000 twice and in pages of 3 over its first 60 rows: " +
+      "do the pages give the same ids in the same order (none missing, none twice), are the ids ascending, and where do the run's relations sit? Ids and counts only; every tag and draft is deleted at the end, also when a step fails.",
+    deviations: ["D-088", "D-090"],
+    async run(ctx) {
+      const own: OwnRecord[] = [];
+      return withCleanup(
+        () => tagRelationPaging(ctx, own),
+        () => cleanupOwn(ctx, own),
+      );
+    },
+  },
+  {
+    id: "write-contact-name-search",
+    title: "GET /Contact?name=: case, parts of a name, persons",
+    mode: "write",
+    question:
+      "Is the name filter of GET /Contact a case-insensitive search for a part of the shown name (#102)? For a tagged organisation and a tagged person: the full name, lower and upper case, a middle part, the person's familyname, " +
+      "its shown name (first last), its first name alone, each with depth=1, and the full names without depth (D-020: organisations only). Found or not per variant; both contacts are deleted at the end, also when a step fails.",
+    deviations: ["D-020"],
+    async run(ctx) {
+      const own: OwnRecord[] = [];
+      return withCleanup(
+        () => contactNameSearch(ctx, own),
+        () => cleanupOwn(ctx, own),
+      );
+    },
+  },
+  {
+    id: "write-contact-delete-cascade",
+    title: "Deleting an organisation: its contact persons, and a person a draft names",
+    mode: "write",
+    question:
+      "What does DELETE /Contact/{id} do to an organisation's contact persons (#134, #108)? (a) An organisation with two persons under it (parent) and no document: the answer, and whether the persons are still there (and their parent). " +
+      "(b) An organisation with one person under it whom a draft invoice names as its contact: is the delete refused (D-085: possibly inside HTTP 200), or does it go through, and what happens to the organisation, the person and the draft? " +
+      "Everything left is deleted at the end (the draft, then the persons, then the organisations), also when a step fails.",
+    deviations: ["D-084", "D-085", "D-083"],
+    async run(ctx) {
+      const documents: OwnRecord[] = [];
+      const persons: OwnRecord[] = [];
+      const orgs: OwnRecord[] = [];
+      return withCleanup(
+        () => contactDeleteCascade(ctx, documents, persons, orgs),
+        () => deleteOwn(ctx, [...documents, ...persons, ...orgs]),
+      );
     },
   },
   {

@@ -5,17 +5,22 @@
  * recognition `createVoucherFromFile` (#96). Three probes re-check facts first recorded by one-off
  * checks (#135): the factories' `accountingNumber` refusals (D-119), the answer of a hand-made
  * transaction (D-071, D-096) and how rules store their texts (D-099, D-130); they report
- * `confirmed` or `contradicted` and clean up in a `finally`, also when a step fails.
+ * `confirmed` or `contradicted` and clean up in a `finally`, also when a step fails. Seven more
+ * ask the open live questions a trial account can answer (#136): list order of transactions and
+ * rules, a row of an archived account, an MT940 account, `entryDate`, receipt images and
+ * `embed=document`, and enshrining at 200, 300 and 350 (opt-in); they report `observed` and clean
+ * up the same way.
  *
  * Safety:
  * - Everything a probe creates carries the run tag (names, purposes, counterparties, voucher texts)
  *   and is registered for the cleanup list; the probes delete what they can (rules, accounts,
  *   transactions, draft vouchers) and say so in the list.
- * - Four probes are opt-in (`--only`) and run last because they cannot be undone: the cash-register
+ * - Five probes are opt-in (`--only`) and run last because they cannot be undone: the cash-register
  *   probe (sevDesk keeps every row `bookAmount` books on the Kasse, and `resetToOpen` adds a
  *   counter-entry instead of deleting it, D-095, D-096), enshrining ONE transaction the probe
- *   created itself, the DATEV XML export job (it may mark documents as exported), and
- *   `createVoucherFromFile`. No other enshrine request is sent and nothing is e-mailed; the one
+ *   created itself, enshrining up to three more of its own at 300, 200 and 350, the DATEV XML
+ *   export job (it may mark documents as exported), and `createVoucherFromFile`. No other enshrine
+ *   request is sent and nothing is e-mailed; the one
  *   invoice `write-export-invoice-zip` finalizes is enshrined by the trial account itself, which
  *   enshrines invoices when they are finalized (D-023, D-059).
  * - The ZIP exports are sent as side-effect GETs (`write` tier), since nobody has recorded whether
@@ -32,6 +37,7 @@ import { createHash } from "node:crypto";
 
 import { SevdeskError } from "../../../src/sevdesk/errors.js";
 import { downloadPresignedExport } from "../../../src/sevdesk/export-download.js";
+import { rowsOf } from "../fixture-plan.js";
 import {
   addDays,
   berlinMidnight,
@@ -66,6 +72,7 @@ import {
   recordedOutcome,
   shapeOf,
   slug,
+  TINY_PNG,
   tinyPdf,
   tokenPattern,
   transactionsOf,
@@ -97,17 +104,20 @@ async function postTransaction(
     readonly amount: number;
     readonly purpose: string;
     readonly counterpart?: string;
+    /** The value and entry day (YYYY-MM-DD); the run's day by default. */
+    readonly day?: string;
   },
 ): Promise<{ readonly id: number | undefined; readonly result: HttpResult }> {
   const tag = data(ctx).tag;
+  const day = options.day ?? ctx.today;
   const result = await ctx.http.write("POST", "/CheckAccountTransaction", {
     // A new bank transaction needs commit (`minimumWriteTier`, D-096, D-098).
     tier: "commit",
     body: {
       objectName: "CheckAccountTransaction",
       mapAll: true,
-      valueDate: isoNoon(ctx.today),
-      entryDate: isoNoon(ctx.today),
+      valueDate: isoNoon(day),
+      entryDate: isoNoon(day),
       amount: options.amount,
       paymtPurpose: `${tag} ${options.purpose}`,
       payeePayerName: `${tag} ${options.counterpart ?? "Gegenpartei"}`,
@@ -151,8 +161,11 @@ async function deleteTransaction(ctx: ProbeContext, id: number): Promise<string>
   return `DELETE ${outcomeOf(deleted)}${deleted.ok ? `, answer ${shapeOf(deleted.objects)}` : ""}; afterwards ${after}`;
 }
 
-/** `PUT /CheckAccountTransaction/{id}` with a status (commit). */
-function setTransactionStatus(ctx: ProbeContext, id: number, status: 100 | 300) {
+/**
+ * `PUT /CheckAccountTransaction/{id}` with a status (commit). 200 and 350 only from the opt-in
+ * `write-transaction-enshrine-statuses`, to see whether sevDesk takes them by hand.
+ */
+function setTransactionStatus(ctx: ProbeContext, id: number, status: 100 | 200 | 300 | 350) {
   return ctx.http.write("PUT", `/CheckAccountTransaction/${id}`, {
     tier: "commit",
     body: { status },
@@ -1018,13 +1031,523 @@ async function deleteRules(ctx: ProbeContext, own: readonly number[]): Promise<s
 }
 
 // ---------------------------------------------------------------------------------------------
+// Open live questions a trial account can answer (#136)
+// ---------------------------------------------------------------------------------------------
+
+/** A 2×2 baseline JPEG without metadata (ImageMagick, quality 50), 286 bytes. */
+const TINY_JPEG: Uint8Array = Uint8Array.from(
+  atob(
+    "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDABALDA4MChAODQ4SERATGCgaGBYWGDEjJR0oOjM9PDkzODdASFxOQERXRTc4UG1RV19iZ2hnPk1xeXBkeFxlZ2P/2wBDARESEhgVGC8aGi9jQjhCY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2P/wAARCAACAAIDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAT/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFAEBAAAAAAAAAAAAAAAAAAAABf/EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAMAwEAAhEDEQA/AIADg9//2Q==",
+  ),
+  (char) => char.charCodeAt(0),
+);
+
+/** How a sequence runs: ascending or descending (equal neighbours allowed), all equal, or mixed. */
+export function runOf(values: readonly number[]): string {
+  if (values.length === 0) return "no values";
+  if (values.length === 1) return "one value";
+  let up = 0;
+  let down = 0;
+  for (let index = 1; index < values.length; index += 1) {
+    const previous = values[index - 1] ?? 0;
+    const current = values[index] ?? 0;
+    if (current > previous) up += 1;
+    else if (current < previous) down += 1;
+  }
+  if (up === 0 && down === 0) return "all equal";
+  if (down === 0) return "ascending";
+  if (up === 0) return "descending";
+  return `mixed (${up} steps up, ${down} down)`;
+}
+
+/**
+ * The order of a list page: by id and by each date-time field in `dates` (rows without a readable
+ * value left out of that field's run). Ids and directions only, never values.
+ */
+export function orderOf(rows: readonly Row[], dates: readonly string[]): string {
+  const ids = rows.map((row) => Number(str(row, "id"))).filter(Number.isSafeInteger);
+  const runs = dates.map(
+    (key) =>
+      `${key} ${runOf(rows.map((row) => Date.parse(str(row, key))).filter(Number.isFinite))}`,
+  );
+  return `${rows.length} rows, id ${runOf(ids)}${runs.map((run) => `, ${run}`).join("")}`;
+}
+
+/** The labels of the probe's own rows in the order a list shows them, and how many it leaves out. */
+function ownOrder(rows: readonly Row[], own: ReadonlyMap<string, string>): string {
+  const listed = rows
+    .map((row) => own.get(str(row, "id")))
+    .filter((label): label is string => label !== undefined);
+  const missing = own.size - listed.length;
+  return `own rows listed as ${listed.join(", ") || "none"}${missing > 0 ? ` (${missing} not listed)` : ""}`;
+}
+
+/**
+ * Reads `path` with `limit` 1 at the offsets 0 to `count - 1` and compares the ids with the first
+ * `count` rows of `onePage` (the same query read as one page): whether paging gives the same rows
+ * in the same order.
+ */
+async function pagingMatches(
+  ctx: ProbeContext,
+  path: string,
+  query: Query,
+  onePage: readonly Row[],
+  count: number,
+): Promise<string> {
+  if (count === 0) return "no rows to page through";
+  const paged: string[] = [];
+  for (let offset = 0; offset < count; offset += 1) {
+    const result = await ctx.http.get(path, { ...query, limit: 1, offset });
+    if (!result.ok) return `limit 1 at offset ${offset} ${outcomeOf(result)}`;
+    const rows =
+      result.objects === undefined || result.objects === null ? [] : rowsOf(result.objects);
+    paged.push(rows.map((row) => str(row, "id")).join("+") || "none");
+  }
+  const expected = onePage.slice(0, count).map((row) => str(row, "id"));
+  const differs = paged.findIndex((id, index) => id !== expected[index]);
+  return differs === -1
+    ? `pages of 1 at offsets 0 to ${count - 1} give the same rows in the same order as one page`
+    : `pages of 1 differ from one page from offset ${differs} on`;
+}
+
+/** The query of one check account's transactions. */
+function ofAccount(accountId: number): Query {
+  return { "checkAccount[id]": accountId, "checkAccount[objectName]": "CheckAccount" };
+}
+
+/** Soft-deletes the rows of `own` that are not deleted yet (the cleanup of hand-made rows). */
+async function deleteOwnTransactions(ctx: ProbeContext, own: readonly number[]): Promise<string[]> {
+  const notes: string[] = [];
+  for (const id of own) {
+    if (endsDeleted(await transactionStatus(ctx, id))) continue;
+    notes.push(`transaction ${id}: ${await deleteTransaction(ctx, id)}`);
+  }
+  return notes;
+}
+
+/**
+ * The body of `write-transaction-list-order`: three tagged rows whose value days run against their
+ * creation order (A two days ago, B today, C yesterday), then the lists the duplicate check (#118)
+ * and the rule estimate (#122) read.
+ */
+async function transactionListOrder(
+  ctx: ProbeContext,
+  account: { readonly id: number; readonly note: string },
+  own: number[],
+): Promise<ProbeOutcome> {
+  const labels = new Map<string, string>();
+  const plan = [
+    { label: "A (value day -2)", day: addDays(ctx.today, -2), amount: -1.01 },
+    { label: "B (value day 0)", day: ctx.today, amount: -1.02 },
+    { label: "C (value day -1)", day: addDays(ctx.today, -1), amount: -1.03 },
+  ];
+  for (const row of plan) {
+    const posted = await postTransaction(ctx, account.id, {
+      amount: row.amount,
+      purpose: "Reihenfolge",
+      day: row.day,
+    });
+    if (posted.id === undefined) {
+      return inconclusive(`On ${account.note}, row ${row.label} was ${outcomeOf(posted.result)}.`);
+    }
+    own.push(posted.id);
+    labels.set(String(posted.id), row.label);
+  }
+  const dates = ["valueDate", "entryDate", "create"];
+  const lists: readonly (readonly [string, Query])[] = [
+    ["checkAccount[id]", ofAccount(account.id)],
+    ["checkAccount[id] and status=100", { ...ofAccount(account.id), status: 100 }],
+    ["status=100", { status: 100 }],
+    ["no filter", {}],
+  ];
+  const lines: string[] = [];
+  for (const [label, query] of lists) {
+    const page = await ctx.read.page("/CheckAccountTransaction", query, 1000);
+    lines.push(
+      page.result.ok
+        ? `${label}: ${orderOf(page.rows, dates)}; ${ownOrder(page.rows, labels)}`
+        : `${label}: ${outcomeOf(page.result)}`,
+    );
+  }
+  const once = await ctx.read.page("/CheckAccountTransaction", ofAccount(account.id), 1000);
+  lines.push(
+    `checkAccount[id] paged: ${await pagingMatches(ctx, "/CheckAccountTransaction", ofAccount(account.id), once.rows, Math.min(once.rows.length, 5))}`,
+  );
+  return {
+    verdict: "observed",
+    finding: `On ${account.note}, three tagged rows created in the order A, B, C. ${lines.join(". ")}.`,
+  };
+}
+
+/** The body of `write-private-transaction-rule-order`: three tagged rules, then the list. */
+async function ruleListOrder(ctx: ProbeContext, own: number[]): Promise<ProbeOutcome> {
+  const tag = data(ctx).tag;
+  const labels = new Map<string, string>();
+  for (const label of ["R1", "R2", "R3"]) {
+    const result = await ctx.http.write("POST", "/PrivateTransactionRule", {
+      // A rule makes sevDesk mark imports private: commit, as the rule tools (#131).
+      tier: "commit",
+      body: {
+        objectName: "PrivateTransactionRule",
+        counterpartName: `${tag} Reihenfolge ${label}`,
+      },
+    });
+    const id = createdId(result.objects);
+    if (id === undefined) return inconclusive(`Rule ${label} was ${outcomeOf(result)}.`);
+    own.push(id);
+    labels.set(String(id), label);
+    data(ctx).register("PrivateTransactionRule", id, "rule (deleted at the end of the probe)");
+  }
+  const page = await ctx.read.page("/PrivateTransactionRule", undefined, RULE_PAGE);
+  if (!page.result.ok) {
+    return inconclusive(
+      `The rules were created, but GET /PrivateTransactionRule ${outcomeOf(page.result)}.`,
+    );
+  }
+  const paging = await pagingMatches(
+    ctx,
+    "/PrivateTransactionRule",
+    {},
+    page.rows,
+    Math.min(page.rows.length, 5),
+  );
+  return {
+    verdict: "observed",
+    finding: `Three tagged rules created in the order R1, R2, R3 (ascending ids: ${runOf(own)}). The list (total ${page.total ?? "none"}): ${orderOf(page.rows, ["create"])}; ${ownOrder(page.rows, labels)}; ${paging}.`,
+  };
+}
+
+/** `YYYY-MM-DD` of a date-time in Europe/Berlin, or `""` when unreadable. */
+function berlinDay(value: string): string {
+  const time = Date.parse(value);
+  if (!Number.isFinite(time)) return "";
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Berlin" }).format(new Date(time));
+}
+
+/** Whole days from `from` to `to` (both YYYY-MM-DD). */
+function daysBetween(from: string, to: string): number {
+  return Math.round((Date.parse(`${to}T12:00:00Z`) - Date.parse(`${from}T12:00:00Z`)) / 86_400_000);
+}
+
+/** What a row's `entryDate` holds against its value day and the run's day; never other values. */
+function entryDateOf(row: Row | undefined, valueDay: string, today: string): string {
+  if (row === undefined) return "row unreadable";
+  if (!Object.hasOwn(row, "entryDate")) return "entryDate absent";
+  const value = row["entryDate"];
+  if (value === null) return "entryDate null";
+  const day = berlinDay(str(row, "entryDate"));
+  if (day === "") return `entryDate unreadable (${typeof value})`;
+  const time = /T(\d{2}:\d{2})/.exec(str(row, "entryDate"))?.[1] ?? "no time";
+  const relation =
+    day === valueDay
+      ? "the value day"
+      : day === today
+        ? "the run's day"
+        : `${daysBetween(valueDay, day)} days after the value day`;
+  return `entryDate ${relation} (time ${time} as sent back), valueDate ${berlinDay(str(row, "valueDate")) === valueDay ? "the day sent" : "another day"}`;
+}
+
+/** A check account's kind for grouping rows: type, import type, bank connection, or archived. */
+function kindOfAccount(row: Row | undefined): string {
+  if (row === undefined) return "archived or unlisted account";
+  const importType = str(row, "importType");
+  const bank = str(row, "bankServer") === "" ? "" : ", bankServer set";
+  return `${str(row, "type") || "?"}${importType === "" ? "" : ` ${accountField("importType", importType)}`}${bank}`;
+}
+
+/**
+ * The body of `write-transaction-enshrine-statuses`: one row each that the probe tries to bring to
+ * 300 (private, by PUT), 200 (linked: a part of it booked with a tagged open voucher) and 350 (by
+ * PUT), and enshrines only a row that reached that status.
+ */
+async function enshrineStatuses(
+  ctx: ProbeContext,
+  account: { readonly id: number; readonly note: string },
+  own: number[],
+  vouchers: Map<number, number>,
+): Promise<ProbeOutcome> {
+  const lines: string[] = [];
+  const statusOf = async (id: number) =>
+    str(await ctx.read.byId("CheckAccountTransaction", id), "status");
+  /** Enshrines `id`, then tries a PUT back to 100 and a DELETE, as D-098 did at 400. */
+  const enshrineAndTry = async (id: number): Promise<string> => {
+    const enshrined = await enshrineOwnTransaction(ctx, id);
+    if (!enshrined.ok) return `enshrine ${outcomeOf(enshrined)}`;
+    data(ctx).mark(
+      "CheckAccountTransaction",
+      id,
+      "ENSHRINED by the opt-in probe (cannot be undone)",
+    );
+    const row = await ctx.read.byId("CheckAccountTransaction", id);
+    const back = await setTransactionStatus(ctx, id, 100);
+    const deleted = await ctx.http.write("DELETE", `/CheckAccountTransaction/${id}`, {
+      tier: "commit",
+    });
+    return (
+      `enshrine ok, answer ${shapeOf(enshrined.objects)}, enshrined ${valueFormat(row?.["enshrined"] ?? null)}, status ${str(row, "status")}; ` +
+      `PUT status 100 afterwards ${outcomeOf(back)}, DELETE ${outcomeOf(deleted)}; status now ${await statusOf(id)}`
+    );
+  };
+  const post = async (amount: number, purpose: string) => {
+    const posted = await postTransaction(ctx, account.id, { amount, purpose });
+    if (posted.id !== undefined) own.push(posted.id);
+    return posted;
+  };
+
+  // 300: private, set by hand.
+  const privateRow = await post(-21, "Festschreiben 300");
+  if (privateRow.id === undefined) {
+    lines.push(`300: the row was ${outcomeOf(privateRow.result)}`);
+  } else {
+    const marked = await setTransactionStatus(ctx, privateRow.id, 300);
+    const status = await statusOf(privateRow.id);
+    lines.push(
+      `300: PUT status 300 ${outcomeOf(marked)}, status ${status}; ${status === "300" ? await enshrineAndTry(privateRow.id) : "not enshrined"}`,
+    );
+  }
+
+  // 200: linked, a part of the row booked with an open voucher (type N, D-075).
+  const linkedRow = await post(-22, "Festschreiben 200");
+  // The open voucher stays on the account (only drafts are deleted), so only for a row to book.
+  const voucher =
+    linkedRow.id === undefined
+      ? undefined
+      : await createVoucher(ctx, { label: "Festschreiben 200", status: 100, gross: 10 });
+  if (linkedRow.id === undefined || voucher?.id === undefined) {
+    lines.push(
+      `200: could not prepare (${linkedRow.id === undefined || voucher === undefined ? `the row was ${outcomeOf(linkedRow.result)}` : voucherFailure(voucher)})`,
+    );
+  } else {
+    const booked = await bookVoucher(ctx, voucher.id, {
+      checkAccount: account.id,
+      amount: -10,
+      date: berlinNoon(ctx.today),
+      type: "N",
+      transaction: linkedRow.id,
+    });
+    if (booked.ok) {
+      vouchers.set(linkedRow.id, voucher.id);
+      data(ctx).mark("Voucher", voucher.id, "open voucher, paid in part via a tagged transaction");
+    }
+    const status = await statusOf(linkedRow.id);
+    lines.push(
+      `200: bookAmount of 10 of the row's 22 (type N) ${outcomeOf(booked)}, status ${status}; ${status === "200" ? await enshrineAndTry(linkedRow.id) : "200 not reached, not enshrined"}`,
+    );
+  }
+
+  // 350: auto-booked, which sevDesk sets on imports (D-031); by hand only if a PUT takes it.
+  const autoRow = await post(-23, "Festschreiben 350");
+  if (autoRow.id === undefined) {
+    lines.push(`350: the row was ${outcomeOf(autoRow.result)}`);
+  } else {
+    const marked = await setTransactionStatus(ctx, autoRow.id, 350);
+    const status = await statusOf(autoRow.id);
+    lines.push(
+      `350: PUT status 350 ${outcomeOf(marked)}, status ${status}; ${status === "350" ? await enshrineAndTry(autoRow.id) : "350 not reachable by hand on this account, not enshrined"}`,
+    );
+  }
+  const finding = `On ${account.note}. ${lines.join(". ")}.`;
+  // Without a single row nothing was asked: a setup failure, not an answer.
+  return own.length === 0 ? inconclusive(finding) : { verdict: "observed", finding };
+}
+
+/**
+ * The cleanup of `write-transaction-enshrine-statuses`: rows not enshrined go back to 100 (a
+ * booked one through `resetToOpen` on its voucher) and are soft-deleted; enshrined rows stay.
+ */
+async function releaseRows(
+  ctx: ProbeContext,
+  own: readonly number[],
+  vouchers: ReadonlyMap<number, number>,
+): Promise<string[]> {
+  const notes: string[] = [];
+  for (const id of own) {
+    const row = await ctx.read.byId("CheckAccountTransaction", id);
+    if (str(row, "enshrined") !== "") {
+      notes.push(`transaction ${id} stays (enshrined)`);
+      continue;
+    }
+    if (endsDeleted(await transactionStatus(ctx, id))) continue;
+    const steps: string[] = [];
+    const voucher = vouchers.get(id);
+    if (voucher !== undefined && str(row, "status") !== "100") {
+      const reset = await ctx.http.write("PUT", `/Voucher/${voucher}/resetToOpen`, {
+        tier: "commit",
+      });
+      if (reset.ok) data(ctx).mark("Voucher", voucher, "open voucher (payment reset)");
+      steps.push(`resetToOpen on voucher ${voucher} ${outcomeOf(reset)}`);
+    }
+    if (str(await ctx.read.byId("CheckAccountTransaction", id), "status") !== "100") {
+      steps.push(`status 100 ${outcomeOf(await setTransactionStatus(ctx, id, 100))}`);
+    }
+    steps.push(await deleteTransaction(ctx, id));
+    notes.push(`transaction ${id}: ${steps.join(", ")}`);
+  }
+  return notes;
+}
+
+/** A file's kind from its first bytes (PDF, PNG, JPEG), never its content. */
+function fileKind(bytes: Uint8Array): string {
+  if (bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46) {
+    return "PDF";
+  }
+  if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) {
+    return "PNG";
+  }
+  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "JPEG";
+  return "another format";
+}
+
+/** Whether a voucher list row carries its Document embedded (more than the reference). */
+function embeddedDocument(row: Row | undefined): Row | undefined {
+  const value = row?.["document"];
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const document = value as Row;
+  return Object.keys(document).some((key) => key !== "id" && key !== "objectName")
+    ? document
+    : undefined;
+}
+
+/**
+ * The body of `write-receipt-image-reencode`: per image (a PNG and a JPEG the probe generates)
+ * upload, a draft voucher with it, its Document, the download compared with the upload, and the
+ * embedded document in `GET /Voucher?embed=document`, one page and paged. Hashes are compared,
+ * never shown. Created vouchers go into `own`.
+ */
+async function receiptImages(ctx: ProbeContext, own: number[]): Promise<ProbeOutcome> {
+  const name = slug(data(ctx).tag);
+  const files = [
+    { label: "PNG", bytes: TINY_PNG, fileName: `${name}-bild.png`, type: "image/png" },
+    { label: "JPEG", bytes: TINY_JPEG, fileName: `${name}-bild.jpg`, type: "image/jpeg" },
+  ];
+  const lines: string[] = [];
+  const mine = new Map<string, { readonly label: string; readonly bytes: Uint8Array }>();
+  for (const file of files) {
+    const hashes = hashesOf(file.bytes);
+    const upload = await uploadTempFile(ctx, file.bytes, file.fileName, file.type);
+    if (upload.token === undefined) {
+      lines.push(`${file.label} (${file.bytes.length} bytes): upload ${outcomeOf(upload.result)}`);
+      continue;
+    }
+    const answer = firstRow(upload.result.objects);
+    const parts = [
+      `${file.label} (${file.bytes.length} bytes): upload contentHash is ${hashMatch(answer?.["contentHash"], hashes, "the uploaded bytes")}, mimeType ${str(answer, "mimeType") || "none"}, originMimeType ${str(answer, "originMimeType") || "none"}`,
+    ];
+    const voucher = await createVoucher(ctx, {
+      label: `Bild ${file.label}`,
+      file: { token: upload.token, placement: "top-level" },
+    });
+    if (voucher.id === undefined) {
+      lines.push(`${parts.join("; ")}; ${voucherFailure(voucher)}`);
+      continue;
+    }
+    own.push(voucher.id);
+    mine.set(String(voucher.id), file);
+    const row = await ctx.read.byId("Voucher", voucher.id);
+    const documentId = refId(row, "document");
+    if (documentId === undefined) {
+      parts.push(`draft voucher ${voucher.id} has no document`);
+    } else {
+      const document = await ctx.read.byId("Document", documentId);
+      parts.push(
+        `Document ${documentId}: contentHash is ${hashMatch(document?.["contentHash"], hashes, "the uploaded bytes")}, filesize ${str(document, "filesize") || "none"}, extension ${str(document, "extension") || "none"}, mimeType ${str(document, "mimeType") || "none"}`,
+      );
+      const download = await ctx.http.get(`/Document/${documentId}/download`);
+      const bytes = download.ok ? envelopeBytes(download.objects) : undefined;
+      parts.push(
+        bytes === undefined
+          ? `download ${download.ok ? `without content (${shapeOf(download.objects)})` : outcomeOf(download)}`
+          : `download ${bytes.length} bytes, ${fileKind(bytes)}, ${hashesOf(bytes)["SHA-256"] === hashes["SHA-256"] ? "the uploaded bytes (not re-encoded)" : "other bytes than uploaded (re-encoded or converted)"}; the Document's contentHash is ${hashMatch(document?.["contentHash"], hashesOf(bytes), "the downloaded bytes")}`,
+      );
+    }
+    lines.push(parts.join("; "));
+  }
+  if (mine.size > 0) {
+    const page = await ctx.read.page("/Voucher", { embed: "document" }, 1000);
+    if (!page.result.ok) {
+      lines.push(`GET /Voucher?embed=document ${outcomeOf(page.result)}`);
+    } else {
+      const listed = page.rows.filter((row) => mine.has(str(row, "id")));
+      lines.push(
+        `GET /Voucher?embed=document (one page of ${page.rows.length}, total ${page.total ?? "none"}): ` +
+          (listed
+            .map((row) => {
+              const file = mine.get(str(row, "id"));
+              const document = embeddedDocument(row);
+              return `${file?.label ?? "?"} voucher ${document === undefined ? "without an embedded document" : `embeds its document, contentHash is ${hashMatch(document["contentHash"], hashesOf(file?.bytes ?? new Uint8Array()), "the uploaded bytes")}`}`;
+            })
+            .join(", ") || "the probe's vouchers are not among them") +
+          `; ${page.rows.filter((row) => embeddedDocument(row) !== undefined).length} rows embed a document`,
+      );
+      const count = Math.min(page.rows.length, 5);
+      const embedded: boolean[] = [];
+      for (let offset = 0; offset < count; offset += 1) {
+        const result = await ctx.http.get("/Voucher", { embed: "document", limit: 1, offset });
+        const row = result.ok ? firstRow(result.objects) : undefined;
+        embedded.push(
+          row !== undefined &&
+            (embeddedDocument(row) !== undefined) ===
+              (embeddedDocument(page.rows[offset]) !== undefined),
+        );
+      }
+      lines.push(
+        `paged with limit 1 at offsets 0 to ${count - 1}: ${await pagingMatches(ctx, "/Voucher", { embed: "document" }, page.rows, count)}; the embedded document ${embedded.every(Boolean) ? "as on the one page in every row" : "differs from the one page in some row"}`,
+      );
+    }
+  }
+  return {
+    verdict: "observed",
+    finding: `${lines.join(". ")}.`,
+    deviations: { "D-011": "informs" },
+  };
+}
+
+/** Deletes the draft vouchers of `own`; their Documents go with them (D-100). */
+async function deleteDraftVouchers(ctx: ProbeContext, own: readonly number[]): Promise<string[]> {
+  const notes: string[] = [];
+  for (const id of own) {
+    const row = await ctx.read.byId("Voucher", id);
+    const documentId = refId(row, "document");
+    const deleted = await ctx.http.write("DELETE", `/Voucher/${id}`, { tier: "write" });
+    const gone = isGone(await ctx.http.get(`/Voucher/${id}`));
+    if (gone) data(ctx).mark("Voucher", id, "deleted by the probe");
+    const documentGone =
+      documentId === undefined ? undefined : isGone(await ctx.http.get(`/Document/${documentId}`));
+    notes.push(
+      `voucher ${id} ${gone ? "deleted" : `left (DELETE ${outcomeOf(deleted)})`}${documentGone === undefined ? "" : `, its Document ${documentGone ? "gone" : "still there"}`}`,
+    );
+  }
+  return notes;
+}
+
+/**
+ * A tagged file-import account of the probe's own (not the run's shared one), registered; its id
+ * or why there is none. The API can only archive it (D-097).
+ */
+async function ownImportAccount(
+  ctx: ProbeContext,
+  suffix: string,
+  importType: "CSV" | "MT940",
+): Promise<{ readonly id: number | undefined; readonly result: HttpResult }> {
+  const result = await ctx.http.write("POST", "/CheckAccount/Factory/fileImportAccount", {
+    tier: "write",
+    body: { name: `${data(ctx).tag} ${suffix}`, importType },
+  });
+  const id = createdId(result.objects);
+  if (id !== undefined) {
+    data(ctx).register("CheckAccount", id, "file-import bank account (delete it in the web app)");
+  }
+  return { id, result };
+}
+
+// ---------------------------------------------------------------------------------------------
 // The one enshrine call
 // ---------------------------------------------------------------------------------------------
 
 /**
  * `PUT /CheckAccountTransaction/{id}/enshrine` (commit). The only enshrine request of any probe;
- * only the opt-in probe `write-transaction-enshrine` calls it, and only for a transaction it created
- * itself in the same run.
+ * only the opt-in probes `write-transaction-enshrine` and `write-transaction-enshrine-statuses`
+ * call it, and only for transactions they created themselves in the same run.
  */
 function enshrineOwnTransaction(ctx: ProbeContext, id: number): Promise<HttpResult> {
   return ctx.http.write("PUT", `/CheckAccountTransaction/${id}/enshrine`, { tier: "commit" });
@@ -1624,6 +2147,207 @@ export const GAPS_BANKING_PROBES: readonly ProbeDefinition[] = [
     },
   },
   {
+    id: "write-transaction-list-order",
+    title: "In which order GET /CheckAccountTransaction lists rows",
+    mode: "write",
+    question:
+      "In which order does GET /CheckAccountTransaction list rows (#136: the duplicate check of #118 searches 5,000 rows, the rule estimate of #122 reads 500 open ones)? On the tagged file-import account three tagged rows (status 100) are created in the order A (value day two days ago), B (today), C (yesterday). Read with checkAccount[id], with checkAccount[id] and status=100, with status=100 alone and without a filter (limit 1000 each): do ids, valueDate, entryDate and create run ascending, descending or mixed, and where do A, B and C appear? Do pages of 1 (offsets 0 to 4) give the same rows as one page? The three rows are soft-deleted at the end, also when a step fails.",
+    deviations: ["NEW", "D-047", "D-096"],
+    async run(ctx) {
+      const imported = await importAccount(ctx);
+      if (imported.id === undefined) return inconclusive(imported.note);
+      const account = { id: imported.id, note: imported.note };
+      const own: number[] = [];
+      return withCleanup(
+        () => transactionListOrder(ctx, account, own),
+        () => deleteOwnTransactions(ctx, own),
+      );
+    },
+  },
+  {
+    id: "write-private-transaction-rule-order",
+    title: "In which order GET /PrivateTransactionRule lists rules",
+    mode: "write",
+    question:
+      "In which order does GET /PrivateTransactionRule list rules (ascending id?) (#136, #122)? Three tagged rules (commit) are created one after the other and the list is read with limit 1000: do ids and create run ascending or descending, where do the three appear, and do pages of 1 (offsets 0 to 4) give the same rows as one page? Every rule is deleted at the end (commit), also when a step fails.",
+    deviations: ["D-099"],
+    async run(ctx) {
+      const own: number[] = [];
+      return withCleanup(
+        () => ruleListOrder(ctx, own),
+        () => deleteRules(ctx, own),
+      );
+    },
+  },
+  {
+    id: "write-transaction-delete-archived-account",
+    title: "DELETE /CheckAccountTransaction on a row of an archived file-import account",
+    mode: "write",
+    question:
+      "What does DELETE /CheckAccountTransaction/{id} do to an unbooked row of an archived file-import account (#136, #118)? A second tagged file-import account of the probe's own gets one tagged row (status 100); DELETE /CheckAccount/{id} archives the account (D-097); the row is read (status, deletedAt), then deleted: the answer, and the row afterwards. The account stays archived (the API cannot delete it; delete it in the web app); a row still live at the end is deleted, and an account not archived is archived, also when a step fails.",
+    deviations: ["D-096", "D-097", "D-143"],
+    async run(ctx) {
+      const created = await ownImportAccount(ctx, "Archivierung", "CSV");
+      if (created.id === undefined) {
+        return inconclusive(`fileImportAccount ${outcomeOf(created.result)}.`);
+      }
+      const accountId = created.id;
+      const own: number[] = [];
+      const state = { archived: false };
+      return withCleanup(
+        async () => {
+          const row = await postTransaction(ctx, accountId, { amount: -6, purpose: "archiviert" });
+          if (row.id === undefined) {
+            return inconclusive(`The row on account ${accountId} was ${outcomeOf(row.result)}.`);
+          }
+          own.push(row.id);
+          const archive = await ctx.http.write("DELETE", `/CheckAccount/${accountId}`, {
+            tier: "write",
+          });
+          const accountAfter = await ctx.read.byId("CheckAccount", accountId);
+          state.archived = str(accountAfter, "status") === "0";
+          if (state.archived) {
+            data(ctx).mark(
+              "CheckAccount",
+              accountId,
+              "archived by the probe (DELETE, D-097; delete it in the web app)",
+            );
+          }
+          const before = await transactionStatus(ctx, row.id);
+          const deletion = await deleteTransaction(ctx, row.id);
+          return {
+            verdict: state.archived ? "observed" : "inconclusive",
+            finding:
+              `Account ${accountId}: DELETE /CheckAccount ${outcomeOf(archive)}, then status ${str(accountAfter, "status") || "unreadable"}${state.archived ? " (archived)" : " (not archived, so the question stays open)"}. ` +
+              `Row ${row.id} after the archive: ${before}. DELETE of the row: ${deletion}.`,
+          };
+        },
+        async () => {
+          const notes = await deleteOwnTransactions(ctx, own);
+          if (!state.archived) notes.push(...(await archiveAccounts(ctx, [accountId])));
+          return notes;
+        },
+      );
+    },
+  },
+  {
+    id: "write-transaction-mt940-account",
+    title: "A file-import account with importType MT940, and a hand-made row on it",
+    mode: "write",
+    question:
+      "Does POST /CheckAccount/Factory/fileImportAccount take importType MT940 (D-119 left it unrecorded), how does the account read back (type, importType, accountingNumber), and does POST /CheckAccountTransaction create a tagged row on it as on a CSV account (#136, #118)? The row is soft-deleted and the account archived at the end (the API cannot delete it; delete it in the web app), also when a step fails.",
+    deviations: ["D-119", "D-071", "D-097"],
+    async run(ctx) {
+      const created = await ownImportAccount(ctx, "MT940", "MT940");
+      if (created.id === undefined) {
+        return {
+          verdict: "observed",
+          finding: `fileImportAccount with importType MT940: ${outcomeOf(created.result)}.`,
+        };
+      }
+      const accountId = created.id;
+      const own: number[] = [];
+      return withCleanup(
+        async () => {
+          const account = await ctx.read.byId("CheckAccount", accountId);
+          const row = await postTransaction(ctx, accountId, { amount: -7, purpose: "MT940" });
+          if (row.id !== undefined) own.push(row.id);
+          const read =
+            row.id === undefined
+              ? undefined
+              : await ctx.read.byId("CheckAccountTransaction", row.id);
+          return {
+            verdict: "observed",
+            finding:
+              `fileImportAccount with importType MT940: created ${accountId} (${account === undefined ? "unreadable" : `${accountKind(account)}, accountingNumber ${accountField("accountingNumber", account["accountingNumber"])}`}). ` +
+              `POST /CheckAccountTransaction on it: ${row.id === undefined ? outcomeOf(row.result) : `created ${describeTransaction(read)}`}.`,
+            deviations: { "D-071": "informs", "D-097": "informs" },
+          };
+        },
+        async () => [
+          ...(await deleteOwnTransactions(ctx, own)),
+          ...(await archiveAccounts(ctx, [accountId])),
+        ],
+      );
+    },
+  },
+  {
+    id: "write-transaction-entry-date",
+    title: "What entryDate holds on a hand-made row sent without one",
+    mode: "write",
+    question:
+      "What does entryDate hold on a row created by hand without one (#136, #118, D-016)? On the tagged file-import account, POST /CheckAccountTransaction with a valueDate three days ago and no entryDate key, and once with entryDate null: does entryDate read back absent, null, the value day or the day of the creation (an import day)? Both rows are soft-deleted at the end, also when a step fails.",
+    deviations: ["D-016", "D-047", "D-071"],
+    async run(ctx) {
+      const imported = await importAccount(ctx);
+      if (imported.id === undefined) return inconclusive(imported.note);
+      const accountId = imported.id;
+      const own: number[] = [];
+      return withCleanup(
+        async () => {
+          const valueDay = addDays(ctx.today, -3);
+          const lines: string[] = [];
+          const variants = [
+            { label: "without entryDate", extra: {} },
+            { label: "with entryDate null", extra: { entryDate: null } },
+          ] as const;
+          for (const variant of variants) {
+            const tag = data(ctx).tag;
+            const result = await ctx.http.write("POST", "/CheckAccountTransaction", {
+              tier: "commit",
+              body: {
+                objectName: "CheckAccountTransaction",
+                mapAll: true,
+                valueDate: isoNoon(valueDay),
+                ...variant.extra,
+                amount: -8,
+                paymtPurpose: `${tag} Buchungstag`,
+                payeePayerName: `${tag} Gegenpartei`,
+                checkAccount: { id: accountId, objectName: "CheckAccount" },
+                status: 100,
+              },
+            });
+            const id = createdId(result.objects, "checkAccountTransaction");
+            if (id === undefined) {
+              lines.push(`${variant.label}: ${outcomeOf(result)}`);
+              continue;
+            }
+            own.push(id);
+            data(ctx).register(
+              "CheckAccountTransaction",
+              id,
+              "status 100 (deletable in the web app)",
+            );
+            const row = await ctx.read.byId("CheckAccountTransaction", id);
+            lines.push(
+              `${variant.label}: row ${id}, ${entryDateOf(row, valueDay, ctx.today)}; create ${berlinDay(str(row, "create")) === ctx.today ? "the run's day" : "another day or absent"}`,
+            );
+          }
+          return {
+            verdict: "observed",
+            finding: `On ${imported.note}, value day three days before the run. ${lines.join(". ")}.`,
+          };
+        },
+        () => deleteOwnTransactions(ctx, own),
+      );
+    },
+  },
+  {
+    id: "write-receipt-image-reencode",
+    title: "Are uploaded receipt images kept as sent; embed=document on later pages",
+    mode: "write",
+    question:
+      "Does sevDesk keep an uploaded receipt image as sent, or re-encode it (#136, #120, D-100)? For a 1×1 PNG and a 2×2 JPEG the probe generates: the uploadTempFile answer's contentHash against the SHA-256 of the bytes, a tagged draft voucher saved with it, its Document (contentHash, filesize, extension), and GET /Document/{id}/download compared with the uploaded bytes. Then GET /Voucher?embed=document (limit 1000): do the probe's vouchers carry their document embedded with the hash, and do pages of 1 (offsets 0 to 4, embed=document) give the same rows and the same embedded documents? Hashes are compared, never shown. Both draft vouchers are deleted at the end (their Documents go with them), also when a step fails.",
+    deviations: ["D-100", "D-011"],
+    async run(ctx) {
+      const own: number[] = [];
+      return withCleanup(
+        () => receiptImages(ctx, own),
+        () => deleteDraftVouchers(ctx, own),
+      );
+    },
+  },
+  {
     id: "write-cash-register-transaction",
     title:
       "Cash register: hand-made transaction, cash sale and cash expense through bookAmount (irreversible)",
@@ -1879,6 +2603,26 @@ export const GAPS_BANKING_PROBES: readonly ProbeDefinition[] = [
     },
   },
   {
+    id: "write-transaction-enshrine-statuses",
+    title: "Enshrining tagged transactions at status 300, 200 and 350 (irreversible)",
+    mode: "write",
+    optIn: true,
+    question:
+      "Opt-in and irreversible (festschreiben), for the statuses write-transaction-enshrine leaves out (it enshrines at 400, and at 300 only when its booking fails) (#136, #118): on the tagged file-import account, one tagged row set to 300 (private) by PUT; one tagged row of −22 of which a tagged open voucher (gross 10) books 10 with bookAmount type N, to reach 200 (linked); one tagged row PUT to 350 (auto-booked, which sevDesk may only set on imports, D-031). Each row that reached its status is enshrined: the answer, enshrined and status afterwards, and whether a PUT back to 100 and a DELETE are refused (the spec's lock, D-098). A status that cannot be reached is reported, and that row is not enshrined. Rows not enshrined are set back to 100 (the booked one through resetToOpen on its voucher) and soft-deleted at the end, also when a step fails; enshrined rows and the voucher stay.",
+    deviations: ["D-098", "D-031", "D-075"],
+    async run(ctx) {
+      const imported = await importAccount(ctx);
+      if (imported.id === undefined) return inconclusive(imported.note);
+      const account = { id: imported.id, note: imported.note };
+      const own: number[] = [];
+      const vouchers = new Map<number, number>();
+      return withCleanup(
+        () => enshrineStatuses(ctx, account, own, vouchers),
+        () => releaseRows(ctx, own, vouchers),
+      );
+    },
+  },
+  {
     id: "write-transaction-enshrine",
     title: "Enshrining ONE tagged transaction (irreversible)",
     mode: "write",
@@ -2102,6 +2846,63 @@ export const GAPS_BANKING_PROBES: readonly ProbeDefinition[] = [
         verdict: "observed",
         finding: `${lines.join(". ")}. Hash keys of a row: ${hashKeys(rows[0]).join(", ") || "none"}.`,
         deviations: { "D-024": "informs" },
+      };
+    },
+  },
+  {
+    id: "read-transaction-entry-dates",
+    title: "entryDate against valueDate per kind of account",
+    mode: "read",
+    question:
+      "What does entryDate hold on the account's existing rows, imported ones included if there are any (#136, #118, D-016: booking day or import day)? Over the first 1000 rows of GET /CheckAccountTransaction, grouped by the kind of their account (type, importType, bankServer set; archived or unlisted accounts apart): how many rows have entryDate on the value day, later, earlier, the same instant, or none. Counts only.",
+    deviations: ["D-016", "D-047"],
+    async run(ctx) {
+      const accounts = await ctx.read.page("/CheckAccount", undefined, 100);
+      if (!accounts.result.ok) {
+        return { verdict: "observed", finding: `Refused: ${outcomeOf(accounts.result)}.` };
+      }
+      const page = await ctx.read.page("/CheckAccountTransaction", undefined, 1000);
+      if (!page.result.ok) {
+        return { verdict: "observed", finding: `Refused: ${outcomeOf(page.result)}.` };
+      }
+      if (page.rows.length === 0) return inconclusive("The account has no transactions.");
+      const byId = new Map(accounts.rows.map((row) => [str(row, "id"), row] as const));
+      const counts = new Map<string, Record<string, number>>();
+      for (const row of page.rows) {
+        const kind = kindOfAccount(byId.get(String(refId(row, "checkAccount"))));
+        const entry = str(row, "entryDate");
+        const value = str(row, "valueDate");
+        const entryDay = berlinDay(entry);
+        const valueDay = berlinDay(value);
+        const bucket =
+          entryDay === ""
+            ? "no entryDate"
+            : valueDay === ""
+              ? "no valueDate"
+              : Date.parse(entry) === Date.parse(value)
+                ? "same instant"
+                : entryDay === valueDay
+                  ? "same day, other time"
+                  : entryDay > valueDay
+                    ? "entry later"
+                    : "entry earlier";
+        const counted = counts.get(kind) ?? {};
+        counted[bucket] = (counted[bucket] ?? 0) + 1;
+        counts.set(kind, counted);
+      }
+      return {
+        verdict: "observed",
+        finding:
+          `${page.rows.length} rows (total ${String(page.total)}) on ${counts.size} kinds of account: ` +
+          [...counts]
+            .map(
+              ([kind, counted]) =>
+                `${kind}: ${Object.entries(counted)
+                  .map(([bucket, count]) => `${count} ${bucket}`)
+                  .join(", ")}`,
+            )
+            .join("; ") +
+          ".",
       };
     },
   },
