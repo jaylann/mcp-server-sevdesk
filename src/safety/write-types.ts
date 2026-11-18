@@ -36,8 +36,10 @@ export interface ConfirmationFact {
  */
 export interface ConfirmationPreview {
   /**
-   * One trusted sentence in the imperative, e.g. "Finalize invoice RE-1042 (draft → open) and
-   * mark it as sent by post." Identifiers from sevDesk only through `cleanText`.
+   * One trusted sentence in the imperative, e.g. "Finalize invoice 1042: draft → open, marked as
+   * sent by post." A document is named by kind and id (`documentTitle`), never by its stored
+   * number: anyone can type any number on a draft, so it goes into a fact value (#129).
+   * Identifiers from sevDesk only through `cleanText`.
    */
   readonly action: string;
   /** Key facts, most important first: record, customer, amounts, dates, recipients. */
