@@ -78,7 +78,8 @@ and Büsingen, for a German customer, as a note). It is not tax advice.
 [`sevdesk_vat_id_check`](../tools.md#sevdesk_vat_id_check) (`read`) checks a VAT ID's format; it
 asks the European Commission's VIES service only if the server's operator switched that on
 (`SEVDESK_VIES_CHECK`, see [Privacy](../../PRIVACY.md)). The draft preview also warns when the tax
-rule is not the usual one for the customer; it never refuses the draft for that.
+rule is not the usual one for the customer; it never refuses the draft for that. The previews of
+[recurring templates](#recurring) carry the same warning, in English and German.
 
 A position can link a part (Artikel) from [`sevdesk_parts_list`](../tools.md#sevdesk_parts_list),
 but its name and price still come from the position.
@@ -400,7 +401,8 @@ not the template's status. The tool switches it on unless you ask for it off:
 The preview shows what every invoice will say: customer and address, each position with its text,
 head and foot text, the total per invoice. It also shows the first run, the next three run dates,
 the end with the number of runs up to it, whether automatic generation is on and what that means,
-and a warning when the customer already has a template with the same total. After saving, the
+a warning when the customer already has a template with the same total, and, as for a draft, a
+warning when the tax rule is not the usual one for the customer. After saving, the
 assistant reads the template back and says where sevDesk stored another schedule or another
 automatic generation than it sent.
 
@@ -431,7 +433,8 @@ payment term, tax rule, customer or address, the schedule, and automatic generat
 positions and texts in full, the total per invoice before and after, and the run dates after the
 change. Every invoice sevDesk creates afterwards carries the change; invoices it already created
 stay as they are. On a run day, the preview warns that a draft sevDesk already created that day
-keeps the old content.
+keeps the old content. When the change sets the tax rule, the customer or the address, the preview
+also warns if the tax rule is not the usual one for the customer.
 
 - A new **interval** keeps the next run date; the runs after it follow the new interval.
 - A new **start date** becomes the next run as well, and sevDesk clears the template's last run.

@@ -110,6 +110,11 @@ export interface TemplateUpdatePreviewInput {
   readonly generation: GenerationChange;
   /** The runs from the next run on, after the change; none without a known interval or next run. */
   readonly projected: Schedule | undefined;
+  /**
+   * The hint when the tax rule is not one a sale to the customer usually takes; only judged when
+   * the call changes the rule, the contact or the address (`updateTaxRuleHint`).
+   */
+  readonly taxHint?: Phrase | undefined;
 }
 
 const LABELS = {
@@ -662,6 +667,7 @@ function warnings(
     ...(basics.rule !== undefined && taxOrPositions
       ? taxRuleWarnings(basics.rule, basics.regime, lang)
       : []),
+    input.taxHint?.[lang],
   ];
   return list.filter((warning): warning is string => warning !== undefined);
 }

@@ -45,6 +45,7 @@ import {
 import { type CountryReadOptions, loadCountryCodes } from "../country-codes.js";
 import { readDocumentDiscounts } from "../document-discounts.js";
 import { getInvoice, type InvoiceDetails } from "../invoices.js";
+import type { Phrase } from "../preview-text.js";
 import { documentTypeByCode } from "../reference-data.js";
 import { invoiceTaxRuleHint } from "../vat/tax-rule-helper.js";
 import { berlinDay, loadCurrentInvoice } from "./current.js";
@@ -136,6 +137,7 @@ import {
   structuredStoredAddress,
   type TaxOptions,
   type UpdateArgs,
+  type UpdateBasics,
 } from "./shared.js";
 import {
   DEFAULT_TAX_RULE_ID,
@@ -408,7 +410,7 @@ export async function prepareInvoiceCreate(
       `${customerText(contact.contact.displayName, args.contactId)} with ` +
       `${positionCount(basics.positions.length)}, gross ${moneyText(expected.gross, currency)}.`,
     facts,
-    [duplicateWarning("invoice", duplicates, duplicateQuery), ...basics.warnings, taxHint],
+    [duplicateWarning("invoice", duplicates, duplicateQuery), ...basics.warnings, taxHint?.en],
   );
   return { preview, state: { body, expected, discount } };
 }
@@ -548,18 +550,7 @@ export async function prepareInvoiceUpdate(
   }
   const keptDiscount = logDiscountChange(log, change, discounts.rows, basics.currency);
 
-  // The tax rule is judged again only when the call changes what it depends on.
-  const taxHint =
-    basics.rule !== undefined &&
-    (args.taxRuleId !== undefined || basics.contactChanged || basics.address !== undefined)
-      ? invoiceTaxRuleHint(
-          basics.rule.id,
-          basics.regime,
-          basics.contact.contact,
-          basics.address?.countryCode ??
-            (await storedCountryCode(client, doc.addressCountry?.id, options)),
-        )
-      : undefined;
+  const taxHint = await updateTaxRuleHint(client, args, basics, doc.addressCountry?.id, options);
 
   const customer = customerText(basics.contact.contact.displayName, basics.contact.contact.id);
   const facts: PreviewFact[] = [
@@ -576,7 +567,7 @@ export async function prepareInvoiceUpdate(
   const preview = draftPreview(
     `Update draft invoice ${doc.id} for ${customer}: change ${log.changed.join(", ") || "nothing visible"}.`,
     facts,
-    [...basics.warnings, taxHint, totals.warning],
+    [...basics.warnings, taxHint?.en, totals.warning],
   );
   return {
     preview,
@@ -632,6 +623,33 @@ export async function executeInvoiceDraft(
     ...(discountNote === undefined ? [] : [discountNote]),
   ];
   return { id, details, notes };
+}
+
+/**
+ * The tax-rule hint of an update to an invoice draft or a recurring invoice template, in English
+ * and German (`invoiceTaxRuleHint`). The rule is judged again only when the call changes what it
+ * depends on: the rule, the contact or the address; otherwise, and for a stored custom tax set
+ * the call keeps, undefined. Without a new address, the stored address's country
+ * (`storedCountryId`) is looked up in the cached country list.
+ */
+export async function updateTaxRuleHint(
+  client: SevdeskClient,
+  args: { readonly taxRuleId?: number | undefined },
+  basics: UpdateBasics,
+  storedCountryId: number | undefined,
+  options: DraftCallOptions,
+): Promise<Phrase | undefined> {
+  const { rule } = basics;
+  if (rule === undefined) return undefined;
+  if (args.taxRuleId === undefined && !basics.contactChanged && basics.address === undefined) {
+    return undefined;
+  }
+  return invoiceTaxRuleHint(
+    rule.id,
+    basics.regime,
+    basics.contact.contact,
+    basics.address?.countryCode ?? (await storedCountryCode(client, storedCountryId, options)),
+  );
 }
 
 /** The ISO code of the stored address's country (cached country list); undefined when unknown. */

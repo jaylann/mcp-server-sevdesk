@@ -86,7 +86,8 @@ Büsingen, bei einem Kunden in Deutschland, als Hinweis). Es ist keine Steuerber
 USt-IdNr.; beim VIES-Dienst der Europäischen Kommission fragt es nur nach, wenn der Betreiber des
 Servers das eingeschaltet hat (`SEVDESK_VIES_CHECK`, siehe [Datenschutz](../../PRIVACY.de.md)).
 Auch die Vorschau des Entwurfs warnt, wenn die Steuerregel nicht die übliche für den Kunden ist;
-deshalb abgelehnt wird der Entwurf nie.
+deshalb abgelehnt wird der Entwurf nie. Die Vorschauen der [Abo-Rechnungen](#abo-rechnungen)
+tragen denselben Hinweis, auf Deutsch und Englisch.
 
 Eine Position kann einen Artikel aus [`sevdesk_parts_list`](../tools.md#sevdesk_parts_list)
 verknüpfen, Bezeichnung und Preis kommen aber trotzdem aus der Position.
@@ -431,8 +432,9 @@ der Status der Vorlage. Das Werkzeug schaltet sie ein, außer du willst sie aus:
 Die Vorschau zeigt, was auf jeder Rechnung stehen wird: Kunde und Anschrift, jede Position mit
 ihrem Text, Kopf- und Fußtext, die Summe je Rechnung. Dazu kommen die erste Ausführung, die nächsten
 drei Ausführungstage, das Ende mit der Zahl der Ausführungen bis dahin, ob die automatische
-Generierung an ist und was das bedeutet, und eine Warnung, wenn der Kunde schon eine Vorlage mit
-derselben Summe hat. Nach dem Speichern liest der Assistent die Vorlage zurück und sagt, wo sevDesk
+Generierung an ist und was das bedeutet, eine Warnung, wenn der Kunde schon eine Vorlage mit
+derselben Summe hat, und wie beim Entwurf ein Hinweis, wenn die Steuerregel nicht die übliche für
+den Kunden ist. Nach dem Speichern liest der Assistent die Vorlage zurück und sagt, wo sevDesk
 einen anderen Zeitplan oder eine andere automatische Generierung gespeichert hat, als er gesendet
 hat.
 
@@ -464,7 +466,9 @@ Zahlungsziel, Steuerregel, Kunde oder Anschrift, den Zeitplan und die automatisc
 → nachher, neue Positionen und Texte vollständig, die Summe je Rechnung vorher und nachher und die
 Ausführungstage nach der Änderung. Jede Rechnung, die sevDesk danach erzeugt, trägt die Änderung;
 schon erzeugte Rechnungen bleiben, wie sie sind. An einem Ausführungstag warnt die Vorschau, dass
-ein Entwurf, den sevDesk an dem Tag schon erzeugt hat, den alten Inhalt behält.
+ein Entwurf, den sevDesk an dem Tag schon erzeugt hat, den alten Inhalt behält. Setzt die Änderung
+die Steuerregel, den Kunden oder die Anschrift, weist die Vorschau auch darauf hin, wenn die
+Steuerregel nicht die übliche für den Kunden ist.
 
 - Ein neues **Intervall** behält die nächste Ausführung; die Ausführungen danach folgen dem neuen
   Intervall.

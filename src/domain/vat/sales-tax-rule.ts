@@ -45,9 +45,11 @@
  * with a warning, and rule 11 becomes an exception.
  *
  * {@link taxRuleMismatchWarning} compares a draft invoice's rule with these outcomes for every
- * kind of supply (an invoice does not say which it is) and words the hint the draft preview shows.
+ * kind of supply (an invoice does not say which it is) and words the hint the draft and recurring
+ * template previews show, in English and German.
  */
 import type { TaxRegime } from "../account-settings.js";
+import type { Phrase, PreviewLanguage } from "../preview-text.js";
 import { taxRuleById } from "../reference-data.js";
 import {
   EU_STANDARD_RATES_AS_OF,
@@ -184,6 +186,12 @@ const OTHER_PLACE_NAMES: Readonly<Record<string, string>> = {
   [NORTHERN_IRELAND]: "Northern Ireland",
 };
 
+/** The same places in German. */
+const OTHER_PLACE_NAMES_DE: Readonly<Record<string, string>> = {
+  MC: "Monaco",
+  [NORTHERN_IRELAND]: "Nordirland",
+};
+
 /** Whether the customer is in Northern Ireland: country XI, or GB with a VAT ID of Northern Ireland. */
 function inNorthernIreland(place: Pick<SaleFacts, "country" | "vatId">): boolean {
   const code = place.country.trim().toUpperCase();
@@ -201,8 +209,12 @@ function vatPlaceOf(place: Pick<SaleFacts, "country" | "vatId">): string {
 }
 
 /** Where the customer is, for the texts: Monaco, Northern Ireland, a member state or the code. */
-function customerPlaceName(place: Pick<SaleFacts, "country" | "vatId">): string {
-  return inNorthernIreland(place) ? countryName(NORTHERN_IRELAND) : countryName(place.country);
+function customerPlaceName(
+  place: Pick<SaleFacts, "country" | "vatId">,
+  lang: PreviewLanguage = "en",
+): string {
+  const code = inNorthernIreland(place) ? NORTHERN_IRELAND : place.country;
+  return lang === "de" ? countryNameDe(code) : countryName(code);
 }
 
 /** How the standard rate of a member state is looked up (tests pass a table without a rate). */
@@ -773,6 +785,12 @@ function countryName(country: string): string {
   return placeName(country) ?? country.trim().toUpperCase();
 }
 
+/** {@link countryName} in German: the member state's German name, Monaco, Nordirland or the code. */
+function countryNameDe(country: string): string {
+  const code = country.trim().toUpperCase();
+  return euMemberState(code)?.nameDe ?? OTHER_PLACE_NAMES_DE[code] ?? code;
+}
+
 const INTRA_EU_SUPPLY_NOTE: InvoiceNote = {
   de: "Steuerfreie innergemeinschaftliche Lieferung",
   en: "Tax-exempt intra-Community supply; your and the customer's VAT IDs on the invoice",
@@ -1014,54 +1032,97 @@ export function expectedSalesRuleIds(facts: DraftSaleFacts): ReadonlySet<number>
   return ids;
 }
 
-const SUPPLY_LABELS: Readonly<Record<SupplyKind, string>> = {
-  goods: "goods",
-  services: "services",
-  digital_services: "digital services",
+/** The kinds of supply as the hint names them (German: the terms of the UStG). */
+const SUPPLY_LABELS: Readonly<Record<SupplyKind, Phrase>> = {
+  goods: { en: "goods", de: "Lieferungen" },
+  services: { en: "services", de: "sonstige Leistungen" },
+  digital_services: { en: "digital services", de: "digitale Leistungen" },
 };
 
+/** The words the hint is put together with, per language. */
+const HINT_WORDS = {
+  en: { or: "or", for: "for", and: "and" },
+  de: { or: "oder", for: "für", and: "und" },
+} as const satisfies Record<PreviewLanguage, Record<string, string>>;
+
 /**
- * The preview hint for a draft invoice whose rule `ruleId` is none of the rules
- * {@link expectedSalesRuleIds} expects for its customer; undefined when it is one of them. A
- * hint, never a refusal (trusted text: country names come from the EU table, never from sevDesk).
+ * The preview hint for a draft invoice or recurring template whose rule `ruleId` is none of the
+ * rules {@link expectedSalesRuleIds} expects for its customer, in English and German from the same
+ * facts; undefined when it is one of them. A hint, never a refusal (trusted text: country names
+ * come from the EU table, never from sevDesk).
  */
-export function taxRuleMismatchWarning(ruleId: number, facts: DraftSaleFacts): string | undefined {
+export function taxRuleMismatchWarning(ruleId: number, facts: DraftSaleFacts): Phrase | undefined {
   if (expectedSalesRuleIds(facts).has(ruleId)) return undefined;
-  const byRules = new Map<string, string[]>();
+  // The supplies grouped by the rules they usually take, in the order of SUPPLY_KINDS.
+  const byRules = new Map<string, { readonly ids: number[]; readonly supplies: SupplyKind[] }>();
   for (const supply of SUPPLY_KINDS) {
-    const rules = decideCandidates({ ...facts, supply }, tableRate)
-      .suggestions.map((outcome) => String(outcome.taxRuleId))
-      .join(" or ");
-    byRules.set(rules, [...(byRules.get(rules) ?? []), SUPPLY_LABELS[supply]]);
+    const ids = decideCandidates({ ...facts, supply }, tableRate).suggestions.map(
+      (outcome) => outcome.taxRuleId,
+    );
+    const key = ids.join(",");
+    const group = byRules.get(key) ?? { ids, supplies: [] };
+    group.supplies.push(supply);
+    byRules.set(key, group);
   }
-  const expected = [...byRules]
-    .map(([rules, supplies]) => `${rules} for ${listText(supplies)}`)
-    .join(", ");
+  const groups = [...byRules.values()];
+  const expected = (lang: PreviewLanguage): string => {
+    const words = HINT_WORDS[lang];
+    return groups
+      .map(
+        ({ ids, supplies }) =>
+          `${ids.map(String).join(` ${words.or} `)} ${words.for} ` +
+          listText(
+            supplies.map((supply) => SUPPLY_LABELS[supply][lang]),
+            words.and,
+          ),
+      )
+      .join(", ");
+  };
   const rule = taxRuleById(ruleId);
-  const label =
-    rule === undefined
-      ? `Tax rule ${String(ruleId)}`
-      : `Tax rule ${String(rule.id)} (${rule.nameDe})`;
-  return (
-    `${label} is not the usual rule for this customer (${customerLabel(facts)}): ${expected}. ` +
-    "It can still be right in a special case; sevdesk_tax_rule_suggest explains the choice. " +
-    "A hint, not tax advice."
-  );
+  const name = rule === undefined ? "" : ` (${rule.nameDe})`;
+  return {
+    en:
+      `Tax rule ${String(ruleId)}${name} is not the usual rule for this customer ` +
+      `(${customerLabel(facts, "en")}): ${expected("en")}. It can still be right in a special ` +
+      "case; sevdesk_tax_rule_suggest explains the choice. A hint, not tax advice.",
+    de:
+      `Steuerregel ${String(ruleId)}${name} ist für diesen Kunden ` +
+      `(${customerLabel(facts, "de")}) nicht üblich. Üblich ist ${expected("de")}. Im ` +
+      "Einzelfall kann sie trotzdem richtig sein; sevdesk_tax_rule_suggest erklärt die Wahl. " +
+      "Ein Hinweis, keine Steuerberatung.",
+  };
 }
 
-/** "a", "a and b", "a, b and c". */
-function listText(items: readonly string[]): string {
+/** "a", "a and b", "a, b and c" (`and` is the word for "and" in the language). */
+function listText(items: readonly string[], and: string): string {
   const last = items.at(-1) ?? "";
-  return items.length <= 1 ? last : `${items.slice(0, -1).join(", ")} and ${last}`;
+  return items.length <= 1 ? last : `${items.slice(0, -1).join(", ")} ${and} ${last}`;
 }
 
 /** The customer as the hint names it; where a VAT ID matters, judged for goods. */
-function customerLabel(facts: DraftSaleFacts): string {
-  const vatId =
+function customerLabel(facts: DraftSaleFacts, lang: PreviewLanguage): string {
+  const vatId: "with" | "without" | undefined =
     facts.vatId?.status === "valid_format"
-      ? " with a VAT ID"
+      ? "with"
       : facts.customerType === "business" && customerAreaOf({ ...facts, supply: "goods" }) === "eu"
+        ? "without"
+        : undefined;
+  const place = customerPlaceName(facts, lang);
+  if (lang === "de") {
+    const who = facts.customerType === "business" ? "Unternehmen" : "Privatkunde";
+    const id =
+      vatId === "with"
+        ? " mit USt-IdNr."
+        : vatId === "without"
+          ? " ohne USt-IdNr. in gültigem Format"
+          : "";
+    return `${who} in ${place}${id}`;
+  }
+  const id =
+    vatId === "with"
+      ? " with a VAT ID"
+      : vatId === "without"
         ? " without a VAT ID in a valid format"
         : "";
-  return `a ${facts.customerType} in ${customerPlaceName(facts)}${vatId}`;
+  return `a ${facts.customerType} in ${place}${id}`;
 }

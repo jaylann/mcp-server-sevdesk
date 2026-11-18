@@ -50,6 +50,8 @@ export interface TemplatePreviewInput {
   readonly today: string;
   /** Ids of templates for the same customer with the same gross total, not deactivated. */
   readonly similar: readonly number[];
+  /** The hint when the tax rule is not one a sale to this customer usually takes. */
+  readonly taxHint?: Phrase | undefined;
 }
 
 const HOW_TO_END: Phrase = phrase(
@@ -374,6 +376,7 @@ function warnings(input: TemplatePreviewInput, lang: PreviewLanguage): string[] 
         : UNKNOWN_REGIME_WARNING
       : undefined,
     ...taxRuleWarnings(basics.rule, basics.regime, lang),
+    input.taxHint?.[lang],
   ];
   return list.filter((warning): warning is string => warning !== undefined);
 }

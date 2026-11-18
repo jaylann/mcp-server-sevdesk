@@ -30,7 +30,9 @@
  * A template with automatic sending on, or whose settings sevDesk does not return, is not changed
  * here (`assertNoAutoSending`): sevDesk would e-mail invoices from it with no further approval.
  * Content goes through the same resolvers and checks as the invoice draft update
- * (`resolveUpdateBasics`); the schedule through the rules of a new template (`schedule.ts`).
+ * (`resolveUpdateBasics`), and its preview gets the same tax-rule hint when the call changes the
+ * rule, the contact or the address (`updateTaxRuleHint`); the schedule goes through the rules of a
+ * new template (`schedule.ts`).
  */
 import { z } from "zod";
 
@@ -49,7 +51,11 @@ import { loadCurrentInvoice } from "../drafts/current.js";
 import { planDiscountChange, updateTotals } from "../drafts/discount.js";
 import { assertChanges, ref, structuredAddress } from "../drafts/document.js";
 import { todayInBerlin, wireTimestamp } from "../drafts/fields.js";
-import { INVOICE_TAX_OPTIONS, invoiceUpdateInputShape } from "../drafts/invoice.js";
+import {
+  INVOICE_TAX_OPTIONS,
+  invoiceUpdateInputShape,
+  updateTaxRuleHint,
+} from "../drafts/invoice.js";
 import { strictBody } from "../drafts/payloads.js";
 import {
   type Amounts,
@@ -520,6 +526,7 @@ export async function prepareRecurringInvoiceUpdate(
     schedule,
     generation,
     projected,
+    taxHint: await updateTaxRuleHint(client, args, basics, doc.addressCountry?.id, options),
   };
   const intervalWire = schedule.intervalChanged ? body.invoice.accountIntervall : stored.interval;
 

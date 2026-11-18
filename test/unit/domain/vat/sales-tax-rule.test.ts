@@ -406,9 +406,14 @@ describe("decideSalesTaxRule: Northern Ireland (Windsor Framework)", () => {
       vatId: XI_VAT,
     };
     expect([...expectedSalesRuleIds(customer)].sort((a, b) => a - b)).toEqual([3, 17]);
-    expect(taxRuleMismatchWarning(2, customer)).toContain(
+    const hint = taxRuleMismatchWarning(2, customer);
+    expect(hint?.en).toContain(
       "(a business in Northern Ireland with a VAT ID): 3 for goods, 17 for services and " +
         "digital services.",
+    );
+    expect(hint?.de).toContain(
+      "(Unternehmen in Nordirland mit USt-IdNr.) nicht üblich. Üblich ist 3 für Lieferungen, " +
+        "17 für sonstige Leistungen und digitale Leistungen.",
     );
   });
 });
@@ -431,7 +436,7 @@ describe("decideSalesTaxRule: Monaco counts as France", () => {
         country: "MC",
         customerType: "business",
         vatId: FR_VAT,
-      }),
+      })?.en,
     ).toContain("(a business in Monaco with a VAT ID): 3 for goods, 21 for services");
   });
 });
@@ -467,7 +472,7 @@ describe("decideSalesTaxRule: parts of member states outside the EU VAT area", (
         country: "ES",
         customerType: "business",
         vatId: ES_VAT,
-      }),
+      })?.en,
     ).toContain("It can still be right in a special case");
   });
 
@@ -543,21 +548,21 @@ describe("the draft check", () => {
 
   it("words a hint with the usual rules per kind of supply", () => {
     const business = { regime: "regular" as const, customerType: "business" as const };
-    expect(taxRuleMismatchWarning(1, { ...business, country: "AT", vatId: AT_VAT })).toBe(
+    expect(taxRuleMismatchWarning(1, { ...business, country: "AT", vatId: AT_VAT })?.en).toBe(
       "Tax rule 1 (Umsatzsteuerpflichtige Umsätze) is not the usual rule for this customer (a " +
         "business in Austria with a VAT ID): 3 for goods, 21 for services and digital services. " +
         "It can still be right in a special case; sevdesk_tax_rule_suggest explains the choice. " +
         "A hint, not tax advice.",
     );
-    expect(taxRuleMismatchWarning(21, { ...business, country: "DE", vatId: DE_VAT })).toContain(
+    expect(taxRuleMismatchWarning(21, { ...business, country: "DE", vatId: DE_VAT })?.en).toContain(
       "(a business in Germany with a VAT ID): 1 for goods, services and digital services.",
     );
-    expect(taxRuleMismatchWarning(3, { ...business, country: "AT" })).toContain(
+    expect(taxRuleMismatchWarning(3, { ...business, country: "AT" })?.en).toContain(
       "(a business in Austria without a VAT ID in a valid format): 1 for goods, 21 for services " +
         "and digital services.",
     );
     expect(
-      taxRuleMismatchWarning(3, { regime: "regular", customerType: "consumer", country: "FR" }),
+      taxRuleMismatchWarning(3, { regime: "regular", customerType: "consumer", country: "FR" })?.en,
     ).toContain(
       "(a consumer in France): 18 or 1 for goods, 1 for services, 19 or 1 for digital services.",
     );
@@ -568,5 +573,38 @@ describe("the draft check", () => {
       taxRuleMismatchWarning(3, { ...business, country: "AT", vatId: AT_VAT }),
     ).toBeUndefined();
     expect(taxRuleMismatchWarning(5, { ...business, country: "DE" })).toBeUndefined();
+  });
+
+  it("words the same hint in German from the same facts", () => {
+    const business = { regime: "regular" as const, customerType: "business" as const };
+    expect(taxRuleMismatchWarning(1, { ...business, country: "AT", vatId: AT_VAT })?.de).toBe(
+      "Steuerregel 1 (Umsatzsteuerpflichtige Umsätze) ist für diesen Kunden (Unternehmen in " +
+        "Österreich mit USt-IdNr.) nicht üblich. Üblich ist 3 für Lieferungen, 21 für sonstige " +
+        "Leistungen und digitale Leistungen. Im Einzelfall kann sie trotzdem richtig sein; " +
+        "sevdesk_tax_rule_suggest erklärt die Wahl. Ein Hinweis, keine Steuerberatung.",
+    );
+    expect(taxRuleMismatchWarning(21, { ...business, country: "DE", vatId: DE_VAT })?.de).toContain(
+      "(Unternehmen in Deutschland mit USt-IdNr.) nicht üblich. Üblich ist 1 für Lieferungen, " +
+        "sonstige Leistungen und digitale Leistungen.",
+    );
+    expect(taxRuleMismatchWarning(3, { ...business, country: "AT" })?.de).toContain(
+      "(Unternehmen in Österreich ohne USt-IdNr. in gültigem Format) nicht üblich. Üblich ist 1 " +
+        "für Lieferungen, 21 für sonstige Leistungen und digitale Leistungen.",
+    );
+    expect(
+      taxRuleMismatchWarning(3, { regime: "regular", customerType: "consumer", country: "FR" })?.de,
+    ).toContain(
+      "(Privatkunde in Frankreich) nicht üblich. Üblich ist 18 oder 1 für Lieferungen, 1 für " +
+        "sonstige Leistungen, 19 oder 1 für digitale Leistungen.",
+    );
+    // Outside the EU table the code stands for the country, as in English; an unknown rule has
+    // no name.
+    const abroad = taxRuleMismatchWarning(99, {
+      regime: "regular",
+      customerType: "consumer",
+      country: "CH",
+    });
+    expect(abroad?.en).toMatch(/^Tax rule 99 is not the usual rule .*\(a consumer in CH\)/);
+    expect(abroad?.de).toMatch(/^Steuerregel 99 ist für diesen Kunden \(Privatkunde in CH\)/);
   });
 });
