@@ -28,6 +28,22 @@ Zahlungsbedingungen: 14 Tage netto
 Lieferbedingungen: Lieferung frei Haus"
 `;
 
+exports[`German previews > archive a file-import account with an open transaction: says the same in German 1`] = `
+"Zahlungskonto 4004 archivieren.
+! sevDesk archiviert das Konto (die API nennt das Löschen): Es verschwindet aus den Kontolisten und kann nicht mehr gewählt werden, bleibt aber über seine ID lesbar. Über die API lässt es sich nicht wiederherstellen.
+! sevDesk löscht den offenen (ungebuchten) Umsatz des Kontos mit: Er verschwindet aus den Umsatzlisten und aus dem Saldo, als gelöscht markiert.
+! sevDesk entfernt beim Archivieren die gespeicherte IBAN des Kontos (die BIC bleibt).
+! Geprüft: Keiner der Umsätze des Kontos ist gebucht; ein Konto mit gebuchten Umsätzen archiviert sevDesk nicht.
+(nicht umkehrbar)
+Zahlungskonto: ID 4004
+Art: Dateiimport-Konto
+Name: Import-Konto
+Buchungskonto: 1810
+IBAN: ****9999
+Offene Umsätze, die gelöscht werden: 1
+Kontoumsatz 5401: 09.11.2026, 177,33 EUR, Musterfirma GmbH"
+`;
+
 exports[`German previews > book a bank transaction to an invoice: says the same in German 1`] = `
 "Kontoumsatz 5101 (177,33 EUR) zuordnen zu Rechnung RE-1001: insgesamt 177,33 EUR.
 ! Der Status jedes Dokuments ändert sich (siehe die einzelnen Zuordnungen). Rückgängig machen lässt sich das mit sevdesk_transaction_reset: Das setzt diese Dokumente auf offen zurück und entfernt damit alle ihre Zahlungen.
@@ -994,6 +1010,16 @@ Beleg: 2101, Entwurf
 Art: Ausgabe: Die Zahlung geht vom Bankkonto ab
 Kostenstelle: MCP1 Mustername 3 (ID 344959) → entfernt
 Summe (unverändert): 119 EUR"
+`;
+
+exports[`German previews > rename a file-import account: says the same in German 1`] = `
+"Zahlungskonto 4004 ändern: Name.
+! Sonst ändert sich nichts: Umsätze und Saldo bleiben, wie sie sind. Rückgängig: die Werte links der Pfeile mit sevdesk_bank_account_update wieder setzen.
+(umkehrbar)
+Zahlungskonto: ID 4004
+Art: Dateiimport-Konto
+Name: Import-Konto → Import Sparkasse
+Buchungskonto: 1810"
 `;
 
 exports[`German previews > reset a paid invoice to open: says the same in German 1`] = `

@@ -1,7 +1,7 @@
 # Banking and cash
 
 This guide covers the money on your payment accounts (Zahlungskonten): which account takes what,
-recording a cash sale or expense on the cash register (Kasse), entering a bank transaction by hand,
+renaming and archiving an account, recording a cash sale or expense on the cash register (Kasse), entering a bank transaction by hand,
 booking transactions to documents, deleting or locking (enshrining) a transaction, and the rules
 that mark transactions private. Each step names what you ask, the tool, the
 [tier](../permissions.md#tiers) and whether you confirm.
@@ -12,6 +12,7 @@ that mark transactions private. Each step names what you ask, the tool, the
 | --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- | ---------------- |
 | [See accounts and balances](#which-account-takes-what)          | [`sevdesk_bank_accounts_list`](../tools.md#sevdesk_bank_accounts_list), [`sevdesk_cash_position`](../tools.md#sevdesk_cash_position)                                                               | `read`           | no               |
 | [Create an account](#which-account-takes-what)                  | [`sevdesk_bank_account_create`](../tools.md#sevdesk_bank_account_create)                                                                                                                           | `write`          | no               |
+| [Rename or archive an account](#rename-or-archive-an-account)   | [`sevdesk_bank_account_update`](../tools.md#sevdesk_bank_account_update), [`sevdesk_bank_account_archive`](../tools.md#sevdesk_bank_account_archive)                                               | `commit`         | **yes**          |
 | [Record a cash sale or expense](#record-a-cash-sale-or-expense) | [`sevdesk_voucher_book_payment`](../tools.md#sevdesk_voucher_book_payment), [`sevdesk_invoice_book_payment`](../tools.md#sevdesk_invoice_book_payment)                                             | `commit`         | **yes**          |
 | [Enter a transaction by hand](#enter-a-transaction-by-hand)     | [`sevdesk_transaction_create`](../tools.md#sevdesk_transaction_create)                                                                                                                             | `commit`         | **yes**          |
 | [Book transactions to documents](#book-transactions)            | [`sevdesk_reconcile_suggest`](../tools.md#sevdesk_reconcile_suggest), [`sevdesk_transaction_book`](../tools.md#sevdesk_transaction_book)                                                           | `read`, `commit` | booking: **yes** |
@@ -41,6 +42,31 @@ currency. Where the transactions of an account come from depends on its kind:
 [`sevdesk_bank_account_create`](../tools.md#sevdesk_bank_account_create) (`write`) creates a
 file-import or a clearing account. A cash register is set up in the sevDesk web app; the API cannot
 create one.
+
+## Rename or archive an account
+
+> Rename account 4004 to "Sparkasse Import", then archive the old clearing account 4006.
+
+[`sevdesk_bank_account_update`](../tools.md#sevdesk_bank_account_update) (`commit`) renames a
+file-import account, a clearing account or a cash register. On a file-import account it can also
+change the booking account (Buchungskonto), the IBAN and BIC, and whether sevDesk assigns imported
+transactions to documents by itself. Give only what changes. The preview shows each change as
+"current → new" next to the account as stored. An IBAN shows only its last four characters, there
+and in the audit log: note the old one before you replace it. sevDesk answers a change with success even for
+fields it ignores, so the tool reads the account back and fails when a field was not stored. It
+refuses a name or booking account another account has, and a new booking account on an account
+with booked transactions (what sevDesk does with their bookings is not recorded): ask your tax
+consultant before changing one.
+
+[`sevdesk_bank_account_archive`](../tools.md#sevdesk_bank_account_archive) (`commit`, irreversible)
+archives a file-import or clearing account; sevDesk's API calls this deleting. The account leaves
+the account lists but stays readable by id, its open transactions are deleted with it (the preview
+lists them), and sevDesk clears its IBAN. Nothing restores an archived account through the API.
+sevDesk refuses to archive an account with booked transactions, and so does the tool, before
+anything is sent: undo the bookings first
+([`sevdesk_transaction_reset`](../tools.md#sevdesk_transaction_reset); an enshrined transaction
+cannot be undone), or keep the account. Cash registers, the default account (Standardkonto) and
+bank-connected accounts are not archived through the server.
 
 ## Record a cash sale or expense
 
@@ -167,7 +193,8 @@ withdrawals or deposits, so such a rule does not belong in its books.
 ## Limits
 
 - Bank-connected accounts could not be tested (a trial account has none): entering and deleting
-  their transactions is refused.
+  their transactions, and changing or archiving the accounts themselves, is refused.
 - Private-transaction rules could not be tested where they act, on bank imports (see
   [above](#private-transaction-rules)).
-- Renaming and archiving accounts are not covered yet.
+- Which account is the default (Standardkonto) is not changed through the server, and an archived
+  account cannot be changed or restored.

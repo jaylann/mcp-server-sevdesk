@@ -156,6 +156,7 @@ export interface ErasedWriteTool extends ErasedToolBase {
   readonly tier: WriteTier;
   readonly prepare: (args: unknown, ctx: ToolContext) => Promise<WritePlan<unknown>>;
   readonly locks?: ((args: unknown) => readonly SevdeskObjectRef[]) | undefined;
+  readonly auditArgs?: ((args: unknown) => Readonly<Record<string, unknown>>) | undefined;
   readonly execute: (
     args: unknown,
     plan: WritePlan<unknown>,

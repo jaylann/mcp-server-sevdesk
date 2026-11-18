@@ -64,7 +64,29 @@ const WITHOUT_LOCKS: Readonly<Record<string, string>> = {
     "asks sevDesk for an archive of PDFs from its arguments; no record is checked and none changes",
 };
 
+/**
+ * The reviewed write tools with an IBAN argument. Each declares `auditArgs`
+ * (`WriteToolDefinition.auditArgs`) so its audit lines hold the IBAN masked, and their `argsHash`
+ * cannot be traced back to the full value. Extend this list deliberately.
+ */
+const IBAN_WRITERS = ["sevdesk_bank_account_update"];
+
 const cases = ALL_TOOLS.map((tool): [string, AnyToolDefinition] => [tool.name, tool]);
+
+/** Every property name in a JSON Schema, nested ones included. */
+function propertyNames(schema: unknown): string[] {
+  if (typeof schema !== "object" || schema === null) return [];
+  if (Array.isArray(schema)) return schema.flatMap(propertyNames);
+  const node = schema as Record<string, unknown>;
+  const properties = node["properties"];
+  const own = typeof properties === "object" && properties !== null ? Object.keys(properties) : [];
+  return [...own, ...Object.values(node).flatMap(propertyNames)];
+}
+
+function takesIban(tool: AnyToolDefinition): boolean {
+  const json = z.toJSONSchema(tool.input as z.ZodObject, { ...JSON_SCHEMA_OPTIONS, io: "input" });
+  return propertyNames(json).some((name) => /iban/i.test(name));
+}
 
 function localEffectsOf(tool: AnyToolDefinition): unknown {
   return tool.localEffects;
@@ -198,6 +220,16 @@ describe("tool metadata", () => {
     );
     expect(tool?.available?.(allEnabledConfig({ deployment: filesOffDeployment() }))).toBe(false);
     expect(tool?.available?.(allEnabledConfig({ deployment: filesDeployment() }))).toBe(true);
+  });
+
+  it("logs IBAN arguments masked: every write tool that takes one declares auditArgs", () => {
+    const writers = ALL_TOOLS.filter((tool) => isWriteTool(tool) && takesIban(tool));
+    expect(writers.map((tool) => tool.name)).toEqual(IBAN_WRITERS);
+    for (const tool of writers) {
+      expect(isWriteTool(tool) && typeof tool.auditArgs, `${tool.name}: auditArgs`).toBe(
+        "function",
+      );
+    }
   });
 
   describe.each(cases)("%s", (_name, tool) => {

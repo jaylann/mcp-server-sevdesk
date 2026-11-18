@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
 import { bothPreviews } from "../../src/domain/preview-text.js";
+import { argumentsHash } from "../../src/safety/hashing.js";
 import { SevdeskError, withCompletedWrites } from "../../src/sevdesk/errors.js";
 import { defineWriteTool } from "../../src/tools/define-tool.js";
 import type { AnyToolDefinition } from "../../src/tools/types.js";
@@ -159,6 +160,68 @@ describe("audit lines", () => {
     const text = await readFile(path, "utf8");
     expect(text).not.toContain(url.slice(-43));
     expect(text).not.toContain("127.0.0.1");
+  });
+
+  it("logs a tool's masked arguments and their hash in every line; the approval stays bound to the real ones", async () => {
+    const masking = defineWriteTool({
+      name: "sevdesk_dummy_masked",
+      title: "Masked argument (dummy)",
+      description: "Sends an invoice; logs its account number masked. Test fixture for auditArgs.",
+      toolset: "invoices",
+      tier: "commit",
+      annotations: COMMIT_ANNOTATIONS,
+      input: z.strictObject({ id: z.number(), account: z.string(), ...dryRunInputShape }),
+      output: z.object({ id: z.number() }),
+      auditArgs: (args) => ({ ...args, account: `****${args.account.slice(-4)}` }),
+      prepare: (args) =>
+        Promise.resolve({
+          ...bothPreviews(() => ({
+            action: `Send invoice ${String(args.id)}.`,
+            facts: [],
+            warnings: [],
+            irreversible: false,
+          })),
+          state: null,
+        }),
+      execute: async (args, _plan, ctx) => {
+        await ctx.client.request({ method: "PUT", path: "/Invoice/7/sendBy", body: {} });
+        return { data: { id: args.id }, summary: "Sent.", affected: [] };
+      },
+    });
+    const path = await auditPath();
+    const { client, fake, lastApprovalUrl } = await writeHarness({
+      tools: [masking],
+      routes: invoiceRoutes,
+      config: { auditLogPath: path, confirm: "browser" },
+    });
+    const call = (account: string) =>
+      client.callTool({ name: "sevdesk_dummy_masked", arguments: { id: 7, account } });
+
+    await call("DE89370400440532013000");
+    await decideInBrowser(lastApprovalUrl(), "approve");
+    // Same masked arguments, other real ones: the approval does not cover this call ...
+    await call("DE02120300000000203000");
+    expect(writesOf(fake)).toEqual([]);
+    // ... only the one it was given for.
+    await call("DE89370400440532013000");
+    expect(writesOf(fake)).toHaveLength(1);
+
+    const text = await readFile(path, "utf8");
+    expect(text).not.toContain("0532013000");
+    expect(text).not.toContain("0000203000");
+    const lines = await auditLines(path);
+    expect(lines.map((line) => line["event"])).toEqual([
+      "confirmation_requested",
+      "approval_decided",
+      "confirmation_requested",
+      "executing",
+      "executed",
+    ]);
+    const maskedHash = argumentsHash("sevdesk_dummy_masked", { id: 7, account: "****3000" });
+    expect(lines.map((line) => line["argsHash"])).toEqual(lines.map(() => maskedHash));
+    expect(lines[0]).toMatchObject({ args: { id: 7, account: "****3000" } });
+    expect(lines[2]?.["callId"]).not.toBe(lines[0]?.["callId"]);
+    expect(lines[4]?.["callId"]).toBe(lines[0]?.["callId"]);
   });
 
   it("records write-tier calls as not needing approval, and never the token", async () => {
