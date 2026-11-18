@@ -1,8 +1,8 @@
 {
   "caseId": "voucher-update-en",
   "model": "claude-sonnet-5-5",
-  "key": "03047035b881a390b4ac56f2e8746f2dd597dbf2a7254ed0268de955acc9e6b8",
-  "recordedAt": "2026-11-18T15:25:41.837Z",
+  "key": "ba1bee99e261efc77c1370cef32c14e440ba28eb0faccff80ac6dc229347e60f",
+  "recordedAt": "2026-11-18T17:05:09.630Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -17,7 +17,7 @@
       "inputTokens": 103,
       "outputTokens": 85,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 89134
+      "cacheReadInputTokens": 89296
     }
   }
 }

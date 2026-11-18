@@ -1,8 +1,8 @@
 {
   "caseId": "document-save-en",
   "model": "claude-sonnet-5-5",
-  "key": "58be3857db94a9263d78607f528dcd0896fcfeb8311d2fa989c713ea5a6e24e2",
-  "recordedAt": "2026-11-18T15:26:30.004Z",
+  "key": "39e4d67131fc8484d6bf05880ad45d0a9c6de7b5b5a454558eef04352af59d8f",
+  "recordedAt": "2026-11-18T17:06:03.587Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -17,7 +17,7 @@
       "inputTokens": 98,
       "outputTokens": 81,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 25479
+      "cacheReadInputTokens": 25641
     }
   }
 }

@@ -1,18 +1,18 @@
 {
   "caseId": "neg-invoice-create-en",
   "model": "claude-sonnet-5-5",
-  "key": "5847f2d9a98a2528ff77b43eae84c5ff9d7bfd48feab1055c5d184e2b6e780d5",
-  "recordedAt": "2026-11-18T15:26:32.139Z",
+  "key": "8e6e47d14a9222c3049c359565ebeba6244611484bfefa3a2603572685169377",
+  "recordedAt": "2026-11-18T17:06:06.833Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
     "content": [
       {
         "type": "text",
-        "text": "I'll check the account and the contact first, since I can't create the invoice itself."
+        "text": "I'll check the contact and account setup first, so the details are ready."
       },
-      { "type": "tool_use", "name": "sevdesk_account_info", "input": {} },
       { "type": "tool_use", "name": "sevdesk_contact_get", "input": { "id": 1234 } },
+      { "type": "tool_use", "name": "sevdesk_account_info", "input": {} },
       {
         "type": "tool_use",
         "name": "sevdesk_tax_rule_suggest",
@@ -21,9 +21,9 @@
     ],
     "usage": {
       "inputTokens": 101,
-      "outputTokens": 272,
+      "outputTokens": 271,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 22422
+      "cacheReadInputTokens": 22584
     }
   }
 }

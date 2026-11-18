@@ -1,8 +1,8 @@
 {
   "caseId": "datev-export-de",
   "model": "claude-sonnet-5-5",
-  "key": "591b73cb4a2f9320decaaa22c21948a7f6fabacfad3a23fe257510298e7b0dae",
-  "recordedAt": "2026-11-18T15:26:25.672Z",
+  "key": "dbf31b3b45545f354975a8a61e3b6d3f0955f146570a6c2e5ee6d615e6590de1",
+  "recordedAt": "2026-11-18T17:05:58.976Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -11,9 +11,9 @@
     ],
     "usage": {
       "inputTokens": 116,
-      "outputTokens": 170,
+      "outputTokens": 153,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 89134
+      "cacheReadInputTokens": 89296
     }
   }
 }

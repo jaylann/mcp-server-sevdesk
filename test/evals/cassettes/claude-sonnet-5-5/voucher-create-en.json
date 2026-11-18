@@ -1,16 +1,12 @@
 {
   "caseId": "voucher-create-en",
   "model": "claude-sonnet-5-5",
-  "key": "9c9478713d5f73cbf5c9ba864286acb95147510600fcf6cae82091b4f965ef9f",
-  "recordedAt": "2026-11-18T15:25:35.727Z",
+  "key": "d5baf1325417be68c8fd5c3dd59dab3bf01681d061475f006f404a26310d7882",
+  "recordedAt": "2026-11-18T17:04:59.705Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
     "content": [
-      {
-        "type": "text",
-        "text": "I'll start by checking the account setup, looking for a Deutsche Bahn contact, and finding a suitable booking account."
-      },
       { "type": "tool_use", "name": "sevdesk_account_info", "input": {} },
       {
         "type": "tool_use",
@@ -23,16 +19,16 @@
         "input": {
           "kind": "receipt_guidance",
           "receiptType": "expense",
-          "query": "Fahrt",
-          "taxRuleId": 9
+          "query": "Reise",
+          "limit": 50
         }
       }
     ],
     "usage": {
       "inputTokens": 154,
-      "outputTokens": 370,
+      "outputTokens": 393,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 89134
+      "cacheReadInputTokens": 89296
     }
   }
 }

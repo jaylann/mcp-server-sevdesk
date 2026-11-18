@@ -1,24 +1,17 @@
 {
   "caseId": "transaction-private-de",
   "model": "claude-sonnet-5-5",
-  "key": "aa46b37205dab4c212793a72ae7e09c9f243046eebbf655a64ad1ddbec24bae4",
-  "recordedAt": "2026-11-18T15:26:07.979Z",
+  "key": "58bc4e7d50f0f5c693546be6dbe3a5b5c085bc6de06b78fde42f97b278581326",
+  "recordedAt": "2026-11-18T17:05:37.132Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
-    "content": [
-      { "type": "tool_use", "name": "sevdesk_transaction_get", "input": { "id": 556 } },
-      {
-        "type": "tool_use",
-        "name": "sevdesk_transaction_mark_private",
-        "input": { "id": 556, "dryRun": true }
-      }
-    ],
+    "content": [{ "type": "tool_use", "name": "sevdesk_transaction_get", "input": { "id": 556 } }],
     "usage": {
       "inputTokens": 112,
-      "outputTokens": 257,
+      "outputTokens": 230,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 89134
+      "cacheReadInputTokens": 89296
     }
   }
 }
