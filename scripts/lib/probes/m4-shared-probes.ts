@@ -33,6 +33,63 @@ export function inconclusive(finding: string): ProbeOutcome {
   return { verdict: "inconclusive", finding };
 }
 
+/** One recorded fact a re-check probe compares with what sevDesk answers now. */
+export interface RecordedCheck {
+  /** Trusted, short: the fact as recorded (e.g. "a 31-character name is refused"). */
+  readonly fact: string;
+  readonly holds: boolean;
+  /** What was seen: statuses, sevDesk's scrubbed message, lengths, booleans; never account data. */
+  readonly seen: string;
+}
+
+/**
+ * The outcome of a probe that re-checks recorded facts: `confirmed` when every check holds,
+ * `contradicted` when one does not (each check is listed with what was seen), `inconclusive`
+ * without any check (the probe could not get that far). `prefix` and `notes` frame the list.
+ */
+export function recordedOutcome(
+  checks: readonly RecordedCheck[],
+  prefix: string,
+  notes: readonly string[] = [],
+): ProbeOutcome {
+  const listed = checks.map(
+    (check) => `${check.fact}: ${check.holds ? "as recorded" : "DIFFERS"} (${check.seen})`,
+  );
+  const finding = [prefix, ...listed, ...notes].filter((part) => part !== "").join(". ");
+  if (checks.length === 0) return inconclusive(`${finding}.`);
+  return {
+    verdict: checks.every((check) => check.holds) ? "confirmed" : "contradicted",
+    finding: `${finding}.`,
+  };
+}
+
+/**
+ * Runs a probe's body, then its cleanup, also when the body throws (the error still reaches the
+ * runner, after the cleanup). The cleanup deletes what the body created and answers one note per
+ * record, appended to the finding; it must not throw (the probe HTTP wrapper turns every failure
+ * into a result), and it runs once.
+ */
+export async function withCleanup(
+  body: () => Promise<ProbeOutcome>,
+  cleanup: () => Promise<readonly string[]>,
+): Promise<ProbeOutcome> {
+  // An object, so the flag set inside `clean` is read again in `finally`, not narrowed away.
+  const state = { cleaned: false };
+  const clean = () => {
+    state.cleaned = true;
+    return cleanup();
+  };
+  try {
+    const outcome = await body();
+    const notes = await clean();
+    return notes.length === 0
+      ? outcome
+      : { ...outcome, finding: `${outcome.finding} Cleanup: ${notes.join("; ")}.` };
+  } finally {
+    if (!state.cleaned) await clean();
+  }
+}
+
 /** Unix seconds of 12:00 Europe/Berlin on `date` (what the payment tools send, D-056). */
 export function berlinNoon(date: string): number {
   return berlinMidnight(date) + 12 * 3600;
