@@ -445,6 +445,8 @@ describe("check-then-write tools declare the records they check", () => {
       const tool = ALL_TOOLS.find((candidate) => candidate.name === name) as
         AnyWriteToolDefinition | undefined;
       expect(tool?.locks?.({}), name).toEqual([ACCOUNT_VOUCHER_DRAFTS]);
+      // A receipt link is downloaded before the lock (voucher-link-download-outside-lock.test.ts).
+      expect(tool?.preload, name).toBeTypeOf("function");
     }
   });
 

@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { prefetchReceipt } from "../../domain/drafts/voucher-checks.js";
 import { voucherRecognitionInputShape } from "../../domain/drafts/voucher-inputs.js";
 import {
   executeVoucherRecognition,
@@ -96,6 +97,8 @@ export function voucherRecognizeReceiptTool(
     // A new voucher draft, like sevdesk_voucher_create_draft: one at a time per account, so the
     // duplicate scan after the recognition sees a draft another call made just before.
     locks: () => [ACCOUNT_VOUCHER_DRAFTS],
+    // A receipt from a link is downloaded before the lock (see prefetchReceipt).
+    preload: (args, ctx) => prefetchReceipt(ctx, args.file),
     prepare: (args, ctx) =>
       prepareVoucherRecognition(ctx.client, args, {
         signal: ctx.signal,

@@ -24,7 +24,8 @@
  */
 import { createHash } from "node:crypto";
 
-import type { FileAccess } from "../../safety/file-access.js";
+import type { FileAccess, ReadFileOptions } from "../../safety/file-access.js";
+import type { LinkPrefetcher } from "../../safety/link-prefetch.js";
 import type { LocalFileKind } from "../../safety/local-files.js";
 import { expectSingle } from "../../sevdesk/envelope.js";
 import { SevdeskError } from "../../sevdesk/errors.js";
@@ -465,7 +466,7 @@ export function supplierText(
  * Rows read by the duplicate check, in one request: one supplier rarely has more vouchers on one
  * day. When sevDesk's filters leave more, the check says so ({@link VoucherDuplicateScan}).
  */
-export const DUPLICATE_SCAN_LIMIT = 100;
+const DUPLICATE_SCAN_LIMIT = 100;
 
 export interface VoucherDuplicateQuery {
   readonly kind: VoucherKind;
@@ -615,11 +616,7 @@ export async function readReceiptFile(
   ref: string,
   expected: ReceiptExpectation = {},
 ): Promise<ReceiptFile> {
-  const file = await options.files.read(ref, {
-    maxBytes: MAX_RECEIPT_BYTES,
-    kinds: expected.kinds ?? RECEIPT_FILE_KINDS,
-    signal: options.signal,
-  });
+  const file = await options.files.read(ref, receiptReadOptions(expected.kinds, options.signal));
   checkFileSha256(file.bytes, expected.sha256);
   return {
     name: file.name,
@@ -627,6 +624,32 @@ export async function readReceiptFile(
     bytes: file.bytes,
     ...(file.host === undefined ? {} : { host: file.host }),
   };
+}
+
+/** How a receipt is read: one place, so a prefetch and the read in `prepare` match. */
+function receiptReadOptions(
+  kinds: readonly LocalFileKind[] | undefined,
+  signal: AbortSignal | undefined,
+): ReadFileOptions {
+  return { maxBytes: MAX_RECEIPT_BYTES, kinds: kinds ?? RECEIPT_FILE_KINDS, signal };
+}
+
+/**
+ * For the `preload` of a tool that holds `ACCOUNT_VOUCHER_DRAFTS`: downloads the receipt now when
+ * `ref` is an https link, before the lock, so a slow host does not hold up the account's other
+ * draft calls. {@link readReceiptFile} in `prepare` then gets exactly these bytes (or the
+ * download's error) with the same `kinds`, and checks them as always: kind, size, `fileSha256`,
+ * the SHA-256 in the preview. The lock guards the duplicate check and the save, which read
+ * sevDesk; the download reads only the outside host, so moving it out changes nothing the lock
+ * protects. A local path or an upload is left to `prepare` and read inside the lock as before.
+ */
+export async function prefetchReceipt(
+  ctx: { readonly files: LinkPrefetcher; readonly signal?: AbortSignal | undefined },
+  ref: string | undefined,
+  kinds?: readonly LocalFileKind[],
+): Promise<void> {
+  if (ref === undefined) return;
+  await ctx.files.prefetch(ref, receiptReadOptions(kinds, ctx.signal));
 }
 
 /**

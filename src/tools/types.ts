@@ -3,6 +3,7 @@ import type { z } from "zod";
 
 import type { Config } from "../config.js";
 import type { FileAccess } from "../safety/file-access.js";
+import type { LinkPrefetcher } from "../safety/link-prefetch.js";
 import type { WriteTier } from "../safety/tiers.js";
 import type { ConfirmationPreview, SevdeskObjectRef } from "../safety/write-types.js";
 import type { SevdeskClient } from "../sevdesk/types.js";
@@ -57,6 +58,17 @@ export type PrepareContext = ToolContext;
  * requests the tier does not cover (a `write` tool cannot reach a `commit` endpoint).
  */
 export type ExecuteContext = ToolContext;
+
+/**
+ * Context of {@link WriteToolDefinition.preload}: no sevDesk client and no other file access than
+ * starting link downloads, so nothing that runs before the locks can read the state they protect.
+ */
+export interface PreloadContext {
+  /** Aborted when the MCP client cancels the call; stops a download. */
+  readonly signal: AbortSignal;
+  /** Downloads from links whose outcome waits for `prepare` (`src/safety/link-prefetch.ts`). */
+  readonly files: LinkPrefetcher;
+}
 
 /**
  * A content block a handler may add after the JSON text block. Deliberately narrow: only
@@ -317,6 +329,16 @@ export interface WriteToolDefinition<
    * reason.
    */
   readonly locks?: (args: z.output<I>) => readonly SevdeskObjectRef[];
+  /**
+   * Optional, with {@link WriteToolDefinition.locks}: slow work that does not depend on the locked
+   * state, done before the locks are taken so that it does not hold up the account's other calls
+   * on them. Today that is downloading a file from an https link (`ctx.files.prefetch`); the
+   * outcome waits for `prepare`, which reads the link as usual and gets those bytes or that error
+   * (`src/safety/link-prefetch.ts`). It gets no sevDesk client: every check against sevDesk stays
+   * in `prepare`, inside the locks. Runs once per call, after the arguments are validated and
+   * found free of hidden characters, dry runs included; skipped for a tool without locks.
+   */
+  readonly preload?: (args: z.output<I>, ctx: PreloadContext) => Promise<void>;
   /**
    * Performs exactly the writes the preview describes, then reads the result back and returns
    * it, with every created or changed record in `affected`. Runs only after `prepare` succeeded

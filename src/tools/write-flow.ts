@@ -50,6 +50,7 @@ import { ApprovalLimitError, type ApprovalTicket } from "../safety/approval-type
 import { type AuditApproval, type AuditEvent, auditPrincipal } from "../safety/audit.js";
 import { findHiddenCharacters } from "../safety/fence.js";
 import { argumentsHash, previewHash } from "../safety/hashing.js";
+import { prefetchLinks } from "../safety/link-prefetch.js";
 import {
   displayPreview,
   previewPairSchema,
@@ -161,7 +162,8 @@ export function writeOutputSchema(output: z.ZodObject): z.ZodObject {
 /**
  * Runs one call of a write tool. Throws like a handler; the registry maps errors. A tool that
  * declares `locks` runs while holding its records for this account, from `prepare` to the end of
- * `execute`, so a concurrent call on the same records prepares only after this one booked.
+ * `execute`, so a concurrent call on the same records prepares only after this one booked. Its
+ * `preload` (link downloads) runs before that, outside the locks.
  */
 export async function runWriteTool(
   tool: ErasedWriteTool,
@@ -174,7 +176,25 @@ export async function runWriteTool(
   const keys = records.map((record) =>
     JSON.stringify([accountScope, record.objectName, record.id]),
   );
-  return call.deps.safety.locks.run(keys, () => runUnlocked(tool, args, call));
+  const preloaded = await preloadOutsideLocks(tool, args, call);
+  return call.deps.safety.locks.run(keys, () => runUnlocked(tool, args, preloaded));
+}
+
+/**
+ * Runs the tool's `preload` before its locks are taken (`WriteToolDefinition.preload`) and returns
+ * the call with a file access that hands those downloads to `prepare`
+ * (`src/safety/link-prefetch.ts`). Arguments with hidden characters download nothing:
+ * `runUnlocked` refuses them before anything else.
+ */
+async function preloadOutsideLocks(
+  tool: ErasedWriteTool,
+  args: unknown,
+  call: WriteCall,
+): Promise<WriteCall> {
+  if (tool.preload === undefined || hiddenCharacterProblems(args, []).length > 0) return call;
+  const { prefetcher, files } = prefetchLinks(call.context.files);
+  await tool.preload(args, { signal: call.context.signal, files: prefetcher });
+  return { ...call, context: { ...call.context, files } };
 }
 
 async function runUnlocked(
