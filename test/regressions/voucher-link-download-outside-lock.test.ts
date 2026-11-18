@@ -17,6 +17,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { InputFile, ReadFileOptions } from "../../src/safety/file-access.js";
 import { localFileAccess } from "../../src/safety/file-sources.js";
 import { prefetchLinks } from "../../src/safety/link-prefetch.js";
+import { SevdeskError } from "../../src/sevdesk/errors.js";
 import { ALL_TOOLS } from "../../src/tools/index.js";
 import type { AnyWriteToolDefinition } from "../../src/tools/types.js";
 import { voucherCreateDraftTool } from "../../src/tools/vouchers/draft-create.js";
@@ -155,7 +156,8 @@ describe("a receipt link is downloaded outside the voucher-drafts lock", () => {
         });
       },
     );
-    const { prefetcher, files: prefetched } = prefetchLinks(files);
+    const call = prefetchLinks(files, `account-${name}`);
+    const { prefetcher, files: prefetched } = call;
     await tool.preload?.(args, { signal: new AbortController().signal, files: prefetcher });
     expect(reads).toBe(1);
     const prepareReads = vi.spyOn(prefetched, "read");
@@ -167,6 +169,7 @@ describe("a receipt link is downloaded outside the voucher-drafts lock", () => {
       { fileUrlHosts: [LINK_HOST] },
       prefetched,
     ).catch(() => undefined);
+    call.dispose();
     expect(prepareReads).toHaveBeenCalledTimes(1);
     expect(reads).toBe(1);
   });
@@ -180,5 +183,34 @@ describe("a receipt link is downloaded outside the voucher-drafts lock", () => {
     });
     expect(result.isError).toBe(true);
     expect(downloads.started).toBe(before);
+  });
+
+  it("frees the account's prefetch when prepare refuses without reading the download", async () => {
+    // At most one prefetch per account waits for its prepare (src/safety/link-prefetch.ts). One
+    // that no prepare takes must not keep that place after its call, or the account's later link
+    // drafts would all download inside the lock again.
+    const refusing = {
+      ...voucherCreateDraftTool,
+      prepare: () =>
+        Promise.reject(
+          new SevdeskError({ kind: "validation", message: "Refused before reading the file." }),
+        ),
+    };
+    const { client } = await writeHarness({
+      tools: [refusing],
+      routes: CREATE_READ_ROUTES,
+      config: { fileUrlHosts: [LINK_HOST] },
+    });
+    downloads.open();
+    const before = downloads.started;
+    for (const number of ["ER-2026-0830", "ER-2026-0831"]) {
+      const result = await client.callTool({
+        name: "sevdesk_voucher_create_draft",
+        arguments: { ...ARGS, number, file: LINK },
+      });
+      expect(result.isError).toBe(true);
+    }
+    // Each call prefetched its link: the first call's untaken download was dropped with it.
+    expect(downloads.started - before).toBe(2);
   });
 });

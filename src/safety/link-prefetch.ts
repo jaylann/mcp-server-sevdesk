@@ -20,9 +20,25 @@
  *
  * Nothing outlives the call: the outcomes belong to one tool call, like the bytes of a link always
  * did. An outcome no read takes (a `prepare` that refused before reading the file) is dropped
- * with the call, as the download would never have happened before.
+ * with the call ({@link PrefetchedFiles.dispose}), as the download would never have happened
+ * before.
+ *
+ * At most {@link MAX_ACCOUNT_PREFETCHES} outcome per account waits at a time. The download limits
+ * of `./url-files.ts` count only running downloads, but a prefetched file is held in memory until
+ * its call gets the lock, and calls queue behind it: without this cap, an account's calls could
+ * park one body after another (up to the size limit each) while one call held the lock, and a
+ * third link draft sent at once was refused by the per-account download limit instead of waiting
+ * (review of #146). A prefetch over the cap downloads nothing; `prepare` then reads the link inside
+ * the lock, as before the prefetch existed. With one prefetch and one download inside the lock, an
+ * account stays within the two downloads `./url-files.ts` allows it.
  */
 import { type FileAccess, type InputFile, isUrlRef, type ReadFileOptions } from "./file-access.js";
+
+/** Untaken prefetches per account (see the module comment). */
+const MAX_ACCOUNT_PREFETCHES = 1;
+
+/** Untaken prefetches per account; an account without any has no entry. */
+const accountPrefetches = new Map<string, number>();
 
 /** What a tool's `preload` may do with files: start link downloads, nothing else. */
 export interface LinkPrefetcher {
@@ -30,7 +46,8 @@ export interface LinkPrefetcher {
    * Downloads `ref` now when it is a link ({@link isUrlRef}) and keeps the outcome for the next
    * read of `ref` with the same `maxBytes` and `kinds` in this call (see the module comment).
    * Resolves when the download has settled and never rejects: a failed download fails that read,
-   * where `prepare` would have met the failure anyway. Any other reference is left alone.
+   * where `prepare` would have met the failure anyway. Any other reference is left alone, and so
+   * is a link while the account already has an untaken prefetch ({@link MAX_ACCOUNT_PREFETCHES}).
    */
   prefetch(ref: string, options: ReadFileOptions): Promise<void>;
 }
@@ -41,19 +58,36 @@ export interface PrefetchedFiles {
   readonly prefetcher: LinkPrefetcher;
   /** For `prepare` and `execute`: the call's file access, handing out prefetched downloads. */
   readonly files: FileAccess;
+  /**
+   * Drops the outcomes no read took and frees their place in the account's cap. Called once the
+   * call is done (`runWriteTool`), also when it failed or was refused.
+   */
+  dispose(): void;
 }
 
-/** Link prefetching over `files`, the file access of one tool call. */
-export function prefetchLinks(files: FileAccess): PrefetchedFiles {
+/**
+ * Link prefetching over `files`, the file access of one tool call, for `account`
+ * (`RequestPrincipal.accountScope`), whose untaken prefetches are capped.
+ */
+export function prefetchLinks(files: FileAccess, account: string): PrefetchedFiles {
   const outcomes = new Map<string, Promise<InputFile>>();
+  const free = (key: string): void => {
+    if (!outcomes.delete(key)) return;
+    const left = (accountPrefetches.get(account) ?? 1) - 1;
+    if (left > 0) accountPrefetches.set(account, left);
+    else accountPrefetches.delete(account);
+  };
   return {
     prefetcher: {
       async prefetch(ref, options) {
         if (!isUrlRef(ref)) return;
         const key = outcomeKey(ref, options);
         if (outcomes.has(key)) return;
+        const waiting = accountPrefetches.get(account) ?? 0;
+        if (waiting >= MAX_ACCOUNT_PREFETCHES) return;
         const download = files.read(ref, options);
         outcomes.set(key, download);
+        accountPrefetches.set(account, waiting + 1);
         // The outcome waits for `read`, which rethrows a failure; only settle here.
         await download.then(
           () => undefined,
@@ -71,7 +105,7 @@ export function prefetchLinks(files: FileAccess): PrefetchedFiles {
         const key = outcomeKey(ref, options);
         const prefetched = outcomes.get(key);
         if (prefetched === undefined) return files.read(ref, options);
-        outcomes.delete(key);
+        free(key);
         return prefetched;
       },
       scanFolder: (folder, options) => files.scanFolder(folder, options),
@@ -81,6 +115,9 @@ export function prefetchLinks(files: FileAccess): PrefetchedFiles {
       deliver: (file) => files.deliver(file),
       checkDelivery: () => files.checkDelivery(),
       describeDelivery: () => files.describeDelivery(),
+    },
+    dispose() {
+      for (const key of [...outcomes.keys()]) free(key);
     },
   };
 }

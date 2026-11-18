@@ -17,16 +17,23 @@ import { fakeLinks, LINK, LINK_HOST, LINK_PDF, served } from "../../helpers/link
 
 const PDF_ONLY: ReadFileOptions = { maxBytes: 1024, kinds: ["pdf"] };
 
-function access(links = fakeLinks(), fileDirs: string[] = []) {
+/** Calls made by a test, disposed after it (the cap on prefetches is per process). */
+const calls: { dispose(): void }[] = [];
+let accounts = 0;
+
+function access(links = fakeLinks(), fileDirs: string[] = [], account = `account-${++accounts}`) {
   const files = localFileAccess(
     { fileDirs, outputDir: undefined, fileUrlHosts: [LINK_HOST] },
     links.reader,
   );
-  return { links, ...prefetchLinks(files) };
+  const call = prefetchLinks(files, account);
+  calls.push(call);
+  return { links, ...call };
 }
 
 let cleanup: (() => Promise<void>) | undefined;
 afterEach(async () => {
+  for (const call of calls.splice(0)) call.dispose();
   await cleanup?.();
   cleanup = undefined;
 });
@@ -87,6 +94,45 @@ describe("prefetchLinks", () => {
     const changed = new TextEncoder().encode("%PDF-1.7\nneu\n%%EOF");
     await writeFile(path, changed);
     expect((await files.read(path, PDF_ONLY)).bytes).toEqual(changed);
+  });
+
+  it("keeps at most one untaken download per account; the next call reads its link itself", async () => {
+    // The download limits count running downloads only; a prefetched file stays in memory until
+    // its call gets the lock. Without the cap every queued call of the account parked one.
+    const links = fakeLinks();
+    const first = access(links, [], "account-cap");
+    const second = access(links, [], "account-cap");
+    await first.prefetcher.prefetch(LINK, PDF_ONLY);
+    await second.prefetcher.prefetch(LINK, PDF_ONLY);
+    expect(links.requests).toHaveLength(1);
+
+    // Another account is not held up by this one.
+    const other = access(links, [], "account-other");
+    await other.prefetcher.prefetch(LINK, PDF_ONLY);
+    expect(links.requests).toHaveLength(2);
+
+    // The second call reads its link inside the lock, as before the prefetch existed.
+    expect((await second.files.read(LINK, PDF_ONLY)).bytes).toEqual(LINK_PDF);
+    expect(links.requests).toHaveLength(3);
+  });
+
+  it("frees the account's place when a read takes the download or the call ends", async () => {
+    const links = fakeLinks();
+    const taken = access(links, [], "account-free");
+    await taken.prefetcher.prefetch(LINK, PDF_ONLY);
+    await taken.files.read(LINK, PDF_ONLY);
+
+    const dropped = access(links, [], "account-free");
+    await dropped.prefetcher.prefetch(LINK, PDF_ONLY);
+    expect(links.requests).toHaveLength(2);
+    dropped.dispose();
+    // Disposed: the outcome is gone, a read downloads again.
+    await dropped.files.read(LINK, PDF_ONLY);
+    expect(links.requests).toHaveLength(3);
+
+    const next = access(links, [], "account-free");
+    await next.prefetcher.prefetch(LINK, PDF_ONLY);
+    expect(links.requests).toHaveLength(4);
   });
 
   it("passes everything else through to the call's file access", () => {

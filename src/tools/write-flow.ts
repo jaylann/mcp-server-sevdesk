@@ -176,25 +176,20 @@ export async function runWriteTool(
   const keys = records.map((record) =>
     JSON.stringify([accountScope, record.objectName, record.id]),
   );
-  const preloaded = await preloadOutsideLocks(tool, args, call);
-  return call.deps.safety.locks.run(keys, () => runUnlocked(tool, args, preloaded));
-}
-
-/**
- * Runs the tool's `preload` before its locks are taken (`WriteToolDefinition.preload`) and returns
- * the call with a file access that hands those downloads to `prepare`
- * (`src/safety/link-prefetch.ts`). Arguments with hidden characters download nothing:
- * `runUnlocked` refuses them before anything else.
- */
-async function preloadOutsideLocks(
-  tool: ErasedWriteTool,
-  args: unknown,
-  call: WriteCall,
-): Promise<WriteCall> {
-  if (tool.preload === undefined || hiddenCharacterProblems(args, []).length > 0) return call;
-  const { prefetcher, files } = prefetchLinks(call.context.files);
-  await tool.preload(args, { signal: call.context.signal, files: prefetcher });
-  return { ...call, context: { ...call.context, files } };
+  if (tool.preload === undefined || hiddenCharacterProblems(args, []).length > 0) {
+    return call.deps.safety.locks.run(keys, () => runUnlocked(tool, args, call));
+  }
+  // Downloads before the locks (`WriteToolDefinition.preload`); `prepare` gets them through the
+  // call's file access (`src/safety/link-prefetch.ts`). Arguments with hidden characters download
+  // nothing: `runUnlocked` refuses them before anything else.
+  const prefetched = prefetchLinks(call.context.files, accountScope);
+  try {
+    await tool.preload(args, { signal: call.context.signal, files: prefetched.prefetcher });
+    const preloaded = { ...call, context: { ...call.context, files: prefetched.files } };
+    return await call.deps.safety.locks.run(keys, () => runUnlocked(tool, args, preloaded));
+  } finally {
+    prefetched.dispose();
+  }
 }
 
 async function runUnlocked(

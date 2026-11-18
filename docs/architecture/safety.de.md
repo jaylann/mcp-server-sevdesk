@@ -147,7 +147,8 @@ nacheinander, von `prepare` bis zum Ende von `execute` (`src/safety/record-locks
 Belegdatei von einem https-Link wird vor der Sperre heruntergeladen (`preload` des Werkzeugs,
 `src/safety/link-prefetch.ts`): Der Download liest nur den fremden Host, nie sevDesk, und `prepare`
 prüft genau diese Bytes wie bisher. So hält ein langsamer Host die anderen Aufrufe des Kontos
-nicht auf.
+nicht auf. Je Konto wartet nur ein solcher Download auf seine Sperre, weil er bis dahin im
+Speicher liegt; ein weiterer Aufruf lädt wie bisher innerhalb der Sperre herunter.
 
 Die Sperren leben in einem Serverprozess; mehrere Replikate bräuchten eine gemeinsame Sperre. Der
 Metadaten-Lint scheitert für ein Schreibwerkzeug ohne `locks`, außer es steht mit seiner

@@ -334,7 +334,8 @@ export interface WriteToolDefinition<
    * state, done before the locks are taken so that it does not hold up the account's other calls
    * on them. Today that is downloading a file from an https link (`ctx.files.prefetch`); the
    * outcome waits for `prepare`, which reads the link as usual and gets those bytes or that error
-   * (`src/safety/link-prefetch.ts`). It gets no sevDesk client: every check against sevDesk stays
+   * (`src/safety/link-prefetch.ts`; one waiting download per account, beyond that `prepare`
+   * downloads inside the locks). It gets no sevDesk client: every check against sevDesk stays
    * in `prepare`, inside the locks. Runs once per call, after the arguments are validated and
    * found free of hidden characters, dry runs included; skipped for a tool without locks.
    */
