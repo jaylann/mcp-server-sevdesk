@@ -115,7 +115,7 @@ describe("sevdesk_transaction_book", () => {
       client,
     );
     expect(plan.preview.action).toBe(
-      "Book bank transaction 5101 (177.33 EUR) to invoice RE-1001: 177.33 EUR in total.",
+      "Book bank transaction 5101 (177.33 EUR) to invoice 1001: 177.33 EUR in total.",
     );
     expect(plan.preview.facts).toEqual([
       { label: "Bank transaction (Umsatz)", value: "id 5101, 177.33 EUR (incoming)" },
@@ -140,7 +140,7 @@ describe("sevdesk_transaction_book", () => {
       expect.stringContaining("To undo, use sevdesk_transaction_reset"),
     ]);
     expect(plan.previewDe.action).toBe(
-      "Kontoumsatz 5101 (177,33 EUR) zuordnen zu Rechnung RE-1001: insgesamt 177,33 EUR.",
+      "Kontoumsatz 5101 (177,33 EUR) zuordnen zu Rechnung 1001: insgesamt 177,33 EUR.",
     );
     expect(plan.previewDe.facts).toEqual([
       { label: "Kontoumsatz", value: "ID 5101, 177,33 EUR (Eingang)" },
@@ -247,11 +247,11 @@ describe("sevdesk_transaction_book", () => {
     );
     expect(allocationFact?.value).toContain("→ paid (1000)");
     expect(plan.preview.action).toBe(
-      "Book bank transaction 5101 (238.00 EUR) to invoice RE-1002 and invoice RE-1001: " +
+      "Book bank transaction 5101 (238.00 EUR) to invoice 1002 and invoice 1001: " +
         "238.00 EUR in total.",
     );
     expect(plan.previewDe.action).toBe(
-      "Kontoumsatz 5101 (238,00 EUR) zuordnen zu Rechnung RE-1002 und Rechnung RE-1001: " +
+      "Kontoumsatz 5101 (238,00 EUR) zuordnen zu Rechnung 1002 und Rechnung 1001: " +
         "insgesamt 238,00 EUR.",
     );
     expect(plan.previewDe.facts.find((f) => f.label.startsWith("Zuordnung 2"))?.value).toContain(

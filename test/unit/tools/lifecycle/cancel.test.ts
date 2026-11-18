@@ -88,13 +88,13 @@ describe("sevdesk_invoice_cancel (community: sevdesk-rs recorded cancelInvoice, 
     expect(staged.writes()).toEqual([]);
     expect(plan.preview.irreversible).toBe(true);
     expect(plan.preview.action).toBe(
-      "Cancel invoice RE-1001 (Storno): sevDesk creates a cancellation invoice " +
+      "Cancel invoice 1001 (Storno): sevDesk creates a cancellation invoice " +
         "(Stornorechnung, SR) over -177.33 EUR that offsets it.",
     );
     expect(plan.preview.warnings[0]).toContain("the cancellation cannot be undone");
     expect(plan.preview.warnings[1]).toContain('sevDesk has no "cancelled" status');
     expect(plan.previewDe.action).toBe(
-      "Rechnung RE-1001 stornieren: sevDesk erstellt eine Stornorechnung (SR) über -177,33 EUR, " +
+      "Rechnung 1001 stornieren: sevDesk erstellt eine Stornorechnung (SR) über -177,33 EUR, " +
         "die sie ausgleicht.",
     );
     expect(plan.previewDe.warnings).toHaveLength(3);

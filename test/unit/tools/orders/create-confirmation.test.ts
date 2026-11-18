@@ -124,7 +124,7 @@ describe("sevdesk_order_create_confirmation (D-107)", () => {
     const plan = await prepareWrite(tool, { orderId: 3001 }, client);
     expect(client.writes()).toEqual([]);
     expect(plan.preview.action).toBe(
-      "Create an order confirmation (Auftragsbestätigung, AB) draft from offer AN-1001; sevDesk " +
+      "Create an order confirmation (Auftragsbestätigung, AB) draft from offer 3001; sevDesk " +
         "marks the offer as accepted (sent 200 → accepted 500).",
     );
     expect(plan.preview.facts).toEqual(
@@ -143,7 +143,7 @@ describe("sevdesk_order_create_confirmation (D-107)", () => {
         'sevdesk_order_set_offer_status (action "reopen").',
     );
     expect(plan.previewDe.action).toBe(
-      "Aus dem Angebot AN-1001 eine Auftragsbestätigung (AB) als Entwurf erstellen; sevDesk " +
+      "Aus dem Angebot 3001 eine Auftragsbestätigung (AB) als Entwurf erstellen; sevDesk " +
         "markiert das Angebot dabei als angenommen (versendet 200 → angenommen 500).",
     );
     expect(plan.binding).toMatch(/^[0-9a-f]{64}$/);
@@ -192,7 +192,7 @@ describe("sevdesk_order_create_confirmation (D-107)", () => {
     const client = staged({ before: accepted, afterOffer: accepted });
     const { plan, output } = await executeWrite(tool, { orderId: 3001 }, client);
     expect(plan.preview.action).toBe(
-      "Create an order confirmation (Auftragsbestätigung, AB) draft from offer AN-1001; the " +
+      "Create an order confirmation (Auftragsbestätigung, AB) draft from offer 3001; the " +
         "offer stays accepted (500).",
     );
     expect(plan.preview.warnings[0]).toBe(

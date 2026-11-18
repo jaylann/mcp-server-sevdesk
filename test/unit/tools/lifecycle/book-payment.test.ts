@@ -95,7 +95,7 @@ describe("sevdesk_invoice_book_payment (spec bookInvoice; community record shape
       }),
     ]);
     expect(plan.preview.action).toBe(
-      "Book a payment received of 177.33 EUR on invoice RE-1001 (full payment (FULL_PAYMENT)) " +
+      "Book a payment received of 177.33 EUR on invoice 1001 (full payment (FULL_PAYMENT)) " +
         "via check account Geschäftskonto Musterbank, linked to bank transaction 5101.",
     );
     expect(plan.preview.irreversible).toBe(false);
@@ -530,7 +530,7 @@ describe("sevdesk_credit_note_book_payment", () => {
         checkAccount: { id: 4001, objectName: "CheckAccount" },
       },
     });
-    expect(plan.preview.action).toContain("Book a payout of 23.80 EUR on credit note GU-1001");
+    expect(plan.preview.action).toContain("Book a payout of 23.80 EUR on credit note 2001");
     expect(plan.preview.facts).toContainEqual({
       label: "Sent to sevDesk as",
       value: "amount -23.8 (money leaving the account)",

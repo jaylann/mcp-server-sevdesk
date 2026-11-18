@@ -140,10 +140,8 @@ describe("sevdesk_document_delete_draft", () => {
       { kind: "invoice", id: 1001 },
       readsOnly(INVOICE, INVOICE.row),
     );
-    expect(plan.preview.action).toBe("Delete invoice 1001 (no number yet) (draft) from sevDesk.");
-    expect(plan.previewDe.action).toBe(
-      "Rechnung 1001 (noch ohne Nummer) (Entwurf) aus sevDesk löschen.",
-    );
+    expect(plan.preview.action).toBe("Delete invoice 1001 (draft) from sevDesk.");
+    expect(plan.previewDe.action).toBe("Rechnung 1001 (Entwurf) aus sevDesk löschen.");
     const labels = plan.preview.facts.map((fact) => fact.label);
     expect(labels).toEqual(
       expect.arrayContaining(["Invoice (Rechnung)", "Status", "Customer", "Date", "Gross"]),

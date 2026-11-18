@@ -70,8 +70,8 @@ describe("sevdesk_transaction_reset", () => {
     const client = linkedClient([]);
     const plan = await prepareWrite(tool, { id: 5201 }, client);
     expect(plan.preview.action).toBe(
-      "Undo the bookings of bank transaction 5201: reset 2 documents to open (invoice RE-1001, " +
-        "invoice RE-1002), removing all their payments.",
+      "Undo the bookings of bank transaction 5201: reset 2 documents to open (invoice 1001, " +
+        "invoice 1002), removing all their payments.",
     );
     const documentFacts = plan.preview.facts.filter((f) => f.label.startsWith("Document"));
     expect(documentFacts).toEqual([
@@ -90,7 +90,7 @@ describe("sevdesk_transaction_reset", () => {
     expect(plan.preview.warnings[0]).toContain("removes ALL payments booked on it");
     expect(plan.previewDe.action).toBe(
       "Buchungen des Kontoumsatzes 5201 rückgängig machen: 2 Dokumente auf offen zurücksetzen " +
-        "(Rechnung RE-1001, Rechnung RE-1002) und dabei alle ihre Zahlungen entfernen.",
+        "(Rechnung 1001, Rechnung 1002) und dabei alle ihre Zahlungen entfernen.",
     );
     expect(plan.previewDe.facts.filter((f) => f.label.startsWith("Dokument"))).toEqual([
       {

@@ -119,9 +119,8 @@ export const orderSetOfferStatusTool = defineWriteTool({
     const warnings = [CONSEQUENCES[args.action], ONLY_STATUS, content.notShown, ...content.notes];
     return {
       ...bothPreviews((lang) => {
-        const title =
-          doc.number ??
-          `${String(doc.id)} (${lang === "de" ? "noch ohne Nummer" : "no number yet"})`;
+        // By id: the stored number is text this server did not write; the facts show it (#129).
+        const title = String(doc.id);
         const change = `${from[lang]} ${String(doc.status)} → ${to[lang]} ${String(target)}`;
         const action =
           lang === "de"

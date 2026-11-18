@@ -36,19 +36,12 @@ import {
 /** At most this many earlier confirmations are named in a warning. */
 const NAMED_MAX = 5;
 
-/** "offer AN-1001", "offer 3001 (no number yet)"; German with its article for "aus dem …". */
-function offerTitle(
-  doc: { readonly id: number; readonly number: string | undefined },
-  lang: PreviewLanguage,
-): string {
-  if (lang === "de") {
-    return doc.number === undefined
-      ? `dem Angebot ${String(doc.id)} (noch ohne Nummer)`
-      : `dem Angebot ${doc.number}`;
-  }
-  return doc.number === undefined
-    ? `offer ${String(doc.id)} (no number yet)`
-    : `offer ${doc.number}`;
+/**
+ * "offer 3001"; German with its article for "aus dem …". By id, like `documentTitle`: the stored
+ * number is text this server did not write, so it appears only as a fact value (#129).
+ */
+function offerTitle(doc: { readonly id: number }, lang: PreviewLanguage): string {
+  return lang === "de" ? `dem Angebot ${String(doc.id)}` : `offer ${String(doc.id)}`;
 }
 
 /** `idList` in German: "Auftrag 3101, Auftrag 3102 und 2 weitere". */

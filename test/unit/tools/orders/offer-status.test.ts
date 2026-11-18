@@ -48,10 +48,12 @@ describe("sevdesk_order_set_offer_status (D-108)", () => {
     expect(client.writes().map((call) => [call.method, call.path, call.tier, call.body])).toEqual([
       ["PUT", "/Order/3001", "commit", { status: 500 }],
     ]);
-    expect(plan.preview.action).toBe("Mark offer AN-1001 as accepted (sent 200 → accepted 500).");
+    expect(plan.preview.action).toBe("Mark offer 3001 as accepted (sent 200 → accepted 500).");
     expect(plan.previewDe.action).toBe(
-      "Angebot AN-1001 als angenommen markieren (versendet 200 → angenommen 500).",
+      "Angebot 3001 als angenommen markieren (versendet 200 → angenommen 500).",
     );
+    // The stored number is a fact value, not part of the sentence (#129).
+    expect(plan.preview.facts[0]).toEqual({ label: "Order (Auftrag)", value: "AN-1001 (id 3001)" });
     expect(plan.preview.facts).toContainEqual({
       label: "Customer",
       value: "Musterfirma GmbH (contact 1001)",
@@ -92,7 +94,7 @@ describe("sevdesk_order_set_offer_status (D-108)", () => {
     const rejected = await executeWrite(tool, { id: 3001, action: "reject" }, reject);
     expect(reject.writes()[0]?.body).toEqual({ status: 300 });
     expect(rejected.plan.preview.action).toBe(
-      "Mark offer AN-1001 as rejected (sent 200 → rejected 300).",
+      "Mark offer 3001 as rejected (sent 200 → rejected 300).",
     );
 
     for (const from of ["300", "500"]) {
@@ -100,7 +102,7 @@ describe("sevdesk_order_set_offer_status (D-108)", () => {
       const reopened = await executeWrite(tool, { id: 3001, action: "reopen" }, reopen);
       expect(reopen.writes()[0]?.body).toEqual({ status: 200 });
       expect(reopened.output.summary).toBe("Offer 3001 reopened: status Delivered (sent) (200).");
-      expect(reopened.plan.previewDe.action).toMatch(/^Angebot AN-1001 wieder öffnen \(/);
+      expect(reopened.plan.previewDe.action).toMatch(/^Angebot 3001 wieder öffnen \(/);
     }
   });
 

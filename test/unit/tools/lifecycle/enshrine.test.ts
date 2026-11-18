@@ -52,13 +52,13 @@ describe("sevdesk_invoice_enshrine (spec invoiceEnshrine; community answer {obje
 
     expect(plan.preview.irreversible).toBe(true);
     expect(plan.preview.action).toBe(
-      "Enshrine invoice RE-1001 (festschreiben, GoBD): lock it permanently.",
+      "Enshrine invoice 1001 (festschreiben, GoBD): lock it permanently.",
     );
     expect(plan.preview.warnings[0]).toBe(
       "Irreversible (GoBD): the invoice can never be changed, deleted or reset to draft again; " +
         "corrections are then only possible with a cancellation (Storno) or a credit note.",
     );
-    expect(plan.previewDe.action).toBe("Rechnung RE-1001 festschreiben (GoBD): dauerhaft sperren.");
+    expect(plan.previewDe.action).toBe("Rechnung 1001 festschreiben (GoBD): dauerhaft sperren.");
     expect(plan.previewDe.warnings[0]).toBe(
       "Nicht umkehrbar (GoBD): Die Rechnung kann nie wieder geändert, gelöscht oder auf Entwurf " +
         "zurückgesetzt werden; Korrekturen sind dann nur noch mit einem Storno oder einer " +

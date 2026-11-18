@@ -85,7 +85,7 @@ describe("sevdesk_order_create_delivery_note (D-107)", () => {
   it("previews the source with its positions, in English only", async () => {
     const plan = await prepareWrite(tool, { orderId: 3002 }, staged());
     expect(plan.preview.action).toBe(
-      "Create a delivery note (Lieferschein, LI) draft from order AB-1002 (Auftragsbestätigung).",
+      "Create a delivery note (Lieferschein, LI) draft from order 3002 (Auftragsbestätigung).",
     );
     expect(plan.preview.facts).toEqual(
       expect.arrayContaining([
@@ -146,7 +146,7 @@ describe("sevdesk_order_create_delivery_note (D-107)", () => {
     const client = staged(accepted);
     const { plan, output } = await executeWrite(tool, { orderId: 3001 }, client);
     expect(plan.preview.action).toBe(
-      "Create a delivery note (Lieferschein, LI) draft from order AN-1001 (Angebot).",
+      "Create a delivery note (Lieferschein, LI) draft from order 3001 (Angebot).",
     );
     expect(client.writes().map((call) => call.query)).toEqual([
       { "order[id]": 3001, "order[objectName]": "Order" },

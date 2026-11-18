@@ -94,7 +94,7 @@ describe("sevdesk_invoice_create_reminder", () => {
     const client = new FakeSevdeskClient(routes());
     const plan = await prepareWrite(tool, { invoiceId: 1001 }, client);
     expect(plan.preview).toEqual({
-      action: "Create a reminder (Mahnung) draft for Invoice RE-1001 (id 1001).",
+      action: "Create a reminder (Mahnung) draft for invoice 1001.",
       facts: [
         { label: "Invoice", value: "Invoice RE-1001 (id 1001) (Open / due)" },
         { label: "Customer", value: "Musterfirma GmbH (contact 1001)" },

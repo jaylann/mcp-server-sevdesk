@@ -101,9 +101,7 @@ describe("sevdesk_document_set_layout on an invoice draft", () => {
     expect(fake.callsTo("/Invoice/1001/render")).toEqual([
       expect.objectContaining({ method: "POST", body: { forceReload: false } }),
     ]);
-    expect(plan.preview.action).toBe(
-      "Set the language, template and letterhead of invoice 1001 (no number yet).",
-    );
+    expect(plan.preview.action).toBe("Set the language, template and letterhead of invoice 1001.");
     expect(plan.preview.facts.slice(-3)).toEqual([
       { label: "Language (Sprache)", value: "German (Germany), de_DE → English (USA), en_US" },
       {
@@ -116,7 +114,7 @@ describe("sevdesk_document_set_layout on an invoice draft", () => {
       },
     ]);
     expect(plan.previewDe.action).toBe(
-      "Sprache, Vorlage und Briefpapier von Rechnung 1001 (noch ohne Nummer) ändern.",
+      "Sprache, Vorlage und Briefpapier von Rechnung 1001 ändern.",
     );
     expect(plan.previewDe.facts.slice(-3)).toEqual([
       { label: "Sprache", value: "Deutsch (Deutschland), de_DE → Englisch (USA), en_US" },
@@ -186,7 +184,7 @@ describe("sevdesk_document_set_layout on an invoice draft", () => {
       label: "Template (Vorlage)",
       value: "Standard (id tpl-standard) (unchanged)",
     });
-    expect(plan.preview.action).toBe("Set the language of invoice 1001 (no number yet).");
+    expect(plan.preview.action).toBe("Set the language of invoice 1001.");
     expect(fake.writes().map((call) => call.body)).toEqual([{ key: "language", value: "en_US" }]);
   });
 
