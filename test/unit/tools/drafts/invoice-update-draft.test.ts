@@ -97,9 +97,7 @@ describe("sevdesk_invoice_update_draft (community shapes, fake data)", () => {
       invoicePosSave: null,
       invoicePosDelete: null,
     });
-    expect(plan.preview.action).toBe(
-      "Update draft invoice 2102 for Musterfirma GmbH (contact 1001): change title.",
-    );
+    expect(plan.preview.action).toBe("Update draft invoice 2102 for contact 1001: change title.");
     expect(plan.preview.facts).toEqual([
       { label: "Invoice", value: "2102 (no number yet, draft)" },
       { label: "Customer", value: "Musterfirma GmbH (contact 1001)" },
@@ -231,7 +229,7 @@ describe("sevdesk_invoice_update_draft (community shapes, fake data)", () => {
       addressCountry: { id: 1, objectName: "StaticCountry" },
     });
     expect(plan.preview.action).toBe(
-      "Update draft invoice 2102 for Dr. Max Mustermann (contact 1002): change contact, address.",
+      "Update draft invoice 2102 for contact 1002: change contact, address.",
     );
     expect(plan.preview.facts).toContainEqual({
       label: "Address",

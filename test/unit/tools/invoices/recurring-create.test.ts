@@ -225,7 +225,7 @@ describe("sevdesk_invoice_create_recurring", () => {
       footText: "Zahlbar ohne Abzug.",
     });
     expect(plan.preview.action).toBe(
-      "Create a recurring invoice template (Abo-Rechnung) for Musterfirma GmbH (contact 1001): " +
+      "Create a recurring invoice template (Abo-Rechnung) for contact 1001: " +
         "65.45 EUR gross per invoice, monthly from 2026-12-01 until it is ended.",
     );
     expect(plan.preview.irreversible).toBe(false);
@@ -279,8 +279,8 @@ describe("sevdesk_invoice_create_recurring", () => {
   it("says the same in German, in the same order", async () => {
     const { plan } = await prepare({ ...args, endDate: "2027-02-15" });
     expect(plan.previewDe.action).toBe(
-      "Abo-Rechnung (Vorlage für wiederkehrende Rechnungen) für Musterfirma GmbH (Kontakt " +
-        "1001) anlegen: 65,45 EUR brutto je Rechnung, monatlich ab 01.12.2026 bis 15.02.2027.",
+      "Abo-Rechnung (Vorlage für wiederkehrende Rechnungen) für Kontakt 1001 anlegen: 65,45 EUR " +
+        "brutto je Rechnung, monatlich ab 01.12.2026 bis 15.02.2027.",
     );
     expect(plan.previewDe.facts.map((fact) => fact.label)).toEqual([
       "Kunde",

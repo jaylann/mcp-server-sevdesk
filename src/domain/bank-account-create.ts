@@ -155,7 +155,8 @@ export async function planBankAccountCreate(
 
   return {
     preview: {
-      action: `Create the ${KIND_LABELS[input.kind]} "${display(input.name)}".`,
+      // By kind only: the name is the model's argument; the "Name" fact shows it (#147).
+      action: `Create a new ${KIND_LABELS[input.kind]}.`,
       facts,
       warnings: warningsFor(input, complete),
       irreversible: false,

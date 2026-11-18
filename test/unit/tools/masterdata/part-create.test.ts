@@ -47,7 +47,7 @@ describe("sevdesk_part_create", () => {
     const client = new FakeSevdeskClient(routes());
     const plan = await prepareWrite(tool, args, client);
     expect(plan.preview).toEqual({
-      action: "Create the part Beratungspaket (DL-020).",
+      action: "Create a new part.",
       facts: [
         { label: "Name", value: "Beratungspaket" },
         { label: "Part number (Artikelnummer)", value: "DL-020" },

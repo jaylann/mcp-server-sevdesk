@@ -144,6 +144,7 @@ import {
 } from "./positions.js";
 import {
   addressText,
+  customerRef,
   customerText,
   type DraftPreview,
   fact,
@@ -439,9 +440,9 @@ export async function prepareCreditNoteCreate(
     fact("Total (expected)", totalsText(expected, currency)),
   ];
   const preview = draftPreview(
-    `Create a draft credit note (Gutschrift, ${category}) for ` +
-      `${customerText(contact.contact.displayName, args.contactId)} with ` +
-      `${positionCount(basics.positions.length)}, gross ${moneyText(expected.gross, currency)}.`,
+    `Create a draft credit note (Gutschrift, ${category}) for ${customerRef(args.contactId)} ` +
+      `with ${positionCount(basics.positions.length)}, gross ` +
+      `${moneyText(expected.gross, currency)}.`,
     facts,
     [
       ...(sourceCheck?.warnings ?? []),
@@ -623,7 +624,7 @@ export async function prepareCreditNoteUpdate(
     updateTotalFact(totals, doc, basics.currency),
   ];
   const preview = draftPreview(
-    `Update draft credit note ${doc.id} for ${customer}: change ` +
+    `Update draft credit note ${doc.id} for ${customerRef(basics.contact.contact.id)}: change ` +
       `${log.changed.join(", ") || "nothing visible"}.`,
     facts,
     [royaltyWarning(category), ...basics.warnings, totals.warning],

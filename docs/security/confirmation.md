@@ -14,7 +14,11 @@ recipients, texts).
 
 - The action sentence names a document by its kind and id ("invoice 1001"), never by its number:
   anyone can type any number on a draft in the sevDesk web app, so the number appears only as a
-  fact value, like every other text read from sevDesk.
+  fact value, like every other text read from sevDesk. Contacts, payment accounts, tags and parts
+  are named the same way ("contact 1001", "check account 4002", "tag 7001"), never by the names
+  users give them in the web app. A record a call creates is named by its kind only ("Create a
+  new part."): its name is the model's argument, often copied from untrusted text such as a
+  parsed e-invoice, so it too appears only as a fact value.
 - Values are stripped of invisible, bidi and control characters, so stored text cannot hide
   anything from the human.
 - Fact values are shown in full with their line breaks (an email text, for example), each line

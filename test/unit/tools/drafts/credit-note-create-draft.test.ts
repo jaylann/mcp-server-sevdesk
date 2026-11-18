@@ -132,8 +132,8 @@ describe("sevdesk_credit_note_create_draft (community: sevdesk-rs request shape 
       creditNotePosDelete: null,
     });
     expect(plan.preview.action).toBe(
-      "Create a draft credit note (Gutschrift, UNDERACHIEVEMENT) for Musterfirma GmbH (contact " +
-        "1001) with 1 position, gross 11.90 EUR.",
+      "Create a draft credit note (Gutschrift, UNDERACHIEVEMENT) for contact 1001 with 1 " +
+        "position, gross 11.90 EUR.",
     );
     expect(plan.preview.facts.slice(0, 4)).toEqual([
       { label: "Number", value: "GU-1002 (reserved when the draft is saved)" },

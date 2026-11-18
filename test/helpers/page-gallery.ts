@@ -182,9 +182,9 @@ const SEND_EMAIL_PREVIEWS: Previews = bothPreviews((lang) =>
 /** The action of a third, rejected request in the inbox. */
 const PAYMENT_ACTION = phrase(
   "Book a payout of 238.00 EUR on voucher 2001 (full payment (FULL_PAYMENT)) via check " +
-    "account Girokonto.",
+    "account 4001.",
   "Auszahlung von 238,00 EUR auf Beleg 2001 buchen (vollständige Zahlung (FULL_PAYMENT)), " +
-    "über das Zahlungskonto Girokonto.",
+    "über das Zahlungskonto 4001.",
 );
 
 /** The approval page of a fixture, with the preview of the reader's language. */

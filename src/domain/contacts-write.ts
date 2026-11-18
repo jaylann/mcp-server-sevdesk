@@ -433,8 +433,10 @@ export async function planContactCreate(
   const extras = parts.filter((part): part is string => part !== undefined);
   return {
     preview: {
+      // By kind only: the name is the model's argument, often copied from untrusted text (a
+      // parsed e-invoice, a receipt); the "Name" fact shows it (#147).
       action:
-        `Create the ${kind} contact ${displayName} (${category?.name ?? `category ${categoryId}`})` +
+        `Create a new ${kind} contact (${category?.name ?? `category ${categoryId}`})` +
         `${extras.length === 0 ? "" : ` with ${joinParts(extras)}`}.`,
       facts,
       warnings,
@@ -789,7 +791,9 @@ export async function planContactUpdate(
   }
   return {
     preview: {
-      action: `Update contact ${name} (id ${id}): ${changed.join(", ")}.`,
+      // By id: the stored name is text a user typed in the web app; the "Contact" fact shows it
+      // (#147).
+      action: `Update contact ${id}: ${changed.join(", ")}.`,
       facts,
       warnings,
       irreversible: false,

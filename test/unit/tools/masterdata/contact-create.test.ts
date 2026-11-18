@@ -110,8 +110,7 @@ describe("sevdesk_contact_create", () => {
 
     expect(plan.preview).toEqual({
       action:
-        "Create the organisation contact Beispiel Handel GmbH (Kunde) with a billing address " +
-        "and 1 communication way.",
+        "Create a new organisation contact (Kunde) with a billing address and 1 communication way.",
       facts: [
         { label: "Name", value: "Beispiel Handel GmbH" },
         { label: "Type", value: "organisation" },
@@ -224,7 +223,7 @@ describe("sevdesk_contact_create", () => {
     };
     const plan = await prepareWrite(tool, args, client);
     expect(plan.preview.action).toBe(
-      "Create the person contact Erika Beispiel (Lieferant) with 2 communication ways.",
+      "Create a new person contact (Lieferant) with 2 communication ways.",
     );
     expect(plan.preview.facts).toContainEqual({ label: "Customer number", value: "K-2000" });
     expect(plan.preview.facts).toContainEqual({ label: "Category", value: "Lieferant (supplier)" });
