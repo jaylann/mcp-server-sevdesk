@@ -1,6 +1,8 @@
 /**
  * Probes for issues #86 (contact persons, deleting contacts and their details, custom contact
- * fields) and #87 (tags and cost centres on documents).
+ * fields) and #87 (tags and cost centres on documents). `write-custom-field-limits` re-checks the
+ * custom field facts of D-086 recorded by one-off checks (#135), reports `confirmed` or
+ * `contradicted`, and deletes what it made in a `finally`, also when a step fails.
  *
  * The write probes create everything they touch: tagged contacts, addresses, communication ways,
  * custom field settings and values, draft invoices, orders, credit notes and vouchers, tags and,
@@ -20,6 +22,7 @@ import {
   type HttpResult,
   type ProbeContext,
   type ProbeDefinition,
+  type ProbeOutcome,
   type Query,
   refId,
   type Row,
@@ -33,10 +36,13 @@ import {
   isGone,
   keysOf,
   outcomeOf,
+  type RecordedCheck,
+  recordedOutcome,
   saveVoucherStatus,
   shapeOf,
   voucherHeader,
   voucherPosition,
+  withCleanup,
 } from "./m4-shared-probes.js";
 
 /** Contact category Kunde (customer), as the tagged test contact uses it. */
@@ -247,6 +253,244 @@ function runSuffix(ctx: ProbeContext): string {
  */
 function shortName(ctx: ProbeContext, label: string): string {
   return `E2E ${runSuffix(ctx)} ${label}`.slice(0, 30);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Custom field limits (re-check of D-086)
+// ---------------------------------------------------------------------------------------------
+
+/** A record a probe created and deletes at its end. */
+interface OwnRecord {
+  readonly objectName: string;
+  readonly id: number;
+}
+
+/**
+ * Deletes the records of `own` in the given order that are not marked deleted yet: a GET by id
+ * first (a value may already be gone with its contact or setting), a DELETE of what is still
+ * there, a GET again. One note per record the cleanup deleted or could not delete.
+ */
+async function deleteOwn(ctx: ProbeContext, own: readonly OwnRecord[]): Promise<string[]> {
+  const notes: string[] = [];
+  for (const { objectName, id } of own) {
+    const known = data(ctx).created.find(
+      (record) => record.objectName === objectName && record.id === id,
+    );
+    if (known?.state === "deleted by the probe") continue;
+    const before = await ctx.http.get(`/${objectName}/${id}`);
+    if (isGone(before)) {
+      markIfGone(ctx, objectName, id, before);
+      continue;
+    }
+    const deleted = await ctx.http.write("DELETE", `/${objectName}/${id}`, { tier: "write" });
+    const after = await ctx.http.get(`/${objectName}/${id}`);
+    markIfGone(ctx, objectName, id, after);
+    notes.push(
+      `${objectName} ${id} ${isGone(after) ? "deleted" : `left (DELETE ${outcomeOf(deleted)})`}`,
+    );
+  }
+  return notes;
+}
+
+/** `getReferenceCount` of a setting as a number, `undefined` when refused or not a number. */
+async function referenceCount(ctx: ProbeContext, settingId: number): Promise<number | undefined> {
+  const result = await ctx.http.get(`/ContactCustomFieldSetting/${settingId}/getReferenceCount`);
+  const count = Number(result.objects);
+  return result.ok && typeof result.objects !== "object" && Number.isSafeInteger(count)
+    ? count
+    : undefined;
+}
+
+/** Whether a DELETE answered `{objects: [null]}`. */
+function answeredNullList(result: HttpResult): boolean {
+  return (
+    result.ok &&
+    Array.isArray(result.objects) &&
+    result.objects.length === 1 &&
+    result.objects[0] === null
+  );
+}
+
+/**
+ * The body of `write-custom-field-limits`: every step appends to `own` what it created, so that the
+ * cleanup finds it also when a later step fails. Values are compared locally, never reported.
+ */
+async function customFieldLimits(ctx: ProbeContext, own: OwnRecord[]): Promise<ProbeOutcome> {
+  const checks: RecordedCheck[] = [];
+  const keep = (objectName: string, id: number, state: string) => {
+    data(ctx).register(objectName, id, state);
+    own.push({ objectName, id });
+  };
+  const postSetting = async (name: string) => {
+    const result = await ctx.http.write("POST", "/ContactCustomFieldSetting", {
+      tier: "write",
+      body: { objectName: "ContactCustomFieldSetting", name },
+    });
+    const id = createdId(result.objects);
+    if (id !== undefined) {
+      keep("ContactCustomFieldSetting", id, "custom field setting (deleted by the probe)");
+    }
+    return { id, result };
+  };
+
+  // 1. The setting name: 31 characters refused, exactly 30 taken.
+  const base = shortName(ctx, "Limit");
+  const tooLong = await postSetting(`${base} `.padEnd(31, "x"));
+  checks.push({
+    fact: "a setting name of 31 characters is refused with 400 (maximum 30)",
+    holds:
+      tooLong.id === undefined &&
+      tooLong.result.status === 400 &&
+      /Maximum for this property is 30\b/.test(tooLong.result.message ?? ""),
+    seen: tooLong.id === undefined ? outcomeOf(tooLong.result) : `created setting ${tooLong.id}`,
+  });
+  const name = `${base} `.padEnd(30, "x");
+  const setting = await postSetting(name);
+  checks.push({
+    fact: "a setting name of exactly 30 characters is taken",
+    holds: setting.id !== undefined,
+    seen: setting.id === undefined ? outcomeOf(setting.result) : `setting ${setting.id}`,
+  });
+  if (setting.id === undefined) return recordedOutcome(checks, "");
+  const settingId = setting.id;
+
+  const org = await organisation(ctx, "Zusatzfeld Limit");
+  if (org.id !== undefined) own.push({ objectName: "Contact", id: org.id });
+  const per = await person(ctx, "Zusatzfeld Limit");
+  if (per.id !== undefined) own.push({ objectName: "Contact", id: per.id });
+  if (org.id === undefined || per.id === undefined) {
+    const partial = recordedOutcome(checks, "", [
+      `Could not create the contacts: ${outcomeOf(org.result)} / ${outcomeOf(per.result)}`,
+    ]);
+    return { ...partial, verdict: "inconclusive" };
+  }
+  const orgId = org.id;
+  const personId = per.id;
+
+  // 2. The value: exactly 100 characters stored in full, 101 refused on PUT.
+  const value = `E2E-${runSuffix(ctx)}-LIMIT-`.padEnd(100, "0");
+  const postValue = async (contactId: number, fieldValue: string) => {
+    const result = await ctx.http.write("POST", "/ContactCustomField", {
+      tier: "write",
+      body: {
+        objectName: "ContactCustomField",
+        contact: ref("Contact", contactId),
+        contactCustomFieldSetting: ref("ContactCustomFieldSetting", settingId),
+        value: fieldValue,
+      },
+    });
+    const id = createdId(result.objects);
+    if (id !== undefined) keep("ContactCustomField", id, "custom field value of a tagged contact");
+    return { id, result };
+  };
+  const orgValue = await postValue(orgId, value);
+  const stored =
+    orgValue.id === undefined
+      ? ""
+      : str(await ctx.read.byId("ContactCustomField", orgValue.id), "value");
+  checks.push({
+    fact: "a value of exactly 100 characters is stored in full",
+    holds: stored === value,
+    seen:
+      orgValue.id === undefined
+        ? outcomeOf(orgValue.result)
+        : `stored ${stored.length} characters, ${stored === value ? "the text sent" : "another text"}`,
+  });
+  if (orgValue.id === undefined) return recordedOutcome(checks, "");
+  const orgValueId = orgValue.id;
+  const longer = await ctx.http.write("PUT", `/ContactCustomField/${orgValueId}`, {
+    tier: "write",
+    body: { objectName: "ContactCustomField", value: `${value}1` },
+  });
+  const unchanged = str(await ctx.read.byId("ContactCustomField", orgValueId), "value") === value;
+  checks.push({
+    fact: "a PUT of a 101-character value is refused with 400 (maximum 100), the value stays",
+    holds:
+      longer.status === 400 &&
+      /Maximum for this property is 100\b/.test(longer.message ?? "") &&
+      unchanged,
+    seen: `${outcomeOf(longer)}; value afterwards ${unchanged ? "unchanged" : "changed"}`,
+  });
+
+  // 3. One value per setting and contact.
+  const second = await postValue(orgId, `E2E-${runSuffix(ctx)}-ZWEI`);
+  const ofOrg = await ctx.read.page(
+    "/ContactCustomField",
+    { "contact[id]": orgId, "contact[objectName]": "Contact" },
+    100,
+  );
+  const values = ofOrg.rows.filter(
+    (row) =>
+      refId(row, "contact") === orgId && refId(row, "contactCustomFieldSetting") === settingId,
+  ).length;
+  checks.push({
+    fact: "a second value for the same contact and setting is refused with 400, one value is read",
+    holds: second.id === undefined && second.result.status === 400 && values === 1,
+    seen: `${second.id === undefined ? outcomeOf(second.result) : `created value ${second.id}`}; a read by contact shows ${ofOrg.result.ok ? `${values} value(s) of the setting` : outcomeOf(ofOrg.result)}`,
+  });
+
+  // 4. The search finds persons too and ignores limit and offset.
+  const personValue = await postValue(personId, value);
+  const pages: string[] = [];
+  let bothEverywhere = personValue.id !== undefined;
+  for (const offset of [0, 1]) {
+    const result = await ctx.http.get("/Contact/Factory/findContactsByCustomFieldValue", {
+      value,
+      "customFieldSetting[id]": settingId,
+      "customFieldSetting[objectName]": "ContactCustomFieldSetting",
+      customFieldName: name,
+      limit: 1,
+      offset,
+    });
+    const ids =
+      result.ok && result.objects !== undefined && result.objects !== null
+        ? rowIds(rowsOf(result.objects))
+        : [];
+    const both = ids.includes(orgId) && ids.includes(personId);
+    bothEverywhere &&= both;
+    pages.push(
+      `limit=1&offset=${offset}: ${result.ok ? `${ids.length} contact(s), organisation ${ids.includes(orgId)}, person ${ids.includes(personId)}` : outcomeOf(result)}`,
+    );
+  }
+  checks.push({
+    fact: "findContactsByCustomFieldValue finds the organisation and the person and ignores limit and offset",
+    holds: bothEverywhere,
+    seen: `${personValue.id === undefined ? `the person's value ${outcomeOf(personValue.result)}; ` : ""}${pages.join("; ")}`,
+  });
+
+  // 5. Deleting a contact deletes its value and lowers the setting's reference count.
+  if (personValue.id !== undefined) {
+    const countBefore = await referenceCount(ctx, settingId);
+    const deleted = await ctx.http.write("DELETE", `/Contact/${personId}`, { tier: "write" });
+    markIfGone(ctx, "Contact", personId, await ctx.http.get(`/Contact/${personId}`));
+    const valueAfter = await ctx.http.get(`/ContactCustomField/${personValue.id}`);
+    markIfGone(ctx, "ContactCustomField", personValue.id, valueAfter);
+    const countAfter = await referenceCount(ctx, settingId);
+    checks.push({
+      fact: "deleting a contact deletes its value (404) and lowers getReferenceCount by one",
+      holds:
+        deleted.ok &&
+        valueAfter.status === 404 &&
+        countBefore !== undefined &&
+        countAfter === countBefore - 1,
+      seen: `DELETE ${outcomeOf(deleted)}; value afterwards ${presence(valueAfter)}; getReferenceCount ${String(countBefore)} → ${String(countAfter)}`,
+    });
+  }
+
+  // 6. Deleting the setting while a value uses it deletes the value too (no 409).
+  const settingDeleted = await ctx.http.write("DELETE", `/ContactCustomFieldSetting/${settingId}`, {
+    tier: "write",
+  });
+  const settingAfter = await ctx.http.get(`/ContactCustomFieldSetting/${settingId}`);
+  markIfGone(ctx, "ContactCustomFieldSetting", settingId, settingAfter);
+  const valueAfter = await ctx.http.get(`/ContactCustomField/${orgValueId}`);
+  markIfGone(ctx, "ContactCustomField", orgValueId, valueAfter);
+  checks.push({
+    fact: "deleting the setting while a value uses it answers [null] and deletes the value",
+    holds: answeredNullList(settingDeleted) && isGone(settingAfter) && isGone(valueAfter),
+    seen: `DELETE ${outcomeOf(settingDeleted)}${settingDeleted.ok ? `, answer ${shapeOf(settingDeleted.objects)}` : ""}; setting afterwards ${presence(settingAfter)}, value afterwards ${presence(valueAfter)}`,
+  });
+  return recordedOutcome(checks, "");
 }
 
 /**
@@ -1035,6 +1279,28 @@ export const GAPS_CONTACTS_PROBES: readonly ProbeDefinition[] = [
         lines.push(`second value: ${outcomeOf(second)}`);
       }
       return { verdict: "observed", finding: `${lines.join(". ")}.` };
+    },
+  },
+  {
+    id: "write-custom-field-limits",
+    title: "Custom contact fields: the limits and deletes recorded on 2026-11-16/17",
+    mode: "write",
+    question:
+      'Do the custom field facts of D-086 still hold? A setting name of 31 characters is refused with 400 ("Maximum for this property is 30") and one of exactly 30 is taken; a value of exactly 100 characters is stored in full, and a PUT of 101 characters is refused with 400 ("Maximum for this property is 100") and leaves the value; a second POST /ContactCustomField for the same contact and setting is refused with 400 and a read by contact shows one value; ' +
+      "findContactsByCustomFieldValue finds an organisation and a person with the same value and ignores limit and offset (limit=1 with offset 0 and 1 both answer both); deleting a contact deletes its value (404) and lowers getReferenceCount by one; deleting the setting while a value uses it answers [null] and deletes the value (no 409). Everything it creates is deleted at the end, also when a step fails.",
+    deviations: ["D-086"],
+    async run(ctx) {
+      const own: OwnRecord[] = [];
+      // Values first, then settings, then contacts, so that no cleanup delete relies on a cascade.
+      const order = ["ContactCustomField", "ContactCustomFieldSetting", "Contact"];
+      return withCleanup(
+        () => customFieldLimits(ctx, own),
+        () =>
+          deleteOwn(
+            ctx,
+            [...own].sort((a, b) => order.indexOf(a.objectName) - order.indexOf(b.objectName)),
+          ),
+      );
     },
   },
   {

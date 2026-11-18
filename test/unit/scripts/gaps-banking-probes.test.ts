@@ -21,6 +21,7 @@ import {
   snapshotChanges,
 } from "../../../scripts/lib/probes/gaps-banking-probes.js";
 import { EXPORT_POLL } from "../../../scripts/lib/probes/m4-reports-probes.js";
+import { recordedOutcome, withCleanup } from "../../../scripts/lib/probes/m4-shared-probes.js";
 import { renderReport } from "../../../scripts/lib/probes/report.js";
 import { type RunOptions, runProbes } from "../../../scripts/lib/probes/runner.js";
 import { assertNoSecrets, createScrubber } from "../../../scripts/lib/scrub.js";
@@ -112,6 +113,19 @@ function gapsAccount(
     zipIgnoresFilter?: boolean;
     /** Synthetic (safety test, not recorded): the invoice ZIP marks drafts as sent. */
     zipMarksSent?: boolean;
+    /** Synthetic (not recorded): the account factories take any accountingNumber (D-119). */
+    factoriesTakeAnyNumber?: boolean;
+    /** Synthetic (not recorded): POST /CheckAccountTransaction answers an array of one (D-071). */
+    transactionAnswerList?: boolean;
+    /** Synthetic (not recorded): rules trim their texts and refuse a duplicate (D-099). */
+    rulesTrimAndRefuseDuplicates?: boolean;
+    /**
+     * Rules the account already holds, listed before new ones; the rule list then honours
+     * `limit`/`offset` and answers `total` (D-099).
+     */
+    existingRules?: number;
+    /** Synthetic (not recorded): DELETE /PrivateTransactionRule/{id} is refused. */
+    ruleDeleteRefused?: boolean;
   } = {},
 ) {
   // Far from the digits PERSONAL looks for, so a generated id never matches it.
@@ -180,6 +194,14 @@ function gapsAccount(
   ]);
   const uploads = new Map<string, Uint8Array>();
   const rules = new Map<number, Rec>();
+  for (let index = 1; index <= (settings.existingRules ?? 0); index += 1) {
+    rules.set(index, {
+      id: String(index),
+      objectName: "PrivateTransactionRule",
+      paymentPurpose: null,
+      counterpartName: `Bestandsregel ${index}`,
+    });
+  }
   /** transaction id → voucher id it pays. */
   const links = new Map<number, number>();
   /** transaction id → voucher whose booking created it. */
@@ -247,8 +269,28 @@ function gapsAccount(
       const active = [...accounts.values()].filter((row) => row["status"] !== "0");
       return { total: String(active.length), objects: active };
     }
+    if (
+      (path === "/CheckAccount/Factory/fileImportAccount" ||
+        path === "/CheckAccount/Factory/clearingAccount") &&
+      typeof body["accountingNumber"] === "number" &&
+      settings.factoriesTakeAnyNumber !== true
+    ) {
+      // D-119: a number any account holds (archived ones too) or outside the allowed set.
+      const number = body["accountingNumber"];
+      if ([...accounts.values()].some((row) => row["accountingNumber"] === String(number))) {
+        refused(422, "The given account number is already used");
+      }
+      if (number !== 1460 && (number < 1800 || number > 1899)) {
+        refused(422, `The given account number ${number} is invalid`);
+      }
+    }
     if (path === "/CheckAccount/Factory/fileImportAccount") {
       const accountId = nextId++;
+      // Without a number: the next free one of the 18xx range (D-119).
+      let free = 1807;
+      while ([...accounts.values()].some((row) => row["accountingNumber"] === String(free))) {
+        free += 1;
+      }
       accounts.set(accountId, {
         id: String(accountId),
         objectName: "CheckAccount",
@@ -256,6 +298,10 @@ function gapsAccount(
         type: "online",
         importType: body["importType"],
         bankServer: null,
+        accountingNumber:
+          typeof body["accountingNumber"] === "number"
+            ? String(body["accountingNumber"])
+            : String(free),
         status: "100",
       });
       return { objects: accounts.get(accountId) };
@@ -305,18 +351,25 @@ function gapsAccount(
         );
       }
       const transactionId = nextId++;
+      const { mapAll: _mapAll, ...fields } = body;
+      // Recorded 2026-11-17 (D-071): the row itself, dates at noon Berlin, purpose null if unsent.
       const row: Rec = {
-        ...body,
+        ...fields,
         id: String(transactionId),
         objectName: "CheckAccountTransaction",
+        valueDate: `${TODAY}T12:00:00+01:00`,
+        entryDate: `${TODAY}T12:00:00+01:00`,
         amount: String(body["amount"]),
+        paymtPurpose: body["paymtPurpose"] ?? null,
         status: "100",
         enshrined: null,
         deletedAt: null,
+        restoredAt: null,
         checkAccount: ref("CheckAccount", Number((body["checkAccount"] as Rec)["id"])),
       };
       transactions.set(transactionId, row);
-      return { objects: row };
+      // A copy, as over HTTP: later changes of the stored row must not reach the answer.
+      return { objects: settings.transactionAnswerList === true ? [{ ...row }] : { ...row } };
     }
     if (/^\/CheckAccountTransaction\/\d+\/enshrine$/.test(path)) {
       const row = transactions.get(id);
@@ -364,18 +417,44 @@ function gapsAccount(
     if (path === "/PrivateTransactionRule") {
       if (method === "POST") {
         const ruleId = nextId++;
+        // Recorded (D-099, D-130): texts kept exactly, cut to 255 without notice, duplicates kept.
+        const text = (value: unknown) => {
+          if (typeof value !== "string") return null;
+          return settings.rulesTrimAndRefuseDuplicates === true
+            ? value.trim().slice(0, 255)
+            : value.slice(0, 255);
+        };
         const row: Rec = {
           id: String(ruleId),
           objectName: "PrivateTransactionRule",
-          paymentPurpose: body["paymentPurpose"] ?? null,
-          counterpartName: body["counterpartName"] ?? null,
+          paymentPurpose: text(body["paymentPurpose"]),
+          counterpartName: text(body["counterpartName"]),
         };
+        if (
+          settings.rulesTrimAndRefuseDuplicates === true &&
+          [...rules.values()].some(
+            (rule) =>
+              rule["paymentPurpose"] === row["paymentPurpose"] &&
+              rule["counterpartName"] === row["counterpartName"],
+          )
+        ) {
+          refused(422, "A rule with these values already exists");
+        }
         rules.set(ruleId, row);
-        return { objects: row };
+        return { objects: { ...row } };
+      }
+      if (settings.existingRules !== undefined) {
+        const offset = Number(query["offset"] ?? 0);
+        const all = [...rules.values()];
+        return {
+          total: String(all.length),
+          objects: all.slice(offset, offset + Number(query["limit"])),
+        };
       }
       return { objects: [...rules.values()] };
     }
     if (/^\/PrivateTransactionRule\/\d+$/.test(path) && method === "DELETE") {
+      if (settings.ruleDeleteRefused === true) refused(409, "Rule cannot be deleted");
       rules.delete(id);
       return { objects: [null] };
     }
@@ -737,6 +816,12 @@ function finding(report: Awaited<ReturnType<typeof runProbes>>, id: string): str
 }
 
 const ALL_IDS = GAPS_BANKING_PROBES.map((probe) => probe.id);
+/** The probes that re-check facts recorded by one-off checks (#135). */
+const RECHECKS = [
+  "write-check-account-number-refusals",
+  "write-transaction-create-answer",
+  "write-private-transaction-rule-storage",
+];
 const saved = { export: EXPORT_POLL.delayMs, recognition: RECOGNITION_POLL.delayMs };
 
 beforeEach(() => {
@@ -830,7 +915,10 @@ describe("gap probes on a simulated trial account", () => {
     }
     for (const transaction of account.transactions.values()) {
       if (transaction["paymtPurpose"] !== "Beleg") {
-        expect(transaction["paymtPurpose"]).toMatch(/^MCP-E2E /);
+        // The answer probe's row without a purpose carries the tag in its counterparty.
+        if (transaction["paymtPurpose"] !== null) {
+          expect(transaction["paymtPurpose"]).toMatch(/^MCP-E2E /);
+        }
         expect(transaction["payeePayerName"]).toMatch(/^MCP-E2E /);
       }
     }
@@ -914,10 +1002,11 @@ describe("gap probes on a simulated trial account", () => {
     expect(rules).toMatch(/created after the rules \(exact counterpart\): status 100/);
     expect(rules).toMatch(/cleanup back to 100: nothing private/);
 
-    // The follow-up for D-096/D-097: counts only, the simulation lists soft-deleted rows.
+    // The follow-up for D-096/D-097: counts only, the simulation lists soft-deleted rows (four of
+    // the delete probes, two of write-transaction-create-answer).
     const soft = finding(report, "read-transaction-soft-delete");
     expect(soft).toMatch(
-      /without a filter: \d+ rows \(total \d+\), 4 with deletedAt \(\d+ status 100(, \d+ status 100){3}\), 1 of accounts not in GET \/CheckAccount/,
+      /without a filter: \d+ rows \(total \d+\), 6 with deletedAt \(\d+ status 100(, \d+ status 100){5}\), 1 of accounts not in GET \/CheckAccount/,
     );
     // Bookings and counter-entries cancel out on the register.
     expect(soft).toMatch(/account 6333723: 4 rows, 0 with deletedAt; sum of all 0\.00/);
@@ -926,6 +1015,189 @@ describe("gap probes on a simulated trial account", () => {
     expect(kinds).toMatch(/type="register"/);
     expect(kinds).toMatch(/importType="CSV"/);
     expect(kinds).toMatch(/No account looks bank-connected/);
+  });
+
+  it("re-checks the facts recorded on 2026-11-16/17 and confirms them, cleaning up (#135)", async () => {
+    const account = gapsAccount();
+    const report = await run(account, RECHECKS);
+    for (const id of RECHECKS) {
+      expect(report.results.find((result) => result.id === id)?.status, finding(report, id)).toBe(
+        "confirmed",
+      );
+    }
+
+    // D-119: both refusals on both factories, with the run's own import account's number.
+    const numbers = finding(report, "write-check-account-number-refusals");
+    expect(numbers).toMatch(
+      /The number in use is that of file-import account \d+ .*accountingNumber 1807/,
+    );
+    expect(numbers).toMatch(
+      /clearingAccount with a number in use \(1807\) is refused with 422: as recorded \(refused \(422: The given account number is already used\)\)/,
+    );
+    expect(numbers).toMatch(
+      /fileImportAccount with a number 3321 \(not allowed\) is refused with 422: as recorded \(refused \(422: The given account number 3321 is invalid\)\)/,
+    );
+    const factoryCalls = account.client
+      .writes()
+      .filter((call) => call.path.startsWith("/CheckAccount/Factory/"));
+    // The import account, then two refusals per factory: never a retry.
+    expect(factoryCalls.map((call) => (call.body as Rec)["accountingNumber"] ?? null)).toEqual([
+      null,
+      1807,
+      3321,
+      1807,
+      3321,
+    ]);
+
+    // D-071, D-096: the answer shape and the soft delete, for both rows.
+    const answer = finding(report, "write-transaction-create-answer");
+    expect(answer).toMatch(/one object; keys the same as the GET row's/);
+    expect(answer).toMatch(
+      /amount "-12\.34", status "100", valueDate "2026-11-20T12:00:00\+01:00"/,
+    );
+    expect(answer).toMatch(
+      /without a purpose has paymtPurpose null: as recorded \(paymtPurpose null\)/,
+    );
+    expect(answer).toMatch(/answers an array of one: as recorded \(a list of 1/);
+    expect(answer).toMatch(
+      /DELETE ok, answer \[null\]; afterwards readable, deletedAt set, restoredAt null, other changes: none/,
+    );
+    const rows = report.created.filter(
+      (record) =>
+        record.probe === "write-transaction-create-answer" &&
+        record.objectName === "CheckAccountTransaction",
+    );
+    expect(rows.map((record) => record.state)).toEqual([
+      "deleted by the probe (soft delete)",
+      "deleted by the probe (soft delete)",
+    ]);
+    const posts = account.client
+      .writes()
+      .filter((call) => call.method === "POST" && call.path === "/CheckAccountTransaction");
+    expect(posts).toHaveLength(2);
+    for (const call of posts) expect(call.tier).toBe("commit");
+    expect((posts[1]?.body as Rec)["paymtPurpose"]).toBeUndefined();
+
+    // D-099, D-130: spaces kept, duplicate stored, 255 kept, 256 cut; every rule deleted (commit).
+    const storage = finding(report, "write-private-transaction-rule-storage");
+    expect(storage).toMatch(
+      /stored exactly as sent: as recorded \(\d+ characters stored for \d+ sent, the text sent\)/,
+    );
+    expect(storage).toMatch(
+      /second row: as recorded \(another id; listed: first true, second true\)/,
+    );
+    expect(storage).toMatch(
+      /255 characters is stored in full: as recorded \(255 characters stored for 255 sent, the text sent\)/,
+    );
+    expect(storage).toMatch(
+      /cut to 255: as recorded \(255 characters stored for 256 sent, its first characters\)/,
+    );
+    expect(storage).toMatch(
+      /Cleanup: rule \d+ deleted; rule \d+ deleted; rule \d+ deleted; rule \d+ deleted\.$/,
+    );
+    expect(account.rules.size).toBe(0);
+    const ruleCalls = account.client
+      .writes()
+      .filter((call) => call.path.startsWith("/PrivateTransactionRule"));
+    expect(ruleCalls.map((call) => `${call.method} ${call.tier ?? ""}`)).toEqual([
+      ...Array<string>(4).fill("POST commit"),
+      ...Array<string>(4).fill("DELETE commit"),
+    ]);
+    // Every list read names its limit.
+    for (const call of account.client.calls.filter(
+      (item) =>
+        item.method === "GET" && /^\/(PrivateTransactionRule|CheckAccount)$/.test(item.path),
+    )) {
+      expect(call.query["limit"], call.path).toEqual(expect.any(Number));
+    }
+    // The rule texts never reach the report, only their lengths.
+    const markdown = renderReport(report);
+    expect(markdown).not.toMatch(/Leerzeichen|xxxxxxxxxx|yyyyyyyyyy/);
+    expect(markdown).not.toMatch(PERSONAL);
+  });
+
+  it("reports changed behaviour as contradicted and still cleans up (#135)", async () => {
+    const account = gapsAccount({
+      factoriesTakeAnyNumber: true,
+      transactionAnswerList: true,
+      rulesTrimAndRefuseDuplicates: true,
+    });
+    const report = await run(account, RECHECKS);
+    for (const id of RECHECKS) {
+      expect(report.results.find((result) => result.id === id)?.status, finding(report, id)).toBe(
+        "contradicted",
+      );
+    }
+    expect(finding(report, "write-check-account-number-refusals")).toMatch(
+      /clearingAccount with a number in use \(1807\) is refused with 422: DIFFERS \(created account \d+\)/,
+    );
+    // The four accounts the factories created anyway are archived again; the run's own import
+    // account (whose number was reused) stays for the other probes.
+    const ofProbe = report.created.filter(
+      (record) =>
+        record.probe === "write-check-account-number-refusals" &&
+        record.objectName === "CheckAccount",
+    );
+    const unexpected = ofProbe.slice(1);
+    expect(ofProbe[0]?.state).toBe("file-import bank account (delete it in the web app)");
+    expect(unexpected).toHaveLength(4);
+    for (const record of unexpected) {
+      expect(record.state).toBe("archived by the probe (DELETE, D-097)");
+      expect(account.accounts.get(record.id)?.["status"]).toBe("0");
+    }
+    expect(finding(report, "write-check-account-number-refusals")).toMatch(
+      /Cleanup: account \d+ archived; account \d+ archived; account \d+ archived; account \d+ archived\./,
+    );
+
+    const answer = finding(report, "write-transaction-create-answer");
+    expect(answer).toMatch(/one object, .*: DIFFERS \(objects a list of 1/);
+    expect(
+      report.created
+        .filter((record) => record.probe === "write-transaction-create-answer")
+        .map((record) => record.state),
+    ).toEqual(["deleted by the probe (soft delete)", "deleted by the probe (soft delete)"]);
+
+    const storage = finding(report, "write-private-transaction-rule-storage");
+    expect(storage).toMatch(
+      /stored exactly as sent: DIFFERS \(\d+ characters stored for \d+ sent, the text sent, trimmed\)/,
+    );
+    expect(storage).toMatch(
+      /second row: DIFFERS \(refused \(422: A rule with these values already exists\)\)/,
+    );
+    expect(account.rules.size).toBe(0);
+  });
+
+  it("never takes a rule beyond the first 1000 for a changed storage or a deleted rule (#135)", async () => {
+    const id = "write-private-transaction-rule-storage";
+    // A few rules of the account's own: the page holds them all, the facts are confirmed.
+    const few = gapsAccount({ existingRules: 3 });
+    const fewReport = await run(few, [id]);
+    expect(fewReport.results.find((item) => item.id === id)?.status).toBe("confirmed");
+    expect(few.rules.size).toBe(3);
+
+    // 1000 rules of its own: the new ones are on a later page, which proves nothing either way.
+    const many = gapsAccount({ existingRules: 1000 });
+    const manyReport = await run(many, [id]);
+    const result = manyReport.results.find((item) => item.id === id);
+    expect(result?.status, result?.finding).toBe("inconclusive");
+    expect(result?.finding).toMatch(
+      /^4 of the new rules are not among the first 1000 of the account's rules \(total 1004\)/,
+    );
+    // Each DELETE answered 2xx: deleted, though the list cannot show it.
+    expect(result?.finding).toMatch(/Cleanup: (rule \d+ deleted(; |\.$)){4}/);
+    expect(many.rules.size).toBe(1000);
+
+    // A refused DELETE of a rule off the first page is not reported as deleted.
+    const stuck = gapsAccount({ existingRules: 1000, ruleDeleteRefused: true });
+    const stuckReport = await run(stuck, [id]);
+    expect(finding(stuckReport, id)).toMatch(
+      /rule \d+ not confirmed deleted \(DELETE refused \(409: Rule cannot be deleted\), list not among the first 1000 of 1004 rules\)/,
+    );
+    expect(
+      stuckReport.created
+        .filter((record) => record.objectName === "PrivateTransactionRule")
+        .map((record) => record.state),
+    ).toEqual(Array<string>(4).fill("rule (deleted at the end of the probe)"));
   });
 
   it("compares receipt hashes without showing them", async () => {
@@ -1143,6 +1415,54 @@ describe("gap probe helpers", () => {
     expect(snapshotChanges(before, after)).toBe(
       "1 of 2 changed: 1: header, status 100 → 200, 1 new, 1 gone",
     );
+  });
+
+  it("runs a probe's cleanup once, after the body, also when the body throws", async () => {
+    const cleanup = vi.fn(() => Promise.resolve(["rule 7 deleted"]));
+    const outcome = await withCleanup(
+      () => Promise.resolve({ verdict: "confirmed" as const, finding: "All as recorded." }),
+      cleanup,
+    );
+    expect(outcome).toEqual({
+      verdict: "confirmed",
+      finding: "All as recorded. Cleanup: rule 7 deleted.",
+    });
+    expect(cleanup).toHaveBeenCalledTimes(1);
+
+    const order: string[] = [];
+    await expect(
+      withCleanup(
+        () => {
+          order.push("body");
+          return Promise.reject(new Error("network down"));
+        },
+        () => {
+          order.push("cleanup");
+          return Promise.resolve([]);
+        },
+      ),
+    ).rejects.toThrow("network down");
+    expect(order).toEqual(["body", "cleanup"]);
+
+    const quiet = await withCleanup(
+      () => Promise.resolve({ verdict: "observed" as const, finding: "Nothing made." }),
+      () => Promise.resolve([]),
+    );
+    expect(quiet.finding).toBe("Nothing made.");
+  });
+
+  it("confirms only when every recorded fact holds", () => {
+    const holds = { fact: "a", holds: true, seen: "x" };
+    const differs = { fact: "b", holds: false, seen: "y" };
+    expect(recordedOutcome([holds], "On account 1")).toEqual({
+      verdict: "confirmed",
+      finding: "On account 1. a: as recorded (x).",
+    });
+    expect(recordedOutcome([holds, differs], "", ["note"])).toEqual({
+      verdict: "contradicted",
+      finding: "a: as recorded (x). b: DIFFERS (y). note.",
+    });
+    expect(recordedOutcome([], "Nothing to compare").verdict).toBe("inconclusive");
   });
 
   it("keeps only the signature of a binary body in the evidence", async () => {

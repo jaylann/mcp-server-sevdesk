@@ -2775,7 +2775,10 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   live M4 scenario creates its transaction on a file-import account (`test/live/lifecycle.test.ts`).
   Live: probes `write-offline-booking-transaction`, `write-voucher-reset`,
   `write-transaction-create`, `write-cash-register-transaction` (cash registers; the simulated
-  register in `test/unit/scripts/gaps-banking-probes.test.ts` replays its answers).
+  register in `test/unit/scripts/gaps-banking-probes.test.ts` replays its answers),
+  `write-transaction-create-answer` (the answer of the POST recorded on 2026-11-17, with and
+  without a purpose; `test/unit/scripts/gaps-banking-probes.test.ts`, "re-checks the facts
+  recorded on 2026-11-16/17…").
 
 ### D-072: `getPdf` answers `mimetype` and `base64Encoded`, not the spec's casing
 
@@ -3370,8 +3373,10 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   1000, saying so"); `test/unit/tools/masterdata/contact-delete.test.ts` ("says the custom field
   values go too, and when they could not be read (D-086)"); `test/unit/tools/meta/reference-lookup.test.ts`
   ("lists the account's custom contact fields with limit 1000, GET only (D-086)"). Live: probes
-  `write-custom-field-settings`, `write-custom-field-values`; the 2026-11-17 facts have no probe
-  yet.
+  `write-custom-field-settings`, `write-custom-field-values`, and `write-custom-field-limits`
+  for the name and value limits, one value per setting, the search paging and both cascading
+  deletes recorded on 2026-11-16/17 (`test/unit/scripts/gaps-contacts-probes.test.ts`,
+  "re-checks the custom field facts of D-086…").
 
 ### D-087: `checkCustomerNumberAvailability` answers a bare boolean and needs a number
 
@@ -3719,7 +3724,8 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   `test/unit/tools/banking/transaction-get.test.ts` ("reports a deleted row as deleted, never as a
   live one"); `test/regressions/manual-transactions.test.ts` ("a soft-deleted row is reported as
   deleted and never as live"). Live: probes `write-transaction-delete`,
-  `read-transaction-soft-delete`.
+  `read-transaction-soft-delete`, `write-transaction-create-answer` (the `[null]` answer and the
+  read-back with `deletedAt` of the 2026-11-17 check).
 
 ### D-097: Check accounts come only from two factories, and `DELETE` archives them
 
@@ -3903,7 +3909,9 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   stated as fact); `test/regressions/concurrent-check-then-write.test.ts` (two equal creations at
   once give one rule); `test/unit/sevdesk/paths.test.ts` ("minimumWriteTier for
   private-transaction rules": both requests need `commit`, the list stays a read). The recorded
-  list was empty, so no fixture was kept; the tests build rows with the recorded keys.
+  list was empty, so no fixture was kept; the tests build rows with the recorded keys. Live:
+  probes `write-private-transaction-rule` and `write-private-transaction-rule-storage` (spaces
+  kept, duplicates stored, the cut of D-130).
 
 ### D-100: A receipt's `contentHash` is the SHA-256 of the file; rendered PDFs have none
 
@@ -4798,7 +4806,9 @@ pdf, sevClient, name, default, img}]}`, `GET /DocServer/getTemplatesWithThumb?ty
   "turns sevDesk's 'already used' refusal into its own sentence without sevDesk's text", "turns
   sevDesk's 'is invalid' refusal into its own sentence without sevDesk's text", "leaves other
   refusals, and refusals without a booking account, as sevDesk sent them"). Live: the one-off
-  checks above; no probe in `pnpm probe` yet.
+  checks above, and the probe `write-check-account-number-refusals` (both refusals on both
+  factories, with the number of the run's own file-import account and 3321;
+  `test/unit/scripts/gaps-banking-probes.test.ts`).
 
 ### D-130: `PrivateTransactionRule` cuts texts over 255 characters without notice
 
@@ -4817,7 +4827,8 @@ pdf, sevClient, name, default, img}]}`, `GET /DocServer/getTemplatesWithThumb?ty
   result, which would show a cut if that limit were ever raised.
 - **Test:** `test/unit/tools/banking/private-rules.test.ts` ("refuses a text over 100 characters
   in its arguments", "notes a stored text cut short, as sevDesk cuts texts over 255 characters").
-  Live: the one-off checks above; no probe in `pnpm probe` yet.
+  Live: the one-off checks above, and the probe `write-private-transaction-rule-storage` (255
+  characters kept, 256 cut; `test/unit/scripts/gaps-banking-probes.test.ts`).
 
 ### D-132: Recurring templates: generation and auto-sending are switches read by `embed`
 

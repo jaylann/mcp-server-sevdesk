@@ -81,6 +81,12 @@ function gapsAccount(
     allowReferencedDelete?: boolean;
     /** Existing contacts (read probes). */
     contacts?: readonly Rec[];
+    /**
+     * Custom fields as recorded on 2026-11-17 (D-086): values of at most 100 characters, one value
+     * per setting and contact, deleting a setting deletes its values, the search needs no name.
+     * Off: the earlier synthetic variant (no value checks, 409 on a used setting, name required).
+     */
+    customFieldsAsRecorded?: boolean;
   } = {},
 ) {
   let nextId = 1000;
@@ -218,7 +224,9 @@ function gapsAccount(
       };
     }
     if (path === "/Contact/Factory/findContactsByCustomFieldValue") {
-      if (query["customFieldName"] === undefined) refused(400, "customFieldName missing");
+      if (query["customFieldName"] === undefined && settings.customFieldsAsRecorded !== true) {
+        refused(400, "customFieldName missing");
+      }
       const ids = [...fields.values()]
         .filter((row) => row["value"] === query["value"])
         .map((row) => idOf(row["contact"]));
@@ -263,9 +271,11 @@ function gapsAccount(
     }
     if (/^\/ContactCustomFieldSetting\/\d+$/.test(path)) {
       if (method === "DELETE") {
-        if ([...fields.values()].some((row) => idOf(row["contactCustomFieldSetting"]) === id)) {
+        const uses = [...fields].filter(([, row]) => idOf(row["contactCustomFieldSetting"]) === id);
+        if (uses.length > 0 && settings.customFieldsAsRecorded !== true) {
           refused(409, "Setting is in use.");
         }
+        for (const [key] of uses) fields.delete(key);
         return remove(fieldSettings, id);
       }
       if (method === "PUT") {
@@ -274,7 +284,26 @@ function gapsAccount(
       }
       return byId(fieldSettings, id);
     }
+    if (
+      /^\/ContactCustomField(?:\/\d+)?$/.test(path) &&
+      settings.customFieldsAsRecorded === true &&
+      typeof body["value"] === "string" &&
+      body["value"].length > 100
+    ) {
+      refused(400, "Property 'value' is too long. Maximum for this property is 100");
+    }
     if (path === "/ContactCustomField") {
+      if (
+        method === "POST" &&
+        settings.customFieldsAsRecorded === true &&
+        [...fields.values()].some(
+          (row) =>
+            idOf(row["contact"]) === idOf(body["contact"]) &&
+            idOf(row["contactCustomFieldSetting"]) === idOf(body["contactCustomFieldSetting"]),
+        )
+      ) {
+        refused(400, "Bad Request");
+      }
       if (method === "POST") {
         const rowId = nextId++;
         fields.set(rowId, {
@@ -431,7 +460,15 @@ function gapsAccount(
     if (method !== "GET") refused(422, "not simulated");
     return { total: "0", objects: [] };
   };
-  return { client: new ScriptedClient(handler), contacts, tags, costCentres, documents };
+  return {
+    client: new ScriptedClient(handler),
+    contacts,
+    fieldSettings,
+    fields,
+    tags,
+    costCentres,
+    documents,
+  };
 }
 
 function result(report: Awaited<ReturnType<typeof runProbes>>, id: string) {
@@ -466,6 +503,7 @@ describe("gap probes (#86, #87): catalog", () => {
         "write-communication-way-delete",
         "write-custom-field-settings",
         "write-custom-field-values",
+        "write-custom-field-limits",
         "read-customer-number-availability",
         "write-tag-create-on-documents",
         "write-tag-relation-filters",
@@ -521,13 +559,14 @@ describe("gap probes (#86, #87) on a simulated trial account", () => {
         }
       }
     }
-    // Short names: custom field settings within 30 characters (except the probe of the limit),
-    // cost-centre numbers within the 8-character pattern, order numbers distinct.
+    // Short names: custom field settings within 30 characters (except the two probes of the
+    // limit), cost-centre numbers within the 8-character pattern, order numbers distinct.
     const settingNames = writes
       .filter((call) => call.path === "/ContactCustomFieldSetting")
       .map((call) => String((call.body as Rec)["name"]));
     expect(settingNames.filter((name) => name.length > 30)).toEqual([
       "E2E abcd Feld xxxxxxxxxxxxxxxxx",
+      "E2E abcd Limit xxxxxxxxxxxxxxxx",
     ]);
     for (const call of writes.filter((item) => item.path === "/CostCentre")) {
       expect(String((call.body as Rec)["number"])).toMatch(/^[A-Za-z0-9]{1,8}$/);
@@ -658,6 +697,78 @@ describe("gap probes (#86, #87) on a simulated trial account", () => {
     );
     const markdown = renderReport(report);
     expect(markdown).not.toMatch(/EXT-4711/);
+  });
+
+  it("re-checks the custom field facts of D-086 and confirms them, deleting what it made (#135)", async () => {
+    const account = gapsAccount({ customFieldsAsRecorded: true });
+    const report = await runProbes(
+      options(account.client, { only: ["write-custom-field-limits"] }),
+    );
+    const limits = result(report, "write-custom-field-limits");
+    expect(limits.status, limits.finding).toBe("confirmed");
+    const finding = limits.finding;
+    expect(finding).toMatch(
+      /31 characters is refused with 400 \(maximum 30\): as recorded \(refused \(400: Property 'name' is too long\. Maximum for this property is 30\)\)/,
+    );
+    expect(finding).toMatch(
+      /exactly 100 characters is stored in full: as recorded \(stored 100 characters, the text sent\)/,
+    );
+    expect(finding).toMatch(
+      /101-character value .*: as recorded \(refused \(400: Property 'value' is too long\. Maximum for this property is 100\); value afterwards unchanged\)/,
+    );
+    expect(finding).toMatch(
+      /second value .*: as recorded \(refused \(400: Bad Request\); a read by contact shows 1 value\(s\) of the setting\)/,
+    );
+    expect(finding).toMatch(
+      /limit=1&offset=0: 2 contact\(s\), organisation true, person true; limit=1&offset=1: 2 contact\(s\), organisation true, person true/,
+    );
+    expect(finding).toMatch(/value afterwards gone \(404\); getReferenceCount 2 → 1\)/);
+    expect(finding).toMatch(
+      /answers \[null\] and deletes the value: as recorded \(DELETE ok, answer a list of 1; setting afterwards gone \(404\), value afterwards gone \(404\)\)/,
+    );
+    // Only the organisation was left to the cleanup; nothing of the probe stays.
+    expect(finding).toMatch(/Cleanup: Contact \d+ deleted\.$/);
+    expect(account.fieldSettings.size).toBe(0);
+    expect(account.fields.size).toBe(0);
+    expect(account.contacts.size).toBe(0);
+    expect(report.created.every((record) => record.state === "deleted by the probe")).toBe(true);
+    // The search names its limit, and no POST or PUT is sent twice with the same body.
+    const searches = account.client.calls.filter((call) =>
+      call.path.endsWith("findContactsByCustomFieldValue"),
+    );
+    expect(searches.map((call) => [call.query["limit"], call.query["offset"]])).toEqual([
+      [1, 0],
+      [1, 1],
+    ]);
+    const sent = account.client
+      .writes()
+      .filter((call) => call.method !== "DELETE")
+      .map((call) => `${call.method} ${call.path} ${JSON.stringify(call.body)}`);
+    expect(new Set(sent).size).toBe(sent.length);
+    // Values never reach the report.
+    expect(renderReport(report)).not.toMatch(/LIMIT-0|ZWEI/);
+  });
+
+  it("reports the earlier variant as contradicted and still deletes values, setting and contacts", async () => {
+    const account = gapsAccount();
+    const report = await runProbes(
+      options(account.client, { only: ["write-custom-field-limits"] }),
+    );
+    const limits = result(report, "write-custom-field-limits");
+    expect(limits.status, limits.finding).toBe("contradicted");
+    expect(limits.finding).toMatch(
+      /101-character value .*: DIFFERS \(ok; value afterwards changed\)/,
+    );
+    expect(limits.finding).toMatch(/second value .*: DIFFERS \(created value \d+;/);
+    expect(limits.finding).toMatch(
+      /deletes the value: DIFFERS \(DELETE refused \(409: Setting is in use\.\); setting afterwards still there, value afterwards still there\)/,
+    );
+    expect(limits.finding).toMatch(
+      /Cleanup: ContactCustomField \d+ deleted; ContactCustomField \d+ deleted; ContactCustomFieldSetting \d+ deleted; Contact \d+ deleted\.$/,
+    );
+    expect(account.fieldSettings.size).toBe(0);
+    expect(account.fields.size).toBe(0);
+    expect(account.contacts.size).toBe(0);
   });
 
   it("tags documents of every kind, reuses a tag by name and removes one relation", async () => {

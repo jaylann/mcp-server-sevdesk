@@ -2,7 +2,10 @@
  * Probes for the competitor-gap issues: hand-made bank and cash transactions, the account
  * factories and private-transaction rules (#88), the hash sevDesk keeps for a receipt file (#92),
  * the invoice and voucher ZIP archives and the DATEV XML job (#95), and sevDesk's own receipt
- * recognition `createVoucherFromFile` (#96).
+ * recognition `createVoucherFromFile` (#96). Three probes re-check facts first recorded by one-off
+ * checks (#135): the factories' `accountingNumber` refusals (D-119), the answer of a hand-made
+ * transaction (D-071, D-096) and how rules store their texts (D-099, D-130); they report
+ * `confirmed` or `contradicted` and clean up in a `finally`, also when a step fails.
  *
  * Safety:
  * - Everything a probe creates carries the run tag (names, purposes, counterparties, voucher texts)
@@ -38,6 +41,7 @@ import {
   type HttpResult,
   type ProbeContext,
   type ProbeDefinition,
+  type ProbeOutcome,
   type Query,
   refId,
   type Row,
@@ -58,6 +62,8 @@ import {
   isoNoon,
   keysOf,
   outcomeOf,
+  type RecordedCheck,
+  recordedOutcome,
   shapeOf,
   slug,
   tinyPdf,
@@ -66,6 +72,7 @@ import {
   uploadTempFile,
   voucherFailure,
   voucherState,
+  withCleanup,
 } from "./m4-shared-probes.js";
 
 // ---------------------------------------------------------------------------------------------
@@ -639,6 +646,378 @@ async function runExportJob(
 }
 
 // ---------------------------------------------------------------------------------------------
+// Re-checks of facts recorded by one-off checks (2026-11-16/17)
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * The body of `write-check-account-number-refusals`: per factory the two refusals D-119 recorded,
+ * a number in use (`inUse`, the run's own import account's) and 3321, which sevDesk does not allow.
+ * An account a factory creates anyway goes into `unexpected`, which the cleanup archives.
+ */
+async function accountNumberRefusals(
+  ctx: ProbeContext,
+  account: { readonly id: number; readonly note: string },
+  inUse: number,
+  unexpected: number[],
+): Promise<ProbeOutcome> {
+  const tag = data(ctx).tag;
+  const refusals = [
+    {
+      label: `in use (${inUse})`,
+      number: inUse,
+      name: "belegt",
+      pattern: /^The given account number is already used\b/,
+    },
+    {
+      label: "3321 (not allowed)",
+      number: 3321,
+      name: "ungueltig",
+      pattern: /^The given account number 3321 is invalid\b/,
+    },
+  ];
+  const checks: RecordedCheck[] = [];
+  for (const factory of ["clearingAccount", "fileImportAccount"] as const) {
+    for (const refusal of refusals) {
+      const result = await ctx.http.write("POST", `/CheckAccount/Factory/${factory}`, {
+        tier: "write",
+        body: {
+          name: `${tag} Nummer ${refusal.name}`,
+          ...(factory === "fileImportAccount" ? { importType: "CSV" } : {}),
+          accountingNumber: refusal.number,
+        },
+      });
+      const id = createdId(result.objects);
+      if (id !== undefined) {
+        unexpected.push(id);
+        data(ctx).register("CheckAccount", id, "account created despite the number (archived)");
+      }
+      checks.push({
+        fact: `${factory} with a number ${refusal.label} is refused with 422`,
+        holds:
+          id === undefined && result.status === 422 && refusal.pattern.test(result.message ?? ""),
+        seen: id === undefined ? outcomeOf(result) : `created account ${id}`,
+      });
+    }
+  }
+  return recordedOutcome(checks, `The number in use is that of ${account.note}`);
+}
+
+/** Keys whose values differ between two reads of a row (`update` and `ignore` skipped). */
+function changedKeys(
+  before: Row | undefined,
+  after: Row | undefined,
+  ignore: readonly string[],
+): string[] {
+  const skip = new Set(["update", ...ignore]);
+  return [...new Set([...Object.keys(before ?? {}), ...Object.keys(after ?? {})])]
+    .filter((key) => !skip.has(key))
+    .filter((key) => JSON.stringify(before?.[key] ?? null) !== JSON.stringify(after?.[key] ?? null))
+    .sort();
+}
+
+/**
+ * The body of `write-transaction-create-answer`: two rows on the file-import account (with and
+ * without a purpose), each compared with D-071's answer and soft-deleted as D-096 says. Created
+ * rows go into `own` for the cleanup.
+ */
+async function transactionCreateAnswer(
+  ctx: ProbeContext,
+  account: { readonly id: number; readonly note: string },
+  own: number[],
+): Promise<ProbeOutcome> {
+  const tag = data(ctx).tag;
+  const checks: RecordedCheck[] = [];
+  for (const withPurpose of [true, false]) {
+    const label = withPurpose ? "with paymtPurpose" : "without paymtPurpose";
+    const purpose = `${tag} Antwortform`;
+    const result = await ctx.http.write("POST", "/CheckAccountTransaction", {
+      tier: "commit",
+      body: {
+        objectName: "CheckAccountTransaction",
+        mapAll: true,
+        valueDate: isoNoon(ctx.today),
+        entryDate: isoNoon(ctx.today),
+        amount: -12.34,
+        ...(withPurpose ? { paymtPurpose: purpose } : {}),
+        // The counterparty carries the tag also on the row without a purpose.
+        payeePayerName: `${tag} Gegenpartei`,
+        checkAccount: { id: account.id, objectName: "CheckAccount" },
+        status: 100,
+      },
+    });
+    const id = createdId(result.objects, "checkAccountTransaction");
+    if (id === undefined) {
+      checks.push({ fact: `POST ${label} creates a row`, holds: false, seen: outcomeOf(result) });
+      continue;
+    }
+    own.push(id);
+    data(ctx).register("CheckAccountTransaction", id, "status 100 (deletable in the web app)");
+    const answer: unknown = result.objects;
+    const answerRow =
+      answer !== null && typeof answer === "object" && !Array.isArray(answer)
+        ? (answer as Row)
+        : undefined;
+    const read = await ctx.http.get(`/CheckAccountTransaction/${id}`);
+    const getRow = firstRow(read.objects);
+    const onlyAnswer = Object.keys(answerRow ?? {}).filter(
+      (key) => !Object.hasOwn(getRow ?? {}, key),
+    );
+    const onlyGet = Object.keys(getRow ?? {}).filter((key) => !Object.hasOwn(answerRow ?? {}, key));
+    checks.push({
+      fact: `POST ${label} answers objects as one object, the new row with the keys of a GET row (deletedAt, restoredAt included)`,
+      holds:
+        answerRow !== undefined &&
+        str(answerRow, "id") === String(id) &&
+        getRow !== undefined &&
+        onlyAnswer.length === 0 &&
+        onlyGet.length === 0 &&
+        Object.hasOwn(answerRow, "deletedAt") &&
+        Object.hasOwn(answerRow, "restoredAt"),
+      seen:
+        answerRow === undefined
+          ? `objects ${shapeOf(answer)}`
+          : `one object; keys ${onlyAnswer.length + onlyGet.length === 0 ? "the same as the GET row's" : `only in the answer: ${onlyAnswer.join(", ") || "none"}, only in GET: ${onlyGet.join(", ") || "none"}`}`,
+    });
+    const valueDate = str(answerRow, "valueDate");
+    checks.push({
+      fact: `the answer ${label} has amount "-12.34" (a string), status 100 and valueDate 12:00 Berlin on the day sent`,
+      holds:
+        answerRow?.["amount"] === "-12.34" &&
+        str(answerRow, "status") === "100" &&
+        valueDate.startsWith(`${ctx.today}T12:00:00`) &&
+        /[+-]\d{2}:\d{2}$/.test(valueDate),
+      seen: `amount ${JSON.stringify(answerRow?.["amount"] ?? null)}, status ${JSON.stringify(answerRow?.["status"] ?? null)}, valueDate ${JSON.stringify(answerRow?.["valueDate"] ?? null)}`,
+    });
+    const storedPurpose = answerRow?.["paymtPurpose"];
+    checks.push({
+      fact: withPurpose
+        ? "the answer has the paymtPurpose as sent"
+        : "the answer without a purpose has paymtPurpose null",
+      holds: withPurpose
+        ? storedPurpose === purpose
+        : answerRow !== undefined &&
+          Object.hasOwn(answerRow, "paymtPurpose") &&
+          storedPurpose === null,
+      seen:
+        typeof storedPurpose === "string"
+          ? `a text of ${storedPurpose.length} characters, ${storedPurpose === purpose ? "the text sent" : "another text"}`
+          : `paymtPurpose ${storedPurpose === undefined ? "absent" : JSON.stringify(storedPurpose)}`,
+    });
+    checks.push({
+      fact: `a GET by id of the row ${label} answers an array of one`,
+      holds: read.ok && Array.isArray(read.objects) && read.objects.length === 1,
+      seen: !read.ok
+        ? outcomeOf(read)
+        : Array.isArray(read.objects)
+          ? `a list of ${read.objects.length}`
+          : shapeOf(read.objects),
+    });
+
+    const deleted = await ctx.http.write("DELETE", `/CheckAccountTransaction/${id}`, {
+      tier: "commit",
+    });
+    const afterRead = await ctx.http.get(`/CheckAccountTransaction/${id}`);
+    const afterRow = afterRead.ok ? firstRow(afterRead.objects) : undefined;
+    const deletedAt = str(afterRow, "deletedAt");
+    if (deletedAt !== "") {
+      data(ctx).mark("CheckAccountTransaction", id, "deleted by the probe (soft delete)");
+    } else if (isGone(afterRead)) {
+      data(ctx).mark("CheckAccountTransaction", id, "deleted by the probe");
+    }
+    const changed = changedKeys(getRow, afterRow, ["deletedAt"]);
+    checks.push({
+      fact: `DELETE of the row ${label} answers [null] and only sets deletedAt (restoredAt null, the row stays readable by id)`,
+      holds:
+        deleted.ok &&
+        Array.isArray(deleted.objects) &&
+        deleted.objects.length === 1 &&
+        deleted.objects[0] === null &&
+        afterRow !== undefined &&
+        deletedAt !== "" &&
+        afterRow["restoredAt"] === null &&
+        changed.length === 0,
+      seen:
+        `DELETE ${outcomeOf(deleted)}${deleted.ok ? `, answer ${JSON.stringify(deleted.objects ?? null)}` : ""}; afterwards ` +
+        (afterRow === undefined
+          ? isGone(afterRead)
+            ? "gone"
+            : outcomeOf(afterRead)
+          : `readable, deletedAt ${deletedAt === "" ? "not set" : "set"}, restoredAt ${JSON.stringify(afterRow["restoredAt"] ?? null)}, other changes: ${changed.join(", ") || "none"}`),
+    });
+  }
+  return recordedOutcome(checks, `On ${account.note}`);
+}
+
+/** The page size the rule-storage probe reads the rule list with. */
+const RULE_PAGE = 1000;
+
+/** Whether one page of the rule list holds every rule of the account. */
+function listsEveryRule(page: {
+  readonly rows: readonly Row[];
+  readonly total: number | undefined;
+}): boolean {
+  return (
+    page.rows.length < RULE_PAGE || (page.total !== undefined && page.total <= page.rows.length)
+  );
+}
+
+/** What a stored rule text is, compared with the text sent; never the text itself. */
+function storedText(row: Row | undefined, key: string, sent: string): string {
+  if (row === undefined) return "rule not listed";
+  const value = row[key];
+  if (typeof value !== "string")
+    return `${key} ${value === undefined ? "absent" : JSON.stringify(value)}`;
+  const relation =
+    value === sent
+      ? "the text sent"
+      : value === sent.trim()
+        ? "the text sent, trimmed"
+        : sent.startsWith(value)
+          ? "its first characters"
+          : "another text";
+  return `${value.length} characters stored for ${sent.length} sent, ${relation}`;
+}
+
+/**
+ * The body of `write-private-transaction-rule-storage`. Every rule it creates goes into `own`;
+ * the cleanup deletes them.
+ */
+async function ruleStorage(ctx: ProbeContext, own: number[]): Promise<ProbeOutcome> {
+  const tag = data(ctx).tag;
+  const create = async (body: Readonly<Record<string, string>>) => {
+    const result = await ctx.http.write("POST", "/PrivateTransactionRule", {
+      // A rule makes sevDesk mark imports private: commit, as the rule tools (#131).
+      tier: "commit",
+      body: { objectName: "PrivateTransactionRule", ...body },
+    });
+    const id = createdId(result.objects);
+    if (id !== undefined) {
+      own.push(id);
+      data(ctx).register("PrivateTransactionRule", id, "rule (deleted at the end of the probe)");
+    }
+    return { id, result };
+  };
+  // Two leading spaces and one trailing, as recorded.
+  const spaced = `  ${tag} Leerzeichen `;
+  const first = await create({ counterpartName: spaced });
+  const duplicate = await create({ counterpartName: spaced });
+  const full = `${tag} Zweck 255 `.padEnd(255, "x");
+  const long = `${tag} Zweck 256 `.padEnd(256, "y");
+  const kept = await create({ paymentPurpose: full });
+  const cut = await create({ paymentPurpose: long });
+
+  // No read by id is recorded: the stored texts come from the list.
+  const list = await ctx.read.page("/PrivateTransactionRule", undefined, RULE_PAGE);
+  if (!list.result.ok) {
+    return inconclusive(
+      `The rules were created, but GET /PrivateTransactionRule ${outcomeOf(list.result)}.`,
+    );
+  }
+  const listed = (id: number | undefined) =>
+    id === undefined ? undefined : list.rows.find((row) => str(row, "id") === String(id));
+  // The list's order is not recorded: on an account with more rules than one page, a new rule
+  // missing from the page says nothing about how sevDesk stored it.
+  const missing = [first, duplicate, kept, cut].filter(
+    (rule) => rule.id !== undefined && listed(rule.id) === undefined,
+  ).length;
+  if (missing > 0 && !listsEveryRule(list)) {
+    return inconclusive(
+      `${missing} of the new rules are not among the first ${RULE_PAGE} of the account's rules (total ${list.total ?? "unknown"}), so their stored texts could not be read.`,
+    );
+  }
+  const checks: RecordedCheck[] = [
+    {
+      fact: "a counterpartName with two leading spaces and one trailing is stored exactly as sent",
+      holds: str(listed(first.id), "counterpartName") === spaced,
+      seen:
+        first.id === undefined
+          ? outcomeOf(first.result)
+          : storedText(listed(first.id), "counterpartName", spaced),
+    },
+    {
+      fact: "a second rule with the same counterpartName is stored as a second row",
+      holds:
+        duplicate.id !== undefined &&
+        duplicate.id !== first.id &&
+        listed(first.id) !== undefined &&
+        str(listed(duplicate.id), "counterpartName") === spaced,
+      seen:
+        duplicate.id === undefined
+          ? outcomeOf(duplicate.result)
+          : `${duplicate.id === first.id ? "the same id" : "another id"}; listed: first ${listed(first.id) !== undefined}, second ${listed(duplicate.id) !== undefined}`,
+    },
+    {
+      fact: "a paymentPurpose of 255 characters is stored in full",
+      holds: str(listed(kept.id), "paymentPurpose") === full,
+      seen:
+        kept.id === undefined
+          ? outcomeOf(kept.result)
+          : storedText(listed(kept.id), "paymentPurpose", full),
+    },
+    {
+      fact: "a paymentPurpose of 256 characters is accepted and stored cut to 255",
+      holds: cut.result.ok && str(listed(cut.id), "paymentPurpose") === long.slice(0, 255),
+      seen:
+        cut.id === undefined
+          ? outcomeOf(cut.result)
+          : storedText(listed(cut.id), "paymentPurpose", long),
+    },
+  ];
+  return recordedOutcome(checks, "", [
+    `The list had ${list.rows.length} rule(s) (total ${list.total ?? "none"})`,
+  ]);
+}
+
+/**
+ * Archives accounts a factory created against the record (`DELETE /CheckAccount/{id}` archives,
+ * D-097: an account cannot be deleted through the API).
+ */
+async function archiveAccounts(ctx: ProbeContext, ids: readonly number[]): Promise<string[]> {
+  const notes: string[] = [];
+  for (const id of ids) {
+    const deleted = await ctx.http.write("DELETE", `/CheckAccount/${id}`, { tier: "write" });
+    const after = await ctx.http.get(`/CheckAccount/${id}`);
+    const archived = str(firstRow(after.objects), "status") === "0";
+    if (isGone(after)) data(ctx).mark("CheckAccount", id, "deleted by the probe");
+    else if (archived) data(ctx).mark("CheckAccount", id, "archived by the probe (DELETE, D-097)");
+    notes.push(
+      `account ${id} ${isGone(after) ? "deleted" : archived ? "archived" : `left (DELETE ${outcomeOf(deleted)})`}`,
+    );
+  }
+  return notes;
+}
+
+/**
+ * Deletes the rules of `own` (commit) and confirms with one list read that none is listed. A rule
+ * missing from the list counts as deleted only when its DELETE answered 2xx or the page holds every
+ * rule: on a longer list it may just be on a later page.
+ */
+async function deleteRules(ctx: ProbeContext, own: readonly number[]): Promise<string[]> {
+  if (own.length === 0) return [];
+  const answers = new Map<number, HttpResult>();
+  for (const id of own) {
+    answers.set(
+      id,
+      await ctx.http.write("DELETE", `/PrivateTransactionRule/${id}`, { tier: "commit" }),
+    );
+  }
+  const after = await ctx.read.page("/PrivateTransactionRule", undefined, RULE_PAGE);
+  const listed = new Set(after.rows.map((row) => str(row, "id")));
+  return own.map((id) => {
+    const answer = answers.get(id);
+    const unlisted = after.result.ok && !listed.has(String(id));
+    const gone = unlisted && (answer?.ok === true || listsEveryRule(after));
+    if (gone) data(ctx).mark("PrivateTransactionRule", id, "deleted by the probe");
+    const list = !after.result.ok
+      ? outcomeOf(after.result)
+      : unlisted
+        ? `not among the first ${RULE_PAGE} of ${after.total ?? "more"} rules`
+        : "still shows it";
+    return `rule ${id} ${gone ? "deleted" : `not confirmed deleted (DELETE ${answer === undefined ? "not sent" : outcomeOf(answer)}, list ${list})`}`;
+  });
+}
+
+// ---------------------------------------------------------------------------------------------
 // The one enshrine call
 // ---------------------------------------------------------------------------------------------
 
@@ -798,6 +1177,30 @@ export const GAPS_BANKING_PROBES: readonly ProbeDefinition[] = [
     },
   },
   {
+    id: "write-check-account-number-refusals",
+    title: "The account factories' two accountingNumber refusals (422)",
+    mode: "write",
+    question:
+      'Do both account factories still refuse an accountingNumber as recorded in D-119 (#109)? With the booking account number of the run\'s tagged file-import account, POST /CheckAccount/Factory/clearingAccount and /fileImportAccount each answer 422 "The given account number is already used"; with 3321 each answers 422 "The given account number 3321 is invalid". An account a factory creates anyway is archived again (DELETE, D-097), also when a later step fails.',
+    deviations: ["D-119", "D-097"],
+    async run(ctx) {
+      const imported = await importAccount(ctx);
+      if (imported.id === undefined) return inconclusive(imported.note);
+      const account = { id: imported.id, note: imported.note };
+      const inUse = Number(
+        str(await ctx.read.byId("CheckAccount", account.id), "accountingNumber"),
+      );
+      if (!Number.isSafeInteger(inUse) || inUse <= 0) {
+        return inconclusive(`${imported.note} reads no booking account number to reuse.`);
+      }
+      const unexpected: number[] = [];
+      return withCleanup(
+        () => accountNumberRefusals(ctx, account, inUse, unexpected),
+        () => archiveAccounts(ctx, unexpected),
+      );
+    },
+  },
+  {
     id: "write-transaction-delete",
     title: "DELETE /CheckAccountTransaction on a file-import account: unbooked, private, booked",
     mode: "write",
@@ -873,6 +1276,31 @@ export const GAPS_BANKING_PROBES: readonly ProbeDefinition[] = [
         finding: `On ${imported.note}. ${lines.join(". ")}.`,
         deviations: { "D-071": "informs", "D-076": "informs" },
       };
+    },
+  },
+  {
+    id: "write-transaction-create-answer",
+    title: "The answer of POST /CheckAccountTransaction, and DELETE on a file-import account",
+    mode: "write",
+    question:
+      'Do the facts of D-071 and D-096 recorded on 2026-11-17 (#118) still hold? On the tagged file-import account, POST /CheckAccountTransaction (mapAll, both dates 12:00 Berlin as UTC ISO, amount -12.34, status 100), once with a tagged paymtPurpose and once without: 2xx with objects as one object, the new row itself with the keys of a GET row (deletedAt and restoredAt included), amount the string "-12.34", status 100, valueDate 12:00 Berlin on the day sent, paymtPurpose null when none was sent; a GET by id answers an array of one (D-001). DELETE of each row answers [null] and only sets deletedAt: the row stays readable by id, unchanged otherwise, restoredAt null. Both rows are deleted at the end, also when a step fails.',
+    deviations: ["D-071", "D-096"],
+    async run(ctx) {
+      const imported = await importAccount(ctx);
+      if (imported.id === undefined) return inconclusive(imported.note);
+      const account = { id: imported.id, note: imported.note };
+      const own: number[] = [];
+      return withCleanup(
+        () => transactionCreateAnswer(ctx, account, own),
+        async () => {
+          const notes: string[] = [];
+          for (const id of own) {
+            if (endsDeleted(await transactionStatus(ctx, id))) continue;
+            notes.push(`transaction ${id}: ${await deleteTransaction(ctx, id)}`);
+          }
+          return notes;
+        },
+      );
     },
   },
   {
@@ -990,6 +1418,21 @@ export const GAPS_BANKING_PROBES: readonly ProbeDefinition[] = [
         finding: `On ${imported.note}. ${lines.join(". ")}.`,
         deviations: { "D-076": "informs", "D-024": "informs" },
       };
+    },
+  },
+  {
+    id: "write-private-transaction-rule-storage",
+    title: "How PrivateTransactionRule stores texts: spaces, duplicates, the 255-character cut",
+    mode: "write",
+    question:
+      "Do the rule-storage facts of D-099 and D-130 recorded on 2026-11-17 (#122) still hold? POST /PrivateTransactionRule (commit) stores a tagged counterpartName with two leading spaces and one trailing exactly as sent; a second rule with the same counterpartName is stored as a second row (another id, both listed); a paymentPurpose of 255 characters is stored in full, and one of 256 characters is accepted with 2xx and stored cut to its first 255. The stored texts are read from GET /PrivateTransactionRule (limit 1000; no read by id is recorded) and compared, never shown. Every rule is deleted at the end (commit), also when a step fails.",
+    deviations: ["D-099", "D-130"],
+    async run(ctx) {
+      const own: number[] = [];
+      return withCleanup(
+        () => ruleStorage(ctx, own),
+        () => deleteRules(ctx, own),
+      );
     },
   },
   {
