@@ -41,7 +41,7 @@ export const NOT_PROBED: readonly ManualCheck[] = [
   },
   {
     what: "PUT /Invoice|CreditNote|Voucher/{id}/enshrine",
-    why: "Irreversible (festschreiben). (One tagged transaction is enshrined only by the opt-in probe write-transaction-enshrine.)",
+    why: "Irreversible (festschreiben). (Tagged transactions the probes created are enshrined only by the opt-in probes write-transaction-enshrine and write-transaction-enshrine-statuses.)",
     deviations: [],
   },
   {

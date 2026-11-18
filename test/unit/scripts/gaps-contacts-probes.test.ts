@@ -87,9 +87,17 @@ function gapsAccount(
      * Off: the earlier synthetic variant (no value checks, 409 on a used setting, name required).
      */
     customFieldsAsRecorded?: boolean;
+    /** Synthetic (not recorded): a voucher position takes the head's cost centre, not its own. */
+    positionsTakeHeadCostCentre?: boolean;
+    /** Synthetic (not recorded): `GET /TagRelation` lists rows in reverse order past offset 0. */
+    relationsUnstable?: boolean;
+    /** Synthetic (not recorded): refuses every request this returns true for (422). */
+    refuseWhen?: (call: ScriptedCall) => boolean;
   } = {},
 ) {
   let nextId = 1000;
+  /** Voucher positions saved through `saveVoucher` (only `VoucherPos` reads use them). */
+  const positions = new Map<number, Rec>();
   const contacts = new Map<number, Rec>(
     (settings.contacts ?? []).map((row) => [Number(row["id"]), { ...row }]),
   );
@@ -150,6 +158,7 @@ function gapsAccount(
     const { method, path, query } = call;
     const body = (call.body ?? {}) as Rec;
     const id = Number(/\/(\d+)(?:\/|$)/.exec(path)?.[1]);
+    if (settings.refuseWhen?.(call) === true) refused(422, "Synthetic refusal");
     if (path === "/Tools/bookkeepingSystemVersion") return { objects: { version: "2.0" } };
     if (path === "/SevUser") return { total: "1", objects: [{ id: "7", objectName: "SevUser" }] };
     if (path === "/ReceiptGuidance/forAllAccounts") {
@@ -189,15 +198,39 @@ function gapsAccount(
       if (query["parent[id]"] !== undefined) {
         rows = rows.filter((row) => idOf(row["parent"]) === Number(query["parent[id]"]));
       }
+      // Recorded (D-020): without depth=1 only organisations.
+      if (String(query["depth"]) !== "1") rows = rows.filter((row) => row["name"] !== undefined);
+      if (typeof query["name"] === "string") {
+        // Synthetic (not recorded): a case-insensitive part of the name or of "first last".
+        const wanted = query["name"].toLowerCase();
+        rows = rows.filter((row) =>
+          [row["name"], `${String(row["surename"])} ${String(row["familyname"])}`].some(
+            (shown) => typeof shown === "string" && shown.toLowerCase().includes(wanted),
+          ),
+        );
+      }
       return list(rows, query);
     }
     if (/^\/Contact\/\d+$/.test(path)) {
       if (method === "DELETE") {
-        const referenced = [...documents.values()].some((doc) => idOf(doc["contact"]) === id);
+        // Recorded (D-084): an organisation's contact persons go with it. Synthetic (not
+        // recorded): a document naming one of them refuses the whole delete, as for the contact.
+        const doomed = [
+          id,
+          ...[...contacts.values()]
+            .filter((row) => idOf(row["parent"]) === id)
+            .map((row) => Number(row["id"])),
+        ];
+        const referenced = [...documents.values()].some((doc) =>
+          doomed.includes(idOf(doc["contact"])),
+        );
         if (referenced && settings.allowReferencedDelete !== true) refusedInOk();
         for (const map of [addresses, ways, fields]) {
-          for (const [key, row] of map) if (idOf(row["contact"]) === id) map.delete(key);
+          for (const [key, row] of map) {
+            if (doomed.includes(idOf(row["contact"]))) map.delete(key);
+          }
         }
+        for (const person of doomed.slice(1)) contacts.delete(person);
         return remove(contacts, id);
       }
       if (method === "PUT") {
@@ -345,9 +378,43 @@ function gapsAccount(
         if (taken) refused(400, "Order number already used");
       }
       const docId = saveDocument(kind, (body[key] ?? {}) as Rec);
+      if (kind === "Voucher" && Array.isArray(body["voucherPosSave"])) {
+        const head = documents.get(`Voucher/${docId}`)?.["costCentre"];
+        for (const position of body["voucherPosSave"] as Rec[]) {
+          const rowId = nextId++;
+          const own = position["costCentre"];
+          const centre = settings.positionsTakeHeadCostCentre === true ? head : own;
+          positions.set(rowId, {
+            id: String(rowId),
+            objectName: "VoucherPos",
+            voucher: ref("Voucher", docId),
+            ...(centre === undefined || centre === null
+              ? {}
+              : { costCentre: ref("CostCentre", idOf(centre)) }),
+          });
+        }
+      }
       return { objects: { [key]: ref(kind, docId) } };
     }
+    if (path === "/VoucherPos") {
+      return list(
+        [...positions.values()].filter(
+          (row) =>
+            query["voucher[id]"] === undefined ||
+            idOf(row["voucher"]) === Number(query["voucher[id]"]),
+        ),
+        query,
+      );
+    }
     const docById = /^\/(Invoice|Order|CreditNote|Voucher)\/(\d+)$/.exec(path);
+    if (docById !== null && method === "DELETE") {
+      // Recorded (D-024, D-074): DELETE removes a draft; a second one is a 404.
+      const key = `${docById[1] ?? ""}/${docById[2] ?? ""}`;
+      if (!documents.delete(key)) refused(404, "not found");
+      for (const [rowId, row] of positions)
+        if (idOf(row["voucher"]) === id) positions.delete(rowId);
+      return { objects: [null] };
+    }
     if (docById !== null) {
       const row = documents.get(`${docById[1] ?? ""}/${docById[2] ?? ""}`);
       return { objects: row === undefined ? [] : [row] };
@@ -379,9 +446,10 @@ function gapsAccount(
       const object = body["object"] as Rec;
       if (typeof body["name"] !== "string") refused(400, "Invalid type of parameter");
       const name = body["name"];
-      const existing = [...tags.values()].find(
-        (row) => String(row["name"]).toLowerCase() === name.toLowerCase(),
-      );
+      // Recorded: case and é/e fold (D-088). Synthetic (not recorded): the rest of NFKD too, so
+      // the ligature U+FB01 folds to "fi" while ß, invisible characters and spaces stay.
+      const fold = (text: string) => text.normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase();
+      const existing = [...tags.values()].find((row) => fold(String(row["name"])) === fold(name));
       const tagId = existing === undefined ? nextId++ : Number(existing["id"]);
       if (existing === undefined) tags.set(tagId, { id: String(tagId), objectName: "Tag", name });
       const known = [...relations.values()].find(
@@ -424,6 +492,9 @@ function gapsAccount(
           (query["object[id]"] === undefined ||
             idOf(row["object"]) === Number(query["object[id]"])),
       );
+      if (settings.relationsUnstable === true && Number(query["offset"] ?? 0) > 0) {
+        return list([...rows].reverse(), query);
+      }
       return list(rows, query);
     }
     if (/^\/TagRelation\/\d+$/.test(path)) {
@@ -466,8 +537,10 @@ function gapsAccount(
     fieldSettings,
     fields,
     tags,
+    relations,
     costCentres,
     documents,
+    positions,
   };
 }
 
@@ -516,6 +589,11 @@ describe("gap probes (#86, #87): catalog", () => {
         "write-cost-centre-documents",
         "write-cost-centre-list-filters",
         "write-cost-centre-delete",
+        "write-voucher-position-cost-centre",
+        "write-tag-name-matching",
+        "write-tag-relation-paging",
+        "write-contact-name-search",
+        "write-contact-delete-cascade",
       ]),
     );
     const deviations = new Set(GAPS_CONTACTS_PROBES.flatMap((probe) => probe.deviations));
@@ -898,6 +976,296 @@ describe("gap probes (#86, #87) on a simulated trial account", () => {
     expect(result(report, "write-cost-centre-delete").finding).toMatch(
       /DELETE unused cost centre \d+: ok.*second DELETE refused \(404.*used by voucher \d+ \(CostCentre (\d+)\): refused \(200: Cannot delete because of existing necessary references\); cost centre afterwards still there; voucher costCentre now CostCentre \1\./,
     );
+  });
+});
+
+/** Records of the probe `id` that the cleanup list does not show as deleted. */
+function leftBy(report: Awaited<ReturnType<typeof runProbes>>, id: string): string[] {
+  return report.created
+    .filter((record) => record.probe === id && record.state !== "deleted by the probe")
+    .map((record) => `${record.objectName} ${record.id}: ${record.state}`);
+}
+
+/**
+ * {@link leftBy} without the run's tagged customer (named exactly the run tag): every draft of the
+ * run shares it, and no probe deletes it.
+ */
+function leftByBesidesCustomer(
+  report: Awaited<ReturnType<typeof runProbes>>,
+  id: string,
+  contacts: ReadonlyMap<number, Rec>,
+): string[] {
+  const customer = [...contacts.values()].find((row) => row["name"] === TAG)?.["id"];
+  return leftBy(report, id).filter(
+    (line) => line !== `Contact ${String(customer)}: active (can be deleted in the web app)`,
+  );
+}
+
+/** The names of the contacts still on the simulated account. */
+function contactNames(contacts: ReadonlyMap<number, Rec>): string[] {
+  return [...contacts.values()].map((row) => String(row["name"] ?? row["familyname"]));
+}
+
+/** Refuses the `nth` call (1-based) that `matches`, and no other. */
+function refuseNth(matches: (call: ScriptedCall) => boolean, nth: number) {
+  let seen = 0;
+  return (call: ScriptedCall) => {
+    if (!matches(call)) return false;
+    seen += 1;
+    return seen === nth;
+  };
+}
+
+describe("trial probes of the open live questions (#136, #134)", () => {
+  it("says which cost centre a voucher position keeps and deletes vouchers and cost centres (#119)", async () => {
+    const id = "write-voucher-position-cost-centre";
+    const account = gapsAccount();
+    const report = await runProbes(options(account.client, { only: [id] }));
+    const own = result(report, id);
+    expect(own.status).toBe("observed");
+    expect(own.finding).toMatch(
+      /^Cost centres (\d+) \(sent on the head\) and (\d+) \(on the position\)\. head and position \(voucher \d+\): the head reads CostCentre \1 \(the head's\); 1 position\(s\) read CostCentre \2 \(the position's\)\. position only \(voucher \d+\): the head reads absent; 1 position\(s\) read CostCentre \2 \(the position's\)\. Cleanup: Voucher \d+ deleted; Voucher \d+ deleted; CostCentre \1 deleted; CostCentre \2 deleted\.$/,
+    );
+    expect(leftBy(report, id)).toEqual([]);
+    expect(account.costCentres.size).toBe(0);
+    expect(account.documents.size).toBe(0);
+    // Each position names its own cost centre in the body sent.
+    const saves = account.client.writes().filter((call) => call.path.endsWith("/saveVoucher"));
+    expect(saves).toHaveLength(2);
+    for (const call of saves) {
+      const [position] = (call.body as Rec)["voucherPosSave"] as Rec[];
+      expect(position?.["costCentre"]).toEqual({
+        id: expect.any(Number) as unknown,
+        objectName: "CostCentre",
+      });
+    }
+
+    const headWins = await runProbes(
+      options(gapsAccount({ positionsTakeHeadCostCentre: true }).client, { only: [id] }),
+    );
+    expect(result(headWins, id).finding).toMatch(
+      /head and position \(voucher \d+\): the head reads CostCentre (\d+) \(the head's\); 1 position\(s\) read CostCentre \1 \(the head's\)\. position only \(voucher \d+\): the head reads absent; 1 position\(s\) read absent\./,
+    );
+  });
+
+  it("deletes the cost centres when a voucher is refused or a cost centre is missing", async () => {
+    const id = "write-voucher-position-cost-centre";
+    const refusing = gapsAccount({
+      refuseWhen: (call) => call.path === "/Voucher/Factory/saveVoucher",
+    });
+    const report = await runProbes(options(refusing.client, { only: [id] }));
+    expect(result(report, id).finding).toMatch(
+      /head and position: saveVoucher refused \(422: Synthetic refusal\)\. position only: saveVoucher refused \(422: Synthetic refusal\)\. Cleanup: CostCentre \d+ deleted; CostCentre \d+ deleted\.$/,
+    );
+    expect(refusing.costCentres.size).toBe(0);
+    expect(leftBy(report, id)).toEqual([]);
+
+    const one = gapsAccount({
+      refuseWhen: refuseNth((call) => call.method === "POST" && call.path === "/CostCentre", 2),
+    });
+    const partial = await runProbes(options(one.client, { only: [id] }));
+    expect(result(partial, id)).toMatchObject({
+      status: "inconclusive",
+      finding: expect.stringMatching(
+        /^POST \/CostCentre ok \/ refused \(422: Synthetic refusal\): the probe needs two cost centres of its own\. Cleanup: CostCentre \d+ deleted\.$/,
+      ) as unknown,
+    });
+    expect(one.costCentres.size).toBe(0);
+  });
+
+  it("tells reused tags from new ones per spelling, and the rule of two tag filters (#105)", async () => {
+    const id = "write-tag-name-matching";
+    const account = gapsAccount({ honourFilters: true });
+    const report = await runProbes(options(account.client, { only: [id] }));
+    const finding = result(report, id).finding;
+    expect(result(report, id).status).toBe("observed");
+    // The simulation folds like NFKD: the ligature reuses the tag, the others make new ones.
+    expect(finding).toMatch(
+      /ß then ss: a new tag, named as sent \(\d+ characters\); GET \/Tag\?name=<variant> 1 row\(s\), the base's tag false, the variant's true\./,
+    );
+    expect(finding).toMatch(
+      /fi then the ligature U\+FB01: reuses the base's tag, named as the base \(\d+ characters\)/,
+    );
+    for (const label of [
+      "a zero-width space inside",
+      "a soft hyphen inside",
+      "a doubled inner space",
+    ]) {
+      expect(finding).toContain(`${label}: a new tag, named as sent`);
+    }
+    // As recorded (D-090), the simulation honours only tags[0].
+    expect(finding).toMatch(
+      /GET \/Invoice with tags\[0\] and tags\[1\]: the first tag only \(first only true, second only false, both true, untagged false; 2 row\(s\), total 2\)\. Cleanup: (Tag \d+ deleted; ){11}(Invoice \d+ deleted; ){4}Invoice \d+ deleted\.$/,
+    );
+    const filtered = account.client.calls.find(
+      (call) => call.path === "/Invoice" && call.query["tags[1][id]"] !== undefined,
+    );
+    expect(filtered?.query).toMatchObject({
+      "tags[0][objectName]": "Tag",
+      "tags[1][objectName]": "Tag",
+      limit: 1000,
+    });
+    expect(leftByBesidesCustomer(report, id, account.contacts)).toEqual([]);
+    expect(account.tags.size).toBe(0);
+    expect(account.relations.size).toBe(0);
+    expect(account.documents.size).toBe(0);
+    // Every name sent carries the run tag; none reaches the findings.
+    for (const call of account.client
+      .writes()
+      .filter((item) => item.path === "/Tag/Factory/create")) {
+      expect((call.body as Rec)["name"]).toMatch(/^MCP-E2E 20261120-1000-abcd /);
+    }
+    // The ligature variant, built from its code point like the probe builds it.
+    const ligature = new RegExp(`Pro${String.fromCodePoint(0xfb01)}`, "u");
+    expect(renderReport(report)).not.toMatch(
+      /Maß|Mass\b|Profil|Nullbreite|Trennung|Teile|Filter Erster/,
+    );
+    expect(renderReport(report)).not.toMatch(ligature);
+
+    const ignored = await runProbes(options(gapsAccount().client, { only: [id] }));
+    expect(result(ignored, id).finding).toMatch(
+      /tags\[0\] and tags\[1\]: ignored \(an untagged draft is listed\)/,
+    );
+  });
+
+  it("deletes every tag and draft when a tagging is refused", async () => {
+    const id = "write-tag-name-matching";
+    const account = gapsAccount({
+      refuseWhen: refuseNth((call) => call.path === "/Tag/Factory/create", 3),
+    });
+    const report = await runProbes(options(account.client, { only: [id] }));
+    // The third tagging is the ligature pair's base.
+    expect(result(report, id).finding).toMatch(
+      /\. fi then the ligature U\+FB01: refused \(422: Synthetic refusal\) \/ ok\. /,
+    );
+    expect(leftByBesidesCustomer(report, id, account.contacts)).toEqual([]);
+    expect(account.tags.size).toBe(0);
+    expect(account.documents.size).toBe(0);
+  });
+
+  it("compares the paged relation list with one read of 1000 (#119)", async () => {
+    const id = "write-tag-relation-paging";
+    const account = gapsAccount();
+    const report = await runProbes(options(account.client, { only: [id] }));
+    expect(result(report, id)).toMatchObject({
+      status: "observed",
+      finding: expect.stringMatching(
+        /^GET \/TagRelation \(limit 1000\): 6 row\(s\), total 6; ids ascending; a second read the same ids in the same order; pages of 3 over the first 6: the same ids in the same order; this run's 6 relations are the last rows\. Cleanup: Tag \d+ deleted; Tag \d+ deleted; (Invoice \d+ deleted; ){2}Invoice \d+ deleted\.$/,
+      ) as unknown,
+    });
+    const pages = account.client.calls.filter(
+      (call) => call.path === "/TagRelation" && call.query["limit"] === 3,
+    );
+    expect(pages.map((call) => call.query["offset"])).toEqual([0, 3]);
+    expect(leftByBesidesCustomer(report, id, account.contacts)).toEqual([]);
+    expect(account.relations.size).toBe(0);
+
+    const unstable = await runProbes(
+      options(gapsAccount({ relationsUnstable: true }).client, { only: [id] }),
+    );
+    // The second page, read in reverse, repeats the first three relations.
+    expect(result(unstable, id).finding).toMatch(
+      /pages of 3 over the first 6: differ \(3 missing, 3 listed twice, 6 row\(s\) read\)/,
+    );
+
+    const refusing = gapsAccount({
+      refuseWhen: (call) => call.path === "/TagRelation" && call.query["offset"] === 3,
+    });
+    const failed = await runProbes(options(refusing.client, { only: [id] }));
+    expect(result(failed, id).finding).toMatch(
+      /pages of 3 over the first 6: the page at offset 3 refused \(422: Synthetic refusal\)/,
+    );
+    expect(leftByBesidesCustomer(failed, id, refusing.contacts)).toEqual([]);
+    expect(refusing.documents.size).toBe(0);
+  });
+
+  it("searches contacts by name variants without naming them (#102)", async () => {
+    const id = "write-contact-name-search";
+    const account = gapsAccount();
+    const report = await runProbes(options(account.client, { only: [id] }));
+    // The simulation searches a case-insensitive part of the shown name (not recorded).
+    expect(result(report, id).finding).toMatch(
+      /^GET \/Contact\?name=… for organisation (\d+) and person (\d+) \(depth=1 unless said\): organisation, full name: found \(1 row\(s\)\); organisation, lower case: found .*organisation, full name without depth=1: found \(1 row\(s\)\); person, familyname: found .*person, shown name \(first last\): found .*person, familyname without depth=1: not found \(0 row\(s\)\)\. Cleanup: Contact \1 deleted; Contact \2 deleted\.$/,
+    );
+    const searches = account.client.calls.filter(
+      (call) => call.path === "/Contact" && call.method === "GET",
+    );
+    expect(searches).toHaveLength(11);
+    for (const call of searches) expect(call.query["limit"]).toBe(1000);
+    expect(searches.filter((call) => call.query["depth"] === undefined)).toHaveLength(2);
+    expect(account.contacts.size).toBe(0);
+    expect(leftBy(report, id)).toEqual([]);
+    expect(renderReport(report)).not.toMatch(/Namensuche|Suchperson|uchperso|ensuche/i);
+
+    const refusing = gapsAccount({
+      refuseWhen: (call) =>
+        call.method === "POST" && (call.body as Rec)["familyname"] !== undefined,
+    });
+    const partial = await runProbes(options(refusing.client, { only: [id] }));
+    expect(result(partial, id)).toMatchObject({
+      status: "inconclusive",
+      finding: expect.stringMatching(
+        /^Could not create the contacts: ok \/ refused \(422: Synthetic refusal\)\. Cleanup: Contact \d+ deleted\.$/,
+      ) as unknown,
+    });
+    expect(refusing.contacts.size).toBe(0);
+  });
+
+  it("reports what deleting an organisation does to its contact persons (#134)", async () => {
+    const id = "write-contact-delete-cascade";
+    const account = gapsAccount();
+    const report = await runProbes(options(account.client, { only: [id] }));
+    // As recorded (D-084) the persons go with an unreferenced organisation; the simulation refuses
+    // the whole delete when a draft names one of them (not recorded, D-085's refusal in HTTP 200).
+    expect(result(report, id).finding).toMatch(
+      /^organisation \d+ with 2 contact person\(s\), no document: DELETE ok, answer a list of 1; organisation afterwards gone \(404\); person \d+ gone \(404\); person \d+ gone \(404\)\. organisation (\d+) whose contact person (\d+) draft invoice (\d+) names \(read contact Contact \2\): DELETE refused \(200: Cannot delete because of existing necessary references\), answer nothing; organisation afterwards still there, parent absent; person afterwards still there, parent Contact \1; invoice afterwards still there, status 100, contact Contact \2\. Cleanup: Invoice \3 deleted; Contact \2 deleted; Contact \1 deleted\.$/,
+    );
+    expect(leftByBesidesCustomer(report, id, account.contacts)).toEqual([]);
+    expect(contactNames(account.contacts)).toEqual([TAG]);
+    expect(account.documents.size).toBe(0);
+
+    const deleting = gapsAccount({ allowReferencedDelete: true });
+    const through = await runProbes(options(deleting.client, { only: [id] }));
+    expect(result(through, id).finding).toMatch(
+      /DELETE ok, answer a list of 1; organisation afterwards gone \(404\); person afterwards gone \(404\); invoice afterwards still there, status 100, contact Contact \d+\. Cleanup: Invoice \d+ deleted\.$/,
+    );
+    expect(leftByBesidesCustomer(through, id, deleting.contacts)).toEqual([]);
+    expect(contactNames(deleting.contacts)).toEqual([TAG]);
+    expect(deleting.documents.size).toBe(0);
+  });
+
+  it("still deletes the draft and contacts when the delete of the organisation is refused otherwise", async () => {
+    const id = "write-contact-delete-cascade";
+    const account = gapsAccount({
+      refuseWhen: refuseNth(
+        (call) => call.method === "DELETE" && call.path.startsWith("/Contact/"),
+        1,
+      ),
+    });
+    const report = await runProbes(options(account.client, { only: [id] }));
+    expect(result(report, id).finding).toMatch(
+      /^organisation (\d+) with 2 contact person\(s\), no document: DELETE refused \(422: Synthetic refusal\), answer nothing; organisation afterwards still there, parent absent; person \d+ still there, parent Contact \1; person \d+ still there, parent Contact \1\./,
+    );
+    expect(leftByBesidesCustomer(report, id, account.contacts)).toEqual([]);
+    expect(contactNames(account.contacts)).toEqual([TAG]);
+    expect(account.documents.size).toBe(0);
+  });
+
+  it("is inconclusive when neither organisation can be made: no DELETE was asked", async () => {
+    const id = "write-contact-delete-cascade";
+    const account = gapsAccount({
+      refuseWhen: (call) =>
+        call.method === "POST" &&
+        call.path === "/Contact" &&
+        String((call.body as Rec)["name"]).includes("Kaskade"),
+    });
+    const report = await runProbes(options(account.client, { only: [id] }));
+    const own = result(report, id);
+    expect(own.status).toBe("inconclusive");
+    expect(own.finding).toMatch(
+      /^organisation with persons: refused \(422: Synthetic refusal\)\. organisation with a referenced person: refused \(422: Synthetic refusal\)\.$/,
+    );
+    expect(account.client.writes().filter((call) => call.method === "DELETE")).toEqual([]);
   });
 });
 
