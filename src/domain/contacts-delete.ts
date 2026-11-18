@@ -28,7 +28,7 @@ import { z } from "zod";
 
 import { canonicalJson, sha256Hex } from "../safety/hashing.js";
 import type { ConfirmationFact } from "../safety/write-types.js";
-import { type CompletedWrite, SevdeskError } from "../sevdesk/errors.js";
+import { type CompletedWrite, isReferenceRefusal, SevdeskError } from "../sevdesk/errors.js";
 import { sevdeskPath, toSevdeskId } from "../sevdesk/paths.js";
 import type { SevdeskClient } from "../sevdesk/types.js";
 import { cleanText } from "./common.js";
@@ -867,19 +867,6 @@ async function deleteAndCheck(
     stillReferenced: false,
     notes: goneBefore ? [`Contact ${id} was already gone in sevDesk when it was deleted.`] : [],
   };
-}
-
-/**
- * sevDesk's refusal to delete a record that others reference: "Cannot delete because of existing
- * necessary references" inside HTTP 200 (the client's `unexpected_response`, D-085), or the same
- * text with the 409 the spec declares. Only the upstream text identifies it; it is never shown.
- */
-function isReferenceRefusal(error: SevdeskError): boolean {
-  return (
-    (error.kind === "unexpected_response" || error.kind === "validation") &&
-    (error.status === 200 || error.status === 409) &&
-    /necessary references/i.test(error.upstreamMessage ?? "")
-  );
 }
 
 /**

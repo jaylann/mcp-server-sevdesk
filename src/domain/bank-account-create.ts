@@ -112,7 +112,7 @@ export async function planBankAccountCreate(
     (entry) =>
       !entry.archived &&
       entry.storedName !== undefined &&
-      nameKey(entry.storedName) === nameKey(input.name),
+      accountNameKey(entry.storedName) === accountNameKey(input.name),
   );
   if (sameName !== undefined) {
     throw validation(
@@ -167,7 +167,7 @@ export async function planBankAccountCreate(
 function warningsFor(input: BankAccountCreateInput, complete: boolean): string[] {
   const warnings = [
     "sevDesk cannot delete a payment account through its API, only archive it: the account " +
-      "stays in the account list unless it is archived in sevDesk.",
+      "stays in the account list unless it is archived (sevdesk_bank_account_archive).",
   ];
   if (input.kind === "clearing") {
     warnings.push(
@@ -316,8 +316,11 @@ function differences(state: BankAccountCreateState, account: BankAccountDto): st
 // Helpers
 // ---------------------------------------------------------------------------------------------
 
-/** A name for comparisons: Unicode-normalized, spaces collapsed, case ignored. */
-function nameKey(name: string): string {
+/**
+ * An account name for comparisons: Unicode-normalized, spaces collapsed, case ignored. Shared with
+ * the rename (`bank-account-update.ts`), so both refuse the same duplicates.
+ */
+export function accountNameKey(name: string): string {
   return name.normalize("NFKC").trim().replace(/\s+/g, " ").toLocaleLowerCase("de-DE");
 }
 

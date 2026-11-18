@@ -8,7 +8,19 @@ exports[`advertises additive output keys, countries and lookup paging 1`] = `
       "type": "boolean",
     },
   },
+  "sevdesk_bank_account_archive": {
+    "/properties/result/properties/account/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+  },
   "sevdesk_bank_account_create": {
+    "/properties/result/properties/account/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+  },
+  "sevdesk_bank_account_update": {
     "/properties/result/properties/account/properties/status/properties/key": {
       "description": "Accepted status filter key; absent when no filter accepts this code.",
       "type": "string",
@@ -971,6 +983,36 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
   },
   {
     "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Archive a sevDesk payment account",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "id": {
+          "description": "Payment account id, from sevdesk_bank_accounts_list.",
+          "exclusiveMinimum": 0,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_bank_account_archive",
+    "title": "Archive a sevDesk payment account",
+  },
+  {
+    "annotations": {
       "destructiveHint": false,
       "idempotentHint": false,
       "openWorldHint": false,
@@ -1014,6 +1056,60 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
     },
     "name": "sevdesk_bank_account_create",
     "title": "Create a sevDesk payment account",
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Rename or change a sevDesk payment account",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "accountingNumber": {
+          "description": "New booking account (Buchungskonto) number, unused by other payment accounts; file-import accounts without booked transactions only. Ask the tax consultant.",
+          "exclusiveMinimum": 0,
+          "maximum": 99999999,
+          "type": "integer",
+        },
+        "autoMapTransactions": {
+          "description": "Whether sevDesk assigns imported transactions to matching invoices and vouchers by itself (file-import accounts only).",
+          "type": "boolean",
+        },
+        "bic": {
+          "description": "New BIC (file-import accounts only).",
+          "type": "string",
+        },
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "iban": {
+          "description": "New IBAN (file-import accounts only).",
+          "type": "string",
+        },
+        "id": {
+          "description": "Payment account id, from sevdesk_bank_accounts_list.",
+          "exclusiveMinimum": 0,
+          "type": "integer",
+        },
+        "name": {
+          "description": "New account name; no other active payment account may have it.",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_bank_account_update",
+    "title": "Rename or change a sevDesk payment account",
   },
   {
     "annotations": {
