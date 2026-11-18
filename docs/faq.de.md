@@ -1,4 +1,4 @@
-<!-- translated-from: docs/faq.md sha256:b15f4049f101 -->
+<!-- translated-from: docs/faq.md sha256:3204febe1009 -->
 
 # Häufige Fragen
 
@@ -157,7 +157,7 @@ Position zurück). Der Entwurf hat noch keine Steuerregel und kein Buchungskonto
 vervollständigt ihn mit der normalen Entwurfsänderung, bevor er sich fertigstellen lässt. sevDesk
 selbst legt einen zweiten Entwurf an, wenn dieselbe Datei zweimal kommt; daher vergleicht das
 Werkzeug vorher die SHA-256 der Datei mit den Belegdateien in sevDesk und lehnt eine Datei ab, die
-schon an einem Beleg hängt, außer du bestätigst mit `allowDuplicate`. Eine Datei, die schon einmal
+schon an einem Beleg hängt, außer du setzt `allowDuplicate: true`. Eine Datei, die schon einmal
 an die Erkennung ging, findet es so nicht, weil sevDesk für solche Belegdateien keine Prüfsumme
 speichert
 ([sevDesk den Beleg lesen lassen](guides/receipts.de.md#sevdesk-den-beleg-lesen-lassen)).

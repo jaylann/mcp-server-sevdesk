@@ -142,8 +142,8 @@ tax rates can be wrong even when the total is right (a receipt with two rates ca
 position). The draft has no tax rule and no booking account yet: the assistant completes it with
 the normal draft update before it can be finalized. sevDesk itself makes a second draft when the
 same file is sent twice, so the tool first compares the file's SHA-256 with the receipts already
-in sevDesk and refuses a file a voucher already carries, unless you confirm with
-`allowDuplicate`. A file sent to the recognition before is not found that way, since sevDesk
+in sevDesk and refuses a file a voucher already carries, unless you pass
+`allowDuplicate: true`. A file sent to the recognition before is not found that way, since sevDesk
 stores no checksum for such receipts
 ([Let sevDesk read the receipt](guides/receipts.md#let-sevdesk-read-the-receipt)).
 

@@ -1,4 +1,4 @@
-<!-- translated-from: docs/guides/receipts.md sha256:eba30249ff00 -->
+<!-- translated-from: docs/guides/receipts.md sha256:275f61c9ec46 -->
 
 # Belege und Eingangsrechnungen
 
@@ -166,9 +166,9 @@ Zwei Prüfungen suchen nach Dubletten:
   Beleg, wird der Aufruf abgelehnt, bevor etwas gesendet ist, und die Ablehnung nennt den Beleg:
   seine ID, Nummer, Datum, Bruttobetrag und Status. Prüfe ihn; muss die Datei wirklich noch einmal
   erfasst werden, rufe erneut mit `allowDuplicate: true` auf. Das erspart nur einen unnötigen
-  Entwurf und ist keine Sicherheitsbestätigung. Auch der Probelauf zeigt das Ergebnis der Prüfung,
-  und das Ergebnis sagt, wenn sie nur einen Teil der Belege gelesen hat oder sie nicht lesen konnte
-  (die Datei wird dann ohne die Prüfung gesendet).
+  Entwurf und ist keine Sicherheitsbestätigung. Ein Probelauf macht dieselbe Prüfung: Bei einem
+  Treffer wird er genauso abgelehnt. Das Ergebnis sagt, wenn die Prüfung nur einen Teil der Belege
+  gelesen hat oder sie nicht lesen konnte (die Datei wird dann ohne die Prüfung gesendet).
 - **Nach der Erkennung** nennt das Ergebnis Belege mit demselben Datum, demselben Bruttobetrag und
   derselben Belegnummer und sagt, wenn es nicht jeden Beleg dieses Tages vergleichen konnte oder
   nichts zu vergleichen hatte.

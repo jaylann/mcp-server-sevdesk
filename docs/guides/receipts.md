@@ -153,9 +153,10 @@ Two checks look for duplicates:
   vouchers, drafts included). When a voucher already carries the very same file, the call is
   refused before anything is sent, and the refusal names the voucher: its id, number, date, gross
   amount and status. Check it; if the file really has to be filed again, call again with
-  `allowDuplicate: true`. That only saves you a wasted draft, it is not a safety confirmation. The
-  dry run shows the result of the check too, and the result says when it read only part of the
-  vouchers or could not read them (the file is then sent without the check).
+  `allowDuplicate: true`. That only saves you a wasted draft, it is not a safety confirmation. A
+  dry run runs the same check: on a match it is refused the same way. The result says when the
+  check read only part of the vouchers or could not read them (the file is then sent without the
+  check).
 - **After the recognition**, the result names vouchers with the same date, gross amount and
   Belegnummer, and says when it could not compare every voucher of that day or had nothing to
   compare.
