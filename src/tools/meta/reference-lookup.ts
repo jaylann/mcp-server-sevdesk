@@ -622,8 +622,9 @@ async function lookup(
       const contactCustomFields = list.items
         .filter((setting) => keep(setting.id, setting.name, setting.description))
         .map((setting) => ({ ...setting }));
+      // The domain's flag, like the cost centres: a full page without `total` counts as cut.
       return {
-        ...upstreamCounts(kind, list, contactCustomFields.length),
+        ...upstreamCounts(kind, list, contactCustomFields.length, list.truncated),
         contactCustomFields,
       };
     }
