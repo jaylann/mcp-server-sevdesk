@@ -1,4 +1,4 @@
-<!-- translated-from: docs/faq.md sha256:ae82a8dc01ca -->
+<!-- translated-from: docs/faq.md sha256:b15f4049f101 -->
 
 # Häufige Fragen
 
@@ -154,7 +154,12 @@ sevDesks Belegerkennung, die einen Belegentwurf anlegt und binnen Sekunden Datum
 und einen Lieferantentext ausfüllt. Diese Werte sind ungeprüft, und Positionen und Steuersätze
 können falsch sein, auch wenn die Summe stimmt (ein Beleg mit zwei Steuersätzen kam als eine
 Position zurück). Der Entwurf hat noch keine Steuerregel und kein Buchungskonto: Der Assistent
-vervollständigt ihn mit der normalen Entwurfsänderung, bevor er sich fertigstellen lässt
+vervollständigt ihn mit der normalen Entwurfsänderung, bevor er sich fertigstellen lässt. sevDesk
+selbst legt einen zweiten Entwurf an, wenn dieselbe Datei zweimal kommt; daher vergleicht das
+Werkzeug vorher die SHA-256 der Datei mit den Belegdateien in sevDesk und lehnt eine Datei ab, die
+schon an einem Beleg hängt, außer du bestätigst mit `allowDuplicate`. Eine Datei, die schon einmal
+an die Erkennung ging, findet es so nicht, weil sevDesk für solche Belegdateien keine Prüfsumme
+speichert
 ([sevDesk den Beleg lesen lassen](guides/receipts.de.md#sevdesk-den-beleg-lesen-lassen)).
 
 ### Kann es nach DATEV exportieren?

@@ -1,4 +1,4 @@
-<!-- translated-from: docs/guides/receipts.md sha256:51db7a394939 -->
+<!-- translated-from: docs/guides/receipts.md sha256:eba30249ff00 -->
 
 # Belege und Eingangsrechnungen
 
@@ -156,12 +156,32 @@ Der Entwurf entsteht, sobald die Datei gesendet ist, auch wenn die Erkennung nic
 sagt das Werkzeug das und nennt den Entwurf, zum Vervollständigen oder zum Löschen mit
 [`sevdesk_voucher_delete_draft`](../tools.md#sevdesk_voucher_delete_draft). sevDesk bemerkt eine
 schon gesendete Datei nicht: Jeder Aufruf legt einen weiteren Entwurf an, schicke also jeden Beleg
-nur einmal. Nach Dubletten lässt sich erst nach der Erkennung suchen: Das Ergebnis nennt Belege mit
-demselben Datum, demselben Bruttobetrag und derselben Belegnummer und sagt, wenn es nicht jeden
-Beleg dieses Tages vergleichen konnte oder nichts zu vergleichen hatte. Spätere Prüfungen sehen
-einen solchen Entwurf anders: sevDesk speichert für eine Belegdatei, die seine Erkennung angehängt
-hat, keine Prüfsumme, daher findet
-[`sevdesk_receipt_folder_check`](../tools.md#sevdesk_receipt_folder_check) sie nicht, während
+nur einmal.
+
+Zwei Prüfungen suchen nach Dubletten:
+
+- **Vor dem Hochladen** vergleicht das Werkzeug die SHA-256 der Datei mit den Prüfsummen, die
+  sevDesk für die Belegdateien der Belege der letzten sechs Monate und des nächsten Monats
+  speichert (bis zu 1.000 Belege, Entwürfe eingeschlossen). Hängt dieselbe Datei schon an einem
+  Beleg, wird der Aufruf abgelehnt, bevor etwas gesendet ist, und die Ablehnung nennt den Beleg:
+  seine ID, Nummer, Datum, Bruttobetrag und Status. Prüfe ihn; muss die Datei wirklich noch einmal
+  erfasst werden, rufe erneut mit `allowDuplicate: true` auf. Das erspart nur einen unnötigen
+  Entwurf und ist keine Sicherheitsbestätigung. Auch der Probelauf zeigt das Ergebnis der Prüfung,
+  und das Ergebnis sagt, wenn sie nur einen Teil der Belege gelesen hat oder sie nicht lesen konnte
+  (die Datei wird dann ohne die Prüfung gesendet).
+- **Nach der Erkennung** nennt das Ergebnis Belege mit demselben Datum, demselben Bruttobetrag und
+  derselben Belegnummer und sagt, wenn es nicht jeden Beleg dieses Tages vergleichen konnte oder
+  nichts zu vergleichen hatte.
+
+Die Prüfsummenprüfung hat eine bekannte Lücke: sevDesk speichert für eine Belegdatei, die seine
+Erkennung angehängt hat, keine Prüfsumme. Sie findet also Belegdateien, die mit
+[`sevdesk_voucher_create_draft`](../tools.md#sevdesk_voucher_create_draft),
+[`sevdesk_voucher_receipt_save`](../tools.md#sevdesk_voucher_receipt_save) oder
+[`sevdesk_voucher_import_einvoice`](../tools.md#sevdesk_voucher_import_einvoice) erfasst wurden,
+aber nicht dieselbe Datei, die schon einmal an die Erkennung ging; das Ergebnis zählt solche
+Belegdateien als nicht verglichen. Aus demselben Grund findet
+[`sevdesk_receipt_folder_check`](../tools.md#sevdesk_receipt_folder_check) einen solchen Entwurf
+nicht, während
 [`sevdesk_records_audit`](evaluations.de.md#doppelt-gebuchte-belege-und-liegen-gebliebene-entwürfe-duplicates)
 doppelte Entwürfe weiterhin an Nummer und Bruttobetrag erkennt.
 
