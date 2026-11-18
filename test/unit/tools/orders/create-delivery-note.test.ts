@@ -95,12 +95,11 @@ describe("sevdesk_order_create_delivery_note (D-107)", () => {
     expect(client.calls.filter((call) => call.path === NEXT_ORDER_NUMBER)).toEqual([]);
     expect(plan.preview.warnings[1]).toBe(
       "sevDesk gives the delivery note the next number of the LI range without moving its " +
-        "counter, so that number is then reserved on the LI counter to move the counter past " +
-        "it; otherwise the next delivery note could get the same number. That a reservation " +
-        "moves the LI counter is assumed, not checked against sevDesk. A number is reserved on " +
-        "every real create, also for a draft that is deleted later, which can leave a gap in " +
-        "the LI numbers. Calls that number delivery notes run one at a time per account. The " +
-        "result names other delivery notes with the same number.",
+        "counter, so that number is then reserved on the LI counter, which moves the counter " +
+        "past it; otherwise the next delivery note could get the same number. A number is " +
+        "reserved on every real create, also for a draft that is deleted later, which can leave " +
+        "a gap in the LI numbers. Calls that number delivery notes run one at a time per " +
+        "account. The result names other delivery notes with the same number.",
     );
     expect(plan.preview.action).toBe(
       "Create a delivery note (Lieferschein, LI) draft from order 3002 (Auftragsbestätigung).",
@@ -133,9 +132,8 @@ describe("sevdesk_order_create_delivery_note (D-107)", () => {
     ]);
     expect(output.data.notes).toEqual([
       "The new delivery note's number (order.number) was reserved on sevDesk's LI number " +
-        "counter, which should move the counter past it so that the next delivery note does not " +
-        "get it again. That a reservation moves the LI counter is assumed, not checked against " +
-        "sevDesk; if it did not, the next call names the delivery note with the same number.",
+        "counter, which moves the counter past it so that the next delivery note does not get it " +
+        "again.",
     ]);
     expect(output.data.order).toMatchObject({
       id: 3201,
@@ -251,14 +249,16 @@ describe("sevdesk_order_create_delivery_note (D-107)", () => {
     const plan = await prepareWrite(tool, { orderId: 3002 }, client);
     // Read once, with the content the preview lists (D-116).
     expect(client.calls.filter((call) => call.path === "/Order/3002/getDiscounts")).toHaveLength(1);
+    // Order 3002 has gross prices: a fixed amount comes off the gross total there (D-116,
+    // recorded 2026-11-18).
     expect(plan.preview.facts).toContainEqual({
       label: "Discount on the whole document (Rabatt)",
-      value: "20.00 EUR net\nText: Treuerabatt",
+      value: "20.00 EUR gross\nText: Treuerabatt",
     });
     expect(plan.preview.warnings).toContain(
-      "The order carries discounts or surcharges on the whole document (listed above). Whether " +
-        "sevDesk takes them over to the delivery note has not been checked; check the new draft " +
-        "with sevdesk_order_get before finalizing it.",
+      "The order carries discounts or surcharges on the whole document (listed above). sevDesk " +
+        "copies a discount to the delivery note with the same totals; a surcharge was not " +
+        "checked. Check the new draft with sevdesk_order_get before finalizing it.",
     );
   });
 

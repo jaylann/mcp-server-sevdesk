@@ -1911,10 +1911,10 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         },
         "discount": {
           "additionalProperties": false,
-          "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. Net prices with one tax rate only.",
+          "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. Positions with one tax rate only.",
           "properties": {
             "amount": {
-              "description": "Fixed Rabatt in EUR, net, e.g. "50.00"; at most the net total.",
+              "description": "Fixed Rabatt, net, in the document's currency, e.g. "50.00"; at most the net total. Net prices only.",
               "type": [
                 "string",
                 "number",
@@ -2408,10 +2408,10 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "anyOf": [
             {
               "additionalProperties": false,
-              "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. Net prices with one tax rate only.",
+              "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. Positions with one tax rate only.",
               "properties": {
                 "amount": {
-                  "description": "Fixed Rabatt in EUR, net, e.g. "50.00"; at most the net total.",
+                  "description": "Fixed Rabatt, net, in the document's currency, e.g. "50.00"; at most the net total. Net prices only.",
                   "type": [
                     "string",
                     "number",
@@ -2636,7 +2636,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "type": "string",
         },
         "tag": {
-          "description": "Only documents with this tag (name, case and accents ignored; see sevdesk_tags_list).",
+          "description": "Only documents with this tag (name; case, accents and ß/ss ignored; see sevdesk_tags_list).",
           "maxLength": 255,
           "minLength": 1,
           "type": "string",
@@ -3030,10 +3030,10 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         },
         "discount": {
           "additionalProperties": false,
-          "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. Net prices with one tax rate only.",
+          "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. Positions with one tax rate only.",
           "properties": {
             "amount": {
-              "description": "Fixed Rabatt in EUR, net, e.g. "50.00"; at most the net total.",
+              "description": "Fixed Rabatt, net, in the document's currency, e.g. "50.00"; at most the net total. Net prices only.",
               "type": [
                 "string",
                 "number",
@@ -3888,10 +3888,10 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "anyOf": [
             {
               "additionalProperties": false,
-              "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. Net prices with one tax rate only.",
+              "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. Positions with one tax rate only.",
               "properties": {
                 "amount": {
-                  "description": "Fixed Rabatt in EUR, net, e.g. "50.00"; at most the net total.",
+                  "description": "Fixed Rabatt, net, in the document's currency, e.g. "50.00"; at most the net total. Net prices only.",
                   "type": [
                     "string",
                     "number",
@@ -4368,7 +4368,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "type": "string",
         },
         "tag": {
-          "description": "Only documents with this tag (name, case and accents ignored; see sevdesk_tags_list).",
+          "description": "Only documents with this tag (name; case, accents and ß/ss ignored; see sevdesk_tags_list).",
           "maxLength": 255,
           "minLength": 1,
           "type": "string",
@@ -4533,10 +4533,10 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         },
         "discount": {
           "additionalProperties": false,
-          "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. Net prices with one tax rate only.",
+          "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. Positions with one tax rate only.",
           "properties": {
             "amount": {
-              "description": "Fixed Rabatt in EUR, net, e.g. "50.00"; at most the net total.",
+              "description": "Fixed Rabatt, net, in the document's currency, e.g. "50.00"; at most the net total. Net prices only.",
               "type": [
                 "string",
                 "number",
@@ -4974,10 +4974,10 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "anyOf": [
             {
               "additionalProperties": false,
-              "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. Net prices with one tax rate only.",
+              "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. Positions with one tax rate only.",
               "properties": {
                 "amount": {
-                  "description": "Fixed Rabatt in EUR, net, e.g. "50.00"; at most the net total.",
+                  "description": "Fixed Rabatt, net, in the document's currency, e.g. "50.00"; at most the net total. Net prices only.",
                   "type": [
                     "string",
                     "number",
@@ -5207,7 +5207,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "type": "string",
         },
         "tag": {
-          "description": "Only documents with this tag (name, case and accents ignored; see sevdesk_tags_list).",
+          "description": "Only documents with this tag (name; case, accents and ß/ss ignored; see sevdesk_tags_list).",
           "maxLength": 255,
           "minLength": 1,
           "type": "string",
@@ -5697,7 +5697,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "type": "integer",
         },
         "tag": {
-          "description": "Only documents with this tag (name, case and accents ignored; see sevdesk_tags_list).",
+          "description": "Only documents with this tag (name; case, accents and ß/ss ignored; see sevdesk_tags_list).",
           "maxLength": 255,
           "minLength": 1,
           "type": "string",
@@ -5970,7 +5970,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "type": "string",
         },
         "tag": {
-          "description": "Only documents with this tag (name, case and accents ignored; see sevdesk_tags_list).",
+          "description": "Only documents with this tag (name; case, accents and ß/ss ignored; see sevdesk_tags_list).",
           "maxLength": 255,
           "minLength": 1,
           "type": "string",
@@ -7298,7 +7298,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "type": "string",
         },
         "tag": {
-          "description": "Only documents with this tag (name, case and accents ignored; see sevdesk_tags_list).",
+          "description": "Only documents with this tag (name; case, accents and ß/ss ignored; see sevdesk_tags_list).",
           "maxLength": 255,
           "minLength": 1,
           "type": "string",
@@ -8096,10 +8096,10 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         },
         "discount": {
           "additionalProperties": false,
-          "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. Net prices with one tax rate only.",
+          "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. Positions with one tax rate only.",
           "properties": {
             "amount": {
-              "description": "Fixed Rabatt in EUR, net, e.g. "50.00"; at most the net total.",
+              "description": "Fixed Rabatt, net, in the document's currency, e.g. "50.00"; at most the net total. Net prices only.",
               "type": [
                 "string",
                 "number",
@@ -8415,10 +8415,10 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "anyOf": [
             {
               "additionalProperties": false,
-              "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. Net prices with one tax rate only.",
+              "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. Positions with one tax rate only.",
               "properties": {
                 "amount": {
-                  "description": "Fixed Rabatt in EUR, net, e.g. "50.00"; at most the net total.",
+                  "description": "Fixed Rabatt, net, in the document's currency, e.g. "50.00"; at most the net total. Net prices only.",
                   "type": [
                     "string",
                     "number",
@@ -8643,7 +8643,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "type": "string",
         },
         "tag": {
-          "description": "Only documents with this tag (name, case and accents ignored; see sevdesk_tags_list).",
+          "description": "Only documents with this tag (name; case, accents and ß/ss ignored; see sevdesk_tags_list).",
           "maxLength": 255,
           "minLength": 1,
           "type": "string",
@@ -8799,10 +8799,10 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         },
         "discount": {
           "additionalProperties": false,
-          "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. Net prices with one tax rate only.",
+          "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. Positions with one tax rate only.",
           "properties": {
             "amount": {
-              "description": "Fixed Rabatt in EUR, net, e.g. "50.00"; at most the net total.",
+              "description": "Fixed Rabatt, net, in the document's currency, e.g. "50.00"; at most the net total. Net prices only.",
               "type": [
                 "string",
                 "number",
@@ -9218,10 +9218,10 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "anyOf": [
             {
               "additionalProperties": false,
-              "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. Net prices with one tax rate only.",
+              "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. Positions with one tax rate only.",
               "properties": {
                 "amount": {
-                  "description": "Fixed Rabatt in EUR, net, e.g. "50.00"; at most the net total.",
+                  "description": "Fixed Rabatt, net, in the document's currency, e.g. "50.00"; at most the net total. Net prices only.",
                   "type": [
                     "string",
                     "number",
@@ -9495,7 +9495,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "type": "string",
         },
         "tag": {
-          "description": "Only documents with this tag (name, case and accents ignored; see sevdesk_tags_list).",
+          "description": "Only documents with this tag (name; case, accents and ß/ss ignored; see sevdesk_tags_list).",
           "maxLength": 255,
           "minLength": 1,
           "type": "string",
@@ -9625,10 +9625,10 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         },
         "discount": {
           "additionalProperties": false,
-          "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. Net prices with one tax rate only.",
+          "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. Positions with one tax rate only.",
           "properties": {
             "amount": {
-              "description": "Fixed Rabatt in EUR, net, e.g. "50.00"; at most the net total.",
+              "description": "Fixed Rabatt, net, in the document's currency, e.g. "50.00"; at most the net total. Net prices only.",
               "type": [
                 "string",
                 "number",
@@ -9917,10 +9917,10 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "anyOf": [
             {
               "additionalProperties": false,
-              "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. Net prices with one tax rate only.",
+              "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. Positions with one tax rate only.",
               "properties": {
                 "amount": {
-                  "description": "Fixed Rabatt in EUR, net, e.g. "50.00"; at most the net total.",
+                  "description": "Fixed Rabatt, net, in the document's currency, e.g. "50.00"; at most the net total. Net prices only.",
                   "type": [
                     "string",
                     "number",
@@ -10150,7 +10150,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "type": "string",
         },
         "tag": {
-          "description": "Only documents with this tag (name, case and accents ignored; see sevdesk_tags_list).",
+          "description": "Only documents with this tag (name; case, accents and ß/ss ignored; see sevdesk_tags_list).",
           "maxLength": 255,
           "minLength": 1,
           "type": "string",
@@ -10574,7 +10574,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "type": "integer",
         },
         "tag": {
-          "description": "Only documents with this tag (name, case and accents ignored; see sevdesk_tags_list).",
+          "description": "Only documents with this tag (name; case, accents and ß/ss ignored; see sevdesk_tags_list).",
           "maxLength": 255,
           "minLength": 1,
           "type": "string",
@@ -10847,7 +10847,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "type": "string",
         },
         "tag": {
-          "description": "Only documents with this tag (name, case and accents ignored; see sevdesk_tags_list).",
+          "description": "Only documents with this tag (name; case, accents and ß/ss ignored; see sevdesk_tags_list).",
           "maxLength": 255,
           "minLength": 1,
           "type": "string",
@@ -11672,7 +11672,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "type": "string",
         },
         "tag": {
-          "description": "Only documents with this tag (name, case and accents ignored; see sevdesk_tags_list).",
+          "description": "Only documents with this tag (name; case, accents and ß/ss ignored; see sevdesk_tags_list).",
           "maxLength": 255,
           "minLength": 1,
           "type": "string",
@@ -12201,7 +12201,7 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
           "type": "string",
         },
         "tag": {
-          "description": "Only documents with this tag (name, case and accents ignored; see sevdesk_tags_list).",
+          "description": "Only documents with this tag (name; case, accents and ß/ss ignored; see sevdesk_tags_list).",
           "maxLength": 255,
           "minLength": 1,
           "type": "string",
@@ -12399,7 +12399,7 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
           "type": "string",
         },
         "tag": {
-          "description": "Only documents with this tag (name, case and accents ignored; see sevdesk_tags_list).",
+          "description": "Only documents with this tag (name; case, accents and ß/ss ignored; see sevdesk_tags_list).",
           "maxLength": 255,
           "minLength": 1,
           "type": "string",
@@ -12541,7 +12541,7 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
           "type": "string",
         },
         "tag": {
-          "description": "Only documents with this tag (name, case and accents ignored; see sevdesk_tags_list).",
+          "description": "Only documents with this tag (name; case, accents and ß/ss ignored; see sevdesk_tags_list).",
           "maxLength": 255,
           "minLength": 1,
           "type": "string",
@@ -12763,7 +12763,7 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
           "type": "integer",
         },
         "tag": {
-          "description": "Only documents with this tag (name, case and accents ignored; see sevdesk_tags_list).",
+          "description": "Only documents with this tag (name; case, accents and ß/ss ignored; see sevdesk_tags_list).",
           "maxLength": 255,
           "minLength": 1,
           "type": "string",
@@ -13036,7 +13036,7 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
           "type": "string",
         },
         "tag": {
-          "description": "Only documents with this tag (name, case and accents ignored; see sevdesk_tags_list).",
+          "description": "Only documents with this tag (name; case, accents and ß/ss ignored; see sevdesk_tags_list).",
           "maxLength": 255,
           "minLength": 1,
           "type": "string",
@@ -13530,7 +13530,7 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
           "type": "string",
         },
         "tag": {
-          "description": "Only documents with this tag (name, case and accents ignored; see sevdesk_tags_list).",
+          "description": "Only documents with this tag (name; case, accents and ß/ss ignored; see sevdesk_tags_list).",
           "maxLength": 255,
           "minLength": 1,
           "type": "string",

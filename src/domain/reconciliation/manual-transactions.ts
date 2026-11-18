@@ -15,11 +15,13 @@
  *   which creates the register row itself (D-095).
  * - `DELETE /CheckAccountTransaction/{id}` is a soft delete, only at status 100 (409 otherwise):
  *   the row stays readable by id with `deletedAt` set, and lists and balances leave it out
- *   (D-096). So a delete is confirmed by `deletedAt` on the read-back, never by a 404.
+ *   (D-096). So a delete is confirmed by `deletedAt` on the read-back, never by a 404. It works
+ *   the same on a row of an archived file-import account (recorded 2026-11-18, D-096).
  * - `PUT /CheckAccountTransaction/{id}/enshrine` needs status 200 or higher (422 at 100), is
  *   idempotent and irreversible: afterwards no status change, no delete, no further booking, and
  *   `resetToOpen` on the document it pays is refused (400 "Already enshrined by transaction",
- *   D-098). The document itself is not enshrined by it.
+ *   D-098). Recorded at 400 and, on 2026-11-18, at 200, 300 and 350. The document itself is not
+ *   enshrined by it.
  *
  * Nothing here retries a write; every refusal is a trusted `validation` error raised before
  * anything is sent.
@@ -221,8 +223,9 @@ export interface TransactionCreatePlan {
  * warning, so the human who confirms sees them. It warns rather than refuses, because two equal
  * payments on one day happen. sevDesk's lists leave deleted rows out (D-096). sevDesk filters
  * dates only by entry date (D-047), so the value date is filtered here: the check reads the
- * account's rows until it holds {@link DUPLICATE_SCAN_MATCHES} of that day or has searched
- * `MAX_SCAN_ROWS`, and a warning says which of the two stopped it.
+ * account's rows, newest first by value date as sevDesk lists them (D-145), until it passes that
+ * day, holds {@link DUPLICATE_SCAN_MATCHES} of that day or has searched `MAX_SCAN_ROWS`, and a
+ * warning says when one of the last two stopped it.
  */
 export async function planTransactionCreate(
   client: SevdeskClient,
@@ -299,16 +302,19 @@ export async function planTransactionCreate(
     );
   }
   if (scan.scanCapped) {
-    // The scan reads the account's rows in sevDesk's order and stopped at its cap: it may not
-    // have reached that day at all.
+    // sevDesk lists the rows newest first by value date (D-145), and the scan ends at the first
+    // row before that day; it stopped at its cap instead, so the newest rows, all dated that day
+    // or later, filled it, and rows of that day may lie beyond.
     warnings.push(
       phrase(
-        `Account ${String(account.id)} has more rows than the duplicate check searches ` +
-          `(${String(MAX_SCAN_ROWS)}), so rows dated ${day("en")} may not have been checked; ` +
-          "check it with sevdesk_transactions_list before confirming.",
-        `Das Konto ${String(account.id)} hat mehr Umsätze, als die Prüfung auf Doppelte ` +
-          `durchsucht (${String(MAX_SCAN_ROWS)}); Umsätze vom ${day("de")} wurden daher ` +
-          "womöglich nicht geprüft. Prüfe es vor der Bestätigung mit sevdesk_transactions_list.",
+        `Account ${String(account.id)} has more than ${String(MAX_SCAN_ROWS)} rows dated ` +
+          `${day("en")} or later, more than the duplicate check searches, so rows dated ` +
+          `${day("en")} may not all have been checked; check it with sevdesk_transactions_list ` +
+          "before confirming.",
+        `Das Konto ${String(account.id)} hat mehr als ${String(MAX_SCAN_ROWS)} Umsätze vom ` +
+          `${day("de")} oder später, mehr als die Prüfung auf Doppelte durchsucht; Umsätze vom ` +
+          `${day("de")} wurden daher womöglich nicht alle geprüft. Prüfe es vor der Bestätigung ` +
+          "mit sevdesk_transactions_list.",
       ),
     );
   } else if (scan.hasMore) {
@@ -518,8 +524,8 @@ export interface TransactionEnshrinePlan {
 /**
  * Checks that a transaction can be locked: it exists, is not deleted and not enshrined yet, and
  * has status 200 (linked) or higher, the spec's rule and sevDesk's (422 at 100, recorded, D-098;
- * locking was recorded at 400, the other statuses rest on the spec). Reads its booking log for
- * the documents it pays.
+ * locking was recorded at 200, 300, 350 and 400). Reads its booking log for the documents it
+ * pays.
  */
 export async function planTransactionEnshrine(
   client: SevdeskClient,

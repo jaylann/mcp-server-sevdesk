@@ -28,7 +28,8 @@
  * one is refused, never answered with the whole account's figures) and every document is checked
  * here, by the cost centre on its head and by the tag's relations, so no list filter of sevDesk is
  * relied on. A cost centre belongs to the whole document (one per invoice, credit note or voucher;
- * cost centres on voucher positions are not read). `groupBy` adds a breakdown of income, expenses
+ * a voucher position sent with a cost centre of its own reads back without one, D-092). `groupBy`
+ * adds a breakdown of income, expenses
  * and result per cost centre (a split of the totals, with "none") or per tag (overlapping: a
  * document with several tags counts in each).
  */

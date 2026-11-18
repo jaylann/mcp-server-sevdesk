@@ -139,7 +139,7 @@ describe("the tag filter of the list tools", () => {
     ]);
     await expect(
       invoicesListTool.handler(invoicesListTool.input.parse({ tag: "cafe" }), testContext(client)),
-    ).rejects.toThrow("Several tags have this name (compared ignoring case and accents).");
+    ).rejects.toThrow("Several tags have this name (compared ignoring case, accents and ß/ss).");
     expect(client.callsTo("/Invoice")).toEqual([]);
   });
 

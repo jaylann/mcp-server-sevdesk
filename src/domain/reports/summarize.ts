@@ -10,8 +10,9 @@
  * row. A document can carry several tags, so tag groups overlap (`groupsOverlap`) and do not add
  * up to the totals; the tags come from the account's relations, read once up to a cap, and a cut
  * read makes the breakdown incomplete (`groupsComplete: false`). A cost centre belongs to the whole
- * document (one per invoice, credit note or voucher; cost centres on voucher positions are not
- * read), so cost-centre groups, with "none" for documents without one, add up to the totals.
+ * document (one per invoice, credit note or voucher; a voucher position sent with a cost centre
+ * of its own reads back without one, D-092), so cost-centre groups, with "none" for documents
+ * without one, add up to the totals.
  *
  * Records come from the domain list functions (the same parsing and filters as the list tools),
  * read page by page up to {@link REPORT_SCAN_MAX} rows. Date ranges are handled by those
@@ -896,7 +897,8 @@ function summaryNotes(
     if (params.from !== undefined || params.to !== undefined) {
       notes.push(
         "The date range is checked here by value date (sevDesk's own date filter cuts by entry " +
-          "date), so all rows of the account(s) are read; the row cap applies to them.",
+          "date), so the rows of the account(s) are read from the newest down to the range's " +
+          "start (sevDesk lists them newest first by value date); the row cap applies to them.",
       );
     }
   }
@@ -943,7 +945,7 @@ function documentGroupingNotes(
     notes.push(
       "Grouped by the cost centre (Kostenstelle) of the whole document: sevDesk keeps one per " +
         "document, so the groups add up to the totals; documents without one are in the group " +
-        "none. Cost centres on single voucher positions are not read.",
+        "none. sevDesk keeps no cost centre on a single voucher position.",
     );
   }
   return notes;

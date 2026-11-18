@@ -1,7 +1,7 @@
 /**
- * The document discount of the draft tools (spec/deviations.md D-116, recorded 2026-11-16): the
- * argument, the body keys in the recorded form, the totals with the discount, the change an update
- * makes, and the refusals of what is not recorded.
+ * The document discount of the draft tools (spec/deviations.md D-116, recorded 2026-11-16 and
+ * 2026-11-18): the argument, the body keys in the recorded form, the totals with the discount, the
+ * change an update makes, and the refusals of what this server does not compute.
  */
 import { describe, expect, it } from "vitest";
 
@@ -210,8 +210,18 @@ describe("the body keys (recorded form, D-116)", () => {
 describe("totals with the discount", () => {
   it("gives the recorded sums for 10 % and for a fixed 10.00 on 100.00 at 19 %", () => {
     const recorded = { net: "90.00", tax: "17.10", gross: "107.10" };
-    expect(createTotals([recordedPosition], "net", ten, "EUR")).toEqual(recorded);
-    expect(createTotals([recordedPosition], "net", fixed, "EUR")).toEqual(recorded);
+    expect(createTotals([recordedPosition], "net", ten)).toEqual(recorded);
+    expect(createTotals([recordedPosition], "net", fixed)).toEqual(recorded);
+  });
+
+  it("gives the sums recorded on 2026-11-18 for 10 % on gross prices and 10.00 in CHF", () => {
+    // D-116, probes write-discount-net-gross (invoice 119.00 gross at 19 %, 10 %) and
+    // write-discount-foreign-currency (CHF, the foreign sums: 90, 17.1, 107.1).
+    const recorded = { net: "90.00", tax: "17.10", gross: "107.10" };
+    expect(createTotals([{ ...recordedPosition, unitPrice: "119" }], "gross", ten)).toEqual(
+      recorded,
+    );
+    expect(createTotals([recordedPosition], "net", fixed)).toEqual(recorded);
   });
 
   it("rounds the deduction and its tax to cents, exactly", () => {
@@ -244,40 +254,32 @@ describe("totals with the discount", () => {
   });
 
   it.each([
-    ["gross prices", "gross", [recordedPosition], ten, "EUR", "only verified for net prices"],
+    [
+      "a fixed amount on gross prices",
+      "gross",
+      [{ ...recordedPosition, unitPrice: "119" }],
+      fixed,
+      "takes a fixed discount off the gross total",
+    ],
     [
       "several tax rates",
       "net",
       [recordedPosition, { ...recordedPosition, taxRate: "7" }],
       ten,
-      "EUR",
-      "one tax rate",
-    ],
-    [
-      "a fixed amount in CHF",
-      "net",
-      [recordedPosition],
-      fixed,
-      "CHF",
-      "give the discount in percent",
+      "over several tax rates",
     ],
   ] as const)(
-    "refuses a new discount on %s (not recorded)",
-    (_label, mode, positions, discount, currency, message) => {
-      const error = refusal(() => createTotals(positions, mode, discount, currency));
+    "refuses a new discount on %s (recorded, not computed here)",
+    (_label, mode, positions, discount, message) => {
+      const error = refusal(() => createTotals(positions, mode, discount));
       expect(error.kind).toBe("validation");
       expect(error.message).toContain(message);
     },
   );
 
-  it("allows a percentage in another currency and one rate given twice", () => {
+  it("allows one rate given twice", () => {
     expect(
-      createTotals(
-        [recordedPosition, { ...recordedPosition, taxRate: "19.00" }],
-        "net",
-        ten,
-        "CHF",
-      ),
+      createTotals([recordedPosition, { ...recordedPosition, taxRate: "19.00" }], "net", ten),
     ).toEqual({ net: "180.00", tax: "34.20", gross: "214.20" });
   });
 
@@ -287,7 +289,6 @@ describe("totals with the discount", () => {
         [recordedPosition, { ...recordedPosition, taxRate: "7", optional: true }],
         "net",
         ten,
-        "EUR",
       ),
     ).toEqual({ net: "90.00", tax: "17.10", gross: "107.10" });
   });
@@ -378,7 +379,6 @@ describe("the totals of an update", () => {
       positions: undefined,
       storedPositions,
       mode: "net",
-      currency: "EUR",
       currencyChanged: false,
       stored,
       ...overrides,
@@ -481,10 +481,33 @@ describe("the totals of an update", () => {
       positions: [recordedPosition, { ...recordedPosition, taxRate: "7" }],
     });
     expect(mixed.expected).toBeUndefined();
-    expect(mixed.warning).toContain("only verified for positions with one tax rate");
+    expect(mixed.warning).toContain("over several tax rates");
+
+    // A kept fixed amount on gross prices: sevDesk takes it off the gross total (D-116).
+    const keepFixed = planDiscountChange(
+      undefined,
+      stored(row({ percentage: false })),
+      "Invoice 2102",
+    );
+    const gross = totals(keepFixed, discountedDraft, {
+      mode: "gross",
+      positions: [{ ...recordedPosition, unitPrice: "119" }],
+    });
+    expect(gross.expected).toBeUndefined();
+    expect(gross.warning).toContain("takes a fixed discount off the gross total");
   });
 
-  it("refuses a new discount on stored positions with several rates and on an e-invoice", () => {
+  it("computes a kept percentage on new gross positions (recorded 2026-11-18)", () => {
+    const keep = planDiscountChange(undefined, stored(row()), "Invoice 2102");
+    expect(
+      totals(keep, discountedDraft, {
+        mode: "gross",
+        positions: [{ ...recordedPosition, unitPrice: "119" }],
+      }).expected,
+    ).toEqual({ net: "90.00", tax: "17.10", gross: "107.10" });
+  });
+
+  it("refuses a new discount on stored positions with several rates", () => {
     const add = planDiscountChange({ percent: "10" }, stored(), "Invoice 2102");
     expect(
       refusal(() =>
@@ -492,15 +515,12 @@ describe("the totals of an update", () => {
           storedPositions: [{ taxRate: "19" }, { taxRate: "7" }],
         }),
       ).message,
-    ).toContain("one tax rate");
-    expect(refusal(() => totals(add, plainDraft, { eInvoice: true })).message).toContain(
-      "e-invoice (XRechnung/ZUGFeRD)",
-    );
+    ).toContain("over several tax rates");
   });
 
   it("does not compute a new discount on stored sums in a new currency", () => {
     const add = planDiscountChange({ percent: "10" }, stored(), "Invoice 2102");
-    const result = totals(add, plainDraft, { currency: "CHF", currencyChanged: true });
+    const result = totals(add, plainDraft, { currencyChanged: true });
     expect(result.expected).toBeUndefined();
     expect(result.warning).toContain("cannot be read in the new currency");
   });
@@ -514,21 +534,30 @@ describe("preview and read-back", () => {
       storedDiscountText(
         [row(), row({ id: 2, surcharge: true, percentage: false, isNet: false, text: undefined })],
         "EUR",
+        "net",
       ),
     ).toBe('10 % of the net total ("Rabatt"); surcharge (Aufschlag): 10.00 EUR gross');
-    expect(storedDiscountText([], "EUR")).toBeUndefined();
+    expect(storedDiscountText([], "EUR", "net")).toBeUndefined();
   });
 
-  it("writes a stored and a new fixed amount alike, and names no currency outside EUR", () => {
-    // Review of #114, finding 2: the stored row was "10 EUR net", the new one "10.00 EUR net",
-    // and a CHF draft's stored fixed amount was given a currency the approval leaves out (D-116).
+  it("writes a stored and a new fixed amount alike, in the document's currency", () => {
+    // Review of #114, finding 2: the stored row was "10 EUR net", the new one "10.00 EUR net".
+    // sevDesk reads a fixed amount in the document's currency (D-116, recorded 2026-11-18).
     const stored = row({ percentage: false, value: "10" });
-    expect(storedDiscountText([stored], "EUR")).toBe('10.00 EUR net ("Rabatt")');
+    expect(storedDiscountText([stored], "EUR", "net")).toBe('10.00 EUR net ("Rabatt")');
     expect(discountText({ ...fixed, value: "10" }, "EUR")).toBe('10.00 EUR net ("Rabatt")');
-    expect(storedDiscountText([stored], "CHF")).toBe('10.00 net (fixed amount) ("Rabatt")');
-    expect(storedDiscountText([row({ percentage: false, value: "12.345" })], "EUR")).toBe(
+    expect(storedDiscountText([stored], "CHF", "net")).toBe('10.00 CHF net ("Rabatt")');
+    expect(storedDiscountText([row({ percentage: false, value: "12.345" })], "EUR", "net")).toBe(
       '12.345 EUR net ("Rabatt")',
     );
+  });
+
+  it("shows a stored fixed amount on gross prices as gross, whatever isNet says (D-116)", () => {
+    // Recorded 2026-11-18: on a gross document a fixed 10.00 came off the gross total with isNet
+    // "1" and "0" alike; a percentage keeps its stored basis.
+    const fixedRow = row({ percentage: false, value: "10" });
+    expect(storedDiscountText([fixedRow], "EUR", "gross")).toBe('10.00 EUR gross ("Rabatt")');
+    expect(storedDiscountText([row()], "EUR", "gross")).toBe('10 % of the net total ("Rabatt")');
   });
 
   const item = { id: 9001, kind: "percent" as const, value: "10", basis: "net" as const };

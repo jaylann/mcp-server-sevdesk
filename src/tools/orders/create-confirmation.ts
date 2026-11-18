@@ -78,17 +78,15 @@ const DRAFT: Phrase = phrase(
 
 const NUMBER: Phrase = phrase(
   "sevDesk gives the confirmation the next number of the AB range without moving its counter, " +
-    "so that number is then reserved on the AB counter to move the counter past it; otherwise " +
-    "the next confirmation could get the same number. That a reservation moves the AB counter " +
-    "is assumed, not checked against sevDesk. A number is reserved on every real create, also " +
-    "for a draft that is deleted later, which can leave a gap in the AB numbers. Calls that " +
-    "number order confirmations run one at a time per account. The result names other " +
-    "confirmations with the same number.",
+    "so that number is then reserved on the AB counter, which moves the counter past it; " +
+    "otherwise the next confirmation could get the same number. A number is reserved on every " +
+    "real create, also for a draft that is deleted later, which can leave a gap in the AB " +
+    "numbers. Calls that number order confirmations run one at a time per account. The result " +
+    "names other confirmations with the same number.",
   "sevDesk gibt der Auftragsbestätigung die nächste Nummer des AB-Nummernkreises, ohne den " +
-    "Zähler weiterzuschalten; danach wird diese Nummer am AB-Zähler reserviert, um den Zähler " +
-    "über sie hinaus weiterzuschalten, sonst könnte die nächste Auftragsbestätigung dieselbe " +
-    "Nummer bekommen. Dass die Reservierung den AB-Zähler weiterschaltet, ist angenommen, aber " +
-    "nicht an sevDesk geprüft. Reserviert wird bei jeder echten Erstellung, auch für einen " +
+    "Zähler weiterzuschalten; danach wird diese Nummer am AB-Zähler reserviert, was den Zähler " +
+    "über sie hinaus weiterschaltet, sonst könnte die nächste Auftragsbestätigung dieselbe " +
+    "Nummer bekommen. Reserviert wird bei jeder echten Erstellung, auch für einen " +
     "Entwurf, der später gelöscht wird; dann kann eine Lücke in den AB-Nummern bleiben. " +
     "Aufrufe, die Auftragsbestätigungen nummerieren, laufen je Konto nacheinander. Das " +
     "Ergebnis nennt andere Auftragsbestätigungen mit derselben Nummer.",
@@ -100,14 +98,16 @@ const TRUNCATED: Phrase = phrase(
     "werden.",
 );
 
-// Only createInvoiceFromOrder was recorded with a discount (it copies it, D-116).
+// createContractNoteFromOrder copies a discount with the same row and sums (D-116, recorded
+// 2026-11-18 for 10 % on a sent offer); a surcharge was not recorded.
 const DISCOUNTS: Phrase = phrase(
-  "The offer carries discounts or surcharges on the whole document (listed above). Whether " +
-    "sevDesk takes them over to the order confirmation has not been checked; compare the new " +
-    "draft's totals with sevdesk_order_get before finalizing it.",
-  "Das Angebot trägt Rabatte oder Aufschläge auf das ganze Dokument (oben aufgeführt). Ob " +
-    "sevDesk sie in die Auftragsbestätigung übernimmt, ist nicht geprüft; vergleiche die Summen " +
-    "des neuen Entwurfs mit sevdesk_order_get, bevor du ihn fertigstellst.",
+  "The offer carries discounts or surcharges on the whole document (listed above). sevDesk " +
+    "copies a discount to the order confirmation with the same totals; a surcharge was not " +
+    "checked. Compare the new draft's totals with sevdesk_order_get before finalizing it.",
+  "Das Angebot trägt Rabatte oder Aufschläge auf das ganze Dokument (oben aufgeführt). sevDesk " +
+    "übernimmt einen Rabatt mit denselben Summen in die Auftragsbestätigung; ein Aufschlag ist " +
+    "nicht geprüft. Vergleiche die Summen des neuen Entwurfs mit sevdesk_order_get, bevor du " +
+    "ihn fertigstellst.",
 );
 
 export const orderCreateConfirmationTool = defineWriteTool({
@@ -121,9 +121,9 @@ export const orderCreateConfirmationTool = defineWriteTool({
     "them first) and not rejected offers (reopen them first with " +
     "sevdesk_order_set_offer_status). Refuses when a confirmation from the offer exists " +
     "(allowDuplicate overrides). sevDesk gives it the next AB number without moving its " +
-    "counter, so it is reserved on the AB counter afterwards to move the counter past it " +
-    "(assumed to work for AB, not checked; every real create reserves one, also for a draft " +
-    "deleted later: a gap); such calls run one at a time per account. The " +
+    "counter, so it is reserved on the AB counter afterwards, which moves the counter past it " +
+    "(every real create reserves one, also for a draft deleted later: a gap); such calls run " +
+    "one at a time per account. The " +
     "result names other confirmations with the same number. Next: " +
     "sevdesk_order_get, sevdesk_order_finalize, sevdesk_order_create_delivery_note, " +
     "sevdesk_invoice_create_from_order.",

@@ -232,17 +232,20 @@ describe("the approval shows the discount it makes binding", () => {
     },
   );
 
+  // Order 3002 has gross prices: sevDesk takes a fixed amount off the gross total there (D-116,
+  // recorded 2026-11-18), so its approval says gross.
   it.each([
-    ["order", orderRow({ status: "100", orderNumber: null }), "Order", 3002],
+    ["order", orderRow({ status: "100", orderNumber: null }), "Order", 3002, ["gross", "brutto"]],
     [
       "creditNote",
       creditNoteRow({ status: "100", sendType: null, sendDate: null }),
       "CreditNote",
       2001,
+      ["net", "netto"],
     ],
   ] as const)(
     "finalize of a draft %s shows its discount and binds it",
-    async (kind, row, objectName, id) => {
+    async (kind, row, objectName, id, [basis, basisDe]) => {
       const tool = finalizeTool(kind);
       const plan = (rows: Row[]) =>
         prepareWrite(
@@ -262,11 +265,11 @@ describe("the approval shows the discount it makes binding", () => {
 
       expect(discounted.preview.facts).toContainEqual({
         label: "Discount on the whole document (Rabatt)",
-        value: "10.00 EUR net\nText: Rabatt",
+        value: `10.00 EUR ${basis}\nText: Rabatt`,
       });
       expect(discounted.previewDe.facts).toContainEqual({
         label: "Rabatt auf den Gesamtbetrag",
-        value: "10,00 EUR netto\nText: Rabatt",
+        value: `10,00 EUR ${basisDe}\nText: Rabatt`,
       });
       expect(discounted.binding).not.toBe(without.binding);
     },

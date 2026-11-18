@@ -233,18 +233,20 @@ describe("sevdesk_private_transaction_rule_create", () => {
     const plan = await prepareWrite(createTool, { counterparty: "Netflix" }, client);
     expect(plan.preview.facts[2]).toEqual({
       label: "Open transactions examined",
-      value: "500 (the first 500; the list was cut)",
+      value: "500 (the newest 500 by value date; the list was cut)",
     });
     expect(plan.preview.facts[3]?.value).toBe("500, the first 10 listed below");
     expect(plan.preview.facts.filter((fact) => fact.label.startsWith("Estimate:"))).toHaveLength(
       10,
     );
     expect(plan.preview.warnings).toContain(
-      "Only 500 open transactions were examined: the list was cut, and more may look like what " +
-        "the rule is meant for.",
+      "Only 500 open transactions were examined, the newest by value date: the list was cut, " +
+        "and older ones may look like what the rule is meant for too.",
     );
     expect(plan.preview.warnings).toContain("Only the first 10 of 500 matches are listed by id.");
-    expect(plan.previewDe.facts[2]?.value).toBe("500 (die ersten 500; die Liste wurde gekürzt)");
+    expect(plan.previewDe.facts[2]?.value).toBe(
+      "500 (die 500 neuesten nach Wertstellung; die Liste wurde gekürzt)",
+    );
   });
 
   // The transaction scan also stops after 5000 rows read (MAX_SCAN_ROWS), e.g. when sevDesk
@@ -259,20 +261,20 @@ describe("sevdesk_private_transaction_rule_create", () => {
     const plan = await prepareWrite(createTool, { counterparty: "Netflix" }, client);
     expect(plan.preview.facts[2]).toEqual({
       label: "Open transactions examined",
-      value: "30 (the first 30; the list was cut)",
+      value: "30 (the newest 30 by value date; the list was cut)",
     });
     expect(plan.preview.warnings).toContain(
-      "Only 30 open transactions were examined: the list was cut, and more may look like what " +
-        "the rule is meant for.",
+      "Only 30 open transactions were examined, the newest by value date: the list was cut, and " +
+        "older ones may look like what the rule is meant for too.",
     );
     expect(plan.previewDe.warnings).toContain(
-      "Nur 30 offene Umsätze wurden geprüft: Die Liste wurde gekürzt, und weitere können " +
-        "gemeint scheinen.",
+      "Nur 30 offene Umsätze wurden geprüft, die neuesten nach Wertstellung: Die Liste wurde " +
+        "gekürzt, und ältere können ebenfalls gemeint scheinen.",
     );
     expect(plan.preview.warnings.join(" ")).not.toContain("500");
   });
 
-  it("names a single examined transaction without 'the first 1'", async () => {
+  it("names a single examined transaction without 'the newest 1'", async () => {
     const rows = Array.from({ length: 6000 }, (_, index) =>
       index === 0
         ? open(7000, "Netflix", "Abo")
@@ -283,12 +285,12 @@ describe("sevdesk_private_transaction_rule_create", () => {
     expect(plan.preview.facts[2]?.value).toBe("1 (the list was cut)");
     expect(plan.previewDe.facts[2]?.value).toBe("1 (die Liste wurde gekürzt)");
     expect(plan.preview.warnings).toContain(
-      "Only 1 open transaction was examined: the list was cut, and more may look like what the " +
-        "rule is meant for.",
+      "Only 1 open transaction was examined, the newest by value date: the list was cut, and " +
+        "older ones may look like what the rule is meant for too.",
     );
     expect(plan.previewDe.warnings).toContain(
-      "Nur 1 offener Umsatz wurde geprüft: Die Liste wurde gekürzt, und weitere können gemeint " +
-        "scheinen.",
+      "Nur 1 offener Umsatz wurde geprüft, der neueste nach Wertstellung: Die Liste wurde " +
+        "gekürzt, und ältere können ebenfalls gemeint scheinen.",
     );
   });
 
@@ -397,11 +399,12 @@ describe("sevdesk_private_transaction_rule_create", () => {
       );
       const plan = await prepareWrite(createTool, { counterparty: "Netflix" }, client);
       expect(plan.preview.warnings).toContain(
-        "sevDesk lists more than 5000 rules: the check for an equal rule read the first 5000 only.",
+        "sevDesk lists more than 5000 rules: the check for an equal rule read the oldest 5000 " +
+          "only (sevDesk lists rules oldest first).",
       );
       expect(plan.previewDe.warnings).toContain(
         "sevDesk listet mehr als 5000 Regeln: Die Prüfung auf eine gleiche Regel las nur die " +
-          "ersten 5000.",
+          "ältesten 5000 (sevDesk listet die ältesten Regeln zuerst).",
       );
       const offsets = client.before.calls
         .filter((call) => call.path === "/PrivateTransactionRule")

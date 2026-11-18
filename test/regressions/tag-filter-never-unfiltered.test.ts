@@ -99,8 +99,8 @@ describe.each(CASES)("$path: the tag filter never returns the unfiltered list", 
     await expect(run).rejects.toMatchObject({
       kind: "validation",
       message:
-        "No tag has this name (compared ignoring case and accents), so no document carries it. " +
-        "sevdesk_tags_list lists the tags.",
+        "No tag has this name (compared ignoring case, accents and ß/ss), so no document " +
+        "carries it. sevdesk_tags_list lists the tags.",
     });
     expect(client.callsTo(testCase.path)).toEqual([]);
   });

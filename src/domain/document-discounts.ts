@@ -8,9 +8,17 @@
  * discount (Skonto), something else. The rows are read with
  * `GET /Invoice|CreditNote|Order/{id}/getDiscounts` (recorded 2026-11-16 on all three; only the
  * order one is in the spec): `discount` "1" (a discount; "0" is a surcharge per `Model_Discount`,
- * not recorded), `percentage` "1" (percent) or "0" (a fixed amount), `value`, `isNet` ("1" net,
- * "0" gross) and `object`, the document, all as strings. For a document without discounts the
- * answer is `{objects: [], total: null}`.
+ * not recorded), `percentage` "1" (percent) or "0" (a fixed amount), `value`, `isNet` and
+ * `object`, the document, all as strings. For a document without discounts the answer is
+ * `{objects: [], total: null}`.
+ *
+ * `isNet` is stored as sent, "1" when the save leaves it out (recorded 2026-11-18, probe
+ * `write-discount-net-gross`), but it does not decide what sevDesk deducts: on a document with
+ * gross prices (`showNet` false) a fixed amount comes off the gross total with `isNet` "1" and
+ * "0" alike, and on one with net prices a fixed amount with `isNet` "1" comes off the net total
+ * (`isNet` "0" there is not recorded). A percentage takes the same share of net, tax and gross on
+ * either. So the basis shown for a fixed amount follows the document's price mode
+ * ({@link appliedDiscount}), and `isNet` only where that is not known.
  *
  * A document can hold several rows (a second `discountSave` without a delete adds one), but then
  * sevDesk's sums do not count all of them: in the check of 2026-11-17 (a fixed 5.00, then 3 %) only
@@ -143,7 +151,10 @@ const discountItemSchema = z.object({
   basis: z
     .enum(["net", "gross"])
     .optional()
-    .describe("Whether it applies to the net or the gross amounts (isNet)."),
+    .describe(
+      "net or gross: the total a fixed amount comes off (on gross prices always the gross " +
+        "total); a percentage takes the same share of both.",
+    ),
   surcharge: z
     .boolean()
     .optional()
@@ -238,6 +249,21 @@ export interface DiscountAmount {
   readonly isNet: boolean | undefined;
 }
 
+/** A document's price mode (`showNet`), `undefined` when sevDesk sent none. */
+type PriceModeOfDocument = "net" | "gross" | undefined;
+
+/**
+ * A stored discount with the basis sevDesk applies it on (see the module comment): a fixed amount
+ * on a document with gross prices comes off the gross total whatever its `isNet`; otherwise the
+ * stored `isNet` stands.
+ */
+export function appliedDiscount<T extends DiscountAmount>(
+  row: T,
+  priceMode: PriceModeOfDocument,
+): T {
+  return !row.percentage && priceMode === "gross" ? { ...row, isNet: false } : row;
+}
+
 /** The {@link DiscountAmount} of a DTO item. */
 export function discountAmountOfItem(item: DocumentDiscount["items"][number]): DiscountAmount {
   return {
@@ -256,7 +282,6 @@ const ROW_WORDS: Readonly<
       readonly gross: string;
       readonly ofNet: string;
       readonly ofGross: string;
-      readonly fixedAmount: string;
       readonly surcharge: string;
     }
   >
@@ -266,7 +291,6 @@ const ROW_WORDS: Readonly<
     gross: "gross",
     ofNet: "of the net total",
     ofGross: "of the gross total",
-    fixedAmount: "fixed amount",
     surcharge: "surcharge (Aufschlag)",
   },
   de: {
@@ -274,7 +298,6 @@ const ROW_WORDS: Readonly<
     gross: "brutto",
     ofNet: "vom Nettobetrag",
     ofGross: "vom Bruttobetrag",
-    fixedAmount: "fester Betrag",
     surcharge: "Aufschlag",
   },
 };
@@ -282,9 +305,11 @@ const ROW_WORDS: Readonly<
 /**
  * One discount on the whole document as every preview and approval shows it: "10 % of the net
  * total", "10.00 EUR net", a surcharge marked as such. A fixed amount is shown exactly, with at
- * least two decimals; on a document in another currency than EUR it gets no currency, "10.00 net
- * (fixed amount)", because which one sevDesk reads it in is not recorded (D-116). The text printed
- * with the discount is not part of it: each preview places that untrusted text its own way.
+ * least two decimals, in the document's currency: sevDesk reads it in that currency, also on a
+ * document in another currency than EUR (D-116, recorded 2026-11-18 for CHF). Pass a stored row
+ * through {@link appliedDiscount} first, so a fixed amount on gross prices reads as gross. The
+ * text printed with the discount is not part of it: each preview places that untrusted text its
+ * own way.
  */
 export function discountRowText(
   row: DiscountAmount,
@@ -298,23 +323,24 @@ export function discountRowText(
   const fixed = numberText(money(row.value, DEFAULT_CURRENCY).amount, lang);
   const amount = row.percentage
     ? `${numberText(row.value, lang)} % ${gross ? words.ofGross : words.ofNet}`
-    : currency === DEFAULT_CURRENCY
-      ? `${fixed} ${currency} ${basis}`
-      : `${fixed} ${basis} (${words.fixedAmount})`;
+    : `${fixed} ${currency} ${basis}`;
   return row.surcharge ? `${words.surcharge}: ${amount}` : amount;
 }
 
 /**
- * The DTO of a document's discounts: the rows (text cleaned), the sums sevDesk computed for them
- * in the document's currency, and a warning when there are several. `undefined` when the document
- * has none.
+ * The DTO of a document's discounts: the rows (text cleaned, the basis as sevDesk applies it on
+ * the document's price mode, {@link appliedDiscount}), the sums sevDesk computed for them in the
+ * document's currency, and a warning when there are several. `undefined` when the document has
+ * none.
  */
 export function documentDiscountDto(
-  rows: readonly DiscountRow[],
+  stored: readonly DiscountRow[],
   sums: DiscountSums,
   currency: string,
+  priceMode: PriceModeOfDocument,
 ): DocumentDiscount | undefined {
-  if (rows.length === 0) return undefined;
+  if (stored.length === 0) return undefined;
+  const rows = stored.map((row) => appliedDiscount(row, priceMode));
   return compact({
     items: rows.map((row) =>
       compact({

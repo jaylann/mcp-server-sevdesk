@@ -354,7 +354,7 @@ export async function getCreditNote(
   const discount =
     discounts === undefined
       ? undefined
-      : documentDiscountDto(discounts.rows, record, creditNote.currency);
+      : documentDiscountDto(discounts.rows, record, creditNote.currency, creditNote.priceMode);
   return {
     creditNote,
     positions: positions.rows.map((row) => toPositionDto(row, context)),

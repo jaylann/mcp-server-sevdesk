@@ -7,8 +7,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  appliedDiscount,
   discountAmountOfItem,
+  type DiscountRow,
   discountRowText,
+  documentDiscountDto,
   readDocumentDiscounts,
 } from "../../../src/domain/document-discounts.js";
 import { SevdeskError } from "../../../src/sevdesk/errors.js";
@@ -140,10 +143,10 @@ describe("writing one discount row", () => {
     expect(discountRowText(surcharge, "EUR", "de")).toBe("Aufschlag: 1.250,00 EUR brutto");
   });
 
-  it("names no currency for a fixed amount outside EUR (D-116)", () => {
+  it("names the document's currency for a fixed amount outside EUR (D-116, recorded 2026-11-18)", () => {
     const fixed = { surcharge: false, percentage: false, value: "12", isNet: true };
-    expect(discountRowText(fixed, "USD", "en")).toBe("12.00 net (fixed amount)");
-    expect(discountRowText(fixed, "USD", "de")).toBe("12,00 netto (fester Betrag)");
+    expect(discountRowText(fixed, "USD", "en")).toBe("12.00 USD net");
+    expect(discountRowText(fixed, "USD", "de")).toBe("12,00 USD netto");
     // A percentage is the same in any currency.
     expect(discountRowText(row, "USD", "en")).toBe("2.5 % of the net total");
   });
@@ -157,5 +160,39 @@ describe("writing one discount row", () => {
       value: "3",
       isNet: undefined,
     });
+  });
+});
+
+describe("the basis sevDesk applies a discount on (D-116, recorded 2026-11-18)", () => {
+  const fixed: DiscountRow = {
+    id: 9001,
+    text: "Rabatt",
+    surcharge: false,
+    percentage: false,
+    value: "10",
+    isNet: true,
+  };
+  const percent: DiscountRow = { ...fixed, id: 9002, percentage: true };
+
+  it("takes a fixed amount on gross prices off the gross total, whatever isNet says", () => {
+    expect(appliedDiscount(fixed, "gross")).toEqual({ ...fixed, isNet: false });
+    expect(appliedDiscount({ ...fixed, isNet: false }, "gross").isNet).toBe(false);
+    expect(discountRowText(appliedDiscount(fixed, "gross"), "EUR", "en")).toBe("10.00 EUR gross");
+  });
+
+  it("keeps the stored isNet on net prices, for a percentage and without a price mode", () => {
+    expect(appliedDiscount(fixed, "net")).toBe(fixed);
+    expect(appliedDiscount({ ...fixed, isNet: false }, "net").isNet).toBe(false);
+    expect(appliedDiscount(percent, "gross")).toBe(percent);
+    expect(appliedDiscount(fixed, undefined)).toBe(fixed);
+  });
+
+  it("gives the DTO the applied basis", () => {
+    const sums = { sumDiscountNet: "-8.4", sumDiscountGross: "-10" };
+    expect(documentDiscountDto([fixed, percent], sums, "EUR", "gross")?.items).toEqual([
+      { id: 9001, kind: "amount", value: "10", basis: "gross", text: "Rabatt" },
+      { id: 9002, kind: "percent", value: "10", basis: "net", text: "Rabatt" },
+    ]);
+    expect(documentDiscountDto([fixed], sums, "EUR", "net")?.items[0]?.basis).toBe("net");
   });
 });

@@ -297,7 +297,7 @@ describe("GET /Order/{id}/getDiscounts (D-116)", () => {
     ]);
     const stored = await readDocumentDiscounts(client, "order", 31710400);
     expect(stored).toEqual({ raw: [], rows: [] });
-    expect(documentDiscountDto(stored.rows, {}, "EUR")).toBeUndefined();
+    expect(documentDiscountDto(stored.rows, {}, "EUR", "net")).toBeUndefined();
     // One page with an explicit limit, as recorded (`?limit=n`).
     expect(client.calls).toEqual([
       expect.objectContaining({

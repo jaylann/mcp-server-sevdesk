@@ -42,8 +42,10 @@ describe("sevdesk_order_get (community: recorded Order shapes, fake data)", () =
       discountsRoute("Order", 3002, [discountRow("Order", 3002, { percentage: "0" })]),
     ]);
     expect(tool.output.parse(result.data)).toEqual(result.data);
+    // Order 3002 has gross prices: a fixed amount comes off the gross total there, whatever the
+    // stored isNet "1" says (D-116, recorded 2026-11-18).
     expect(result.data.discount?.items).toEqual([
-      { id: 9001, kind: "amount", value: "10", basis: "net", text: "Rabatt" },
+      { id: 9001, kind: "amount", value: "10", basis: "gross", text: "Rabatt" },
     ]);
   });
 

@@ -654,17 +654,17 @@ describe("sevdesk_invoice_update_recurring", () => {
       ...templateChangeRoutes(row, positions),
     ];
     const wartung = [{ name: "Wartung", quantity: 1, unitPrice: "80.00", taxRate: 19 }];
+    // sevDesk keeps the discount when every position is replaced (recorded 2026-11-18, D-116).
     const keptEn =
-      "This template has a discount on the whole document, which the change leaves alone. " +
-      "Whether sevDesk keeps it when every position is replaced is not recorded; the total per " +
-      "invoice above counts it as kept. The result says whether sevDesk still lists it.";
+      "This template has a discount on the whole document, which the change leaves alone: " +
+      "sevDesk keeps it when every position is replaced, so it applies to the new positions, " +
+      "and the total per invoice above counts it.";
     const keptDe =
-      "Diese Vorlage hat einen Rabatt auf den Gesamtbetrag, den die Änderung nicht berührt. Ob " +
-      "sevDesk ihn behält, wenn alle Positionen ersetzt werden, ist nicht erfasst; die Summe je " +
-      "Rechnung oben rechnet ihn als erhalten ein. Das Ergebnis sagt, ob sevDesk ihn danach noch " +
-      "führt.";
+      "Diese Vorlage hat einen Rabatt auf den Gesamtbetrag, den die Änderung nicht berührt: " +
+      "sevDesk behält ihn, wenn alle Positionen ersetzt werden, er gilt also für die neuen " +
+      "Positionen, und die Summe je Rechnung oben rechnet ihn ein.";
 
-    it("counts a kept single net discount in the totals of new positions, and says it is unrecorded", async () => {
+    it("counts a kept single net discount in the totals of new positions, and says sevDesk keeps it", async () => {
       const plan = await prepare({ positions: wartung }, withDiscounts([tenPercent]));
       // The body leaves the discount alone.
       expect(plan.state.body).not.toHaveProperty("discountSave");
@@ -716,31 +716,47 @@ describe("sevdesk_invoice_update_recurring", () => {
       expect(plan.preview.warnings).toEqual(
         expect.arrayContaining([
           expect.stringMatching(/^This document has 2 discounts on the whole document/),
-          "This template has a discount on the whole document, which the change leaves alone. " +
-            "Whether sevDesk keeps it when every position is replaced is not recorded. The " +
-            "result says whether sevDesk still lists it.",
-          "The template's discounts on the whole document (several, a surcharge or a gross " +
-            "amount) are not computed here: sevDesk computes the total per invoice. Check it in " +
+          "This template has a discount on the whole document, which the change leaves alone: " +
+            "sevDesk keeps it when every position is replaced, so it applies to the new positions.",
+          "The template's discounts on the whole document (several, a surcharge or one stored " +
+            "as gross) are not computed here: sevDesk computes the total per invoice. Check it in " +
             "the result before the template's next run.",
         ]),
       );
       expect(plan.previewDe.warnings).toEqual(
         expect.arrayContaining([
-          "Die Rabatte der Vorlage auf den Gesamtbetrag (mehrere, ein Aufschlag oder ein " +
-            "Bruttobetrag) werden hier nicht berechnet: sevDesk berechnet die Summe je Rechnung. " +
-            "Prüfe sie im Ergebnis vor der nächsten Ausführung der Vorlage.",
+          "Die Rabatte der Vorlage auf den Gesamtbetrag (mehrere, ein Aufschlag oder einer, der " +
+            "als brutto gespeichert ist) werden hier nicht berechnet: sevDesk berechnet die Summe " +
+            "je Rechnung. Prüfe sie im Ergebnis vor der nächsten Ausführung der Vorlage.",
         ]),
       );
       expect(plan.previewDe.warnings).toHaveLength(plan.preview.warnings.length);
     });
 
-    it("leaves the total to sevDesk for a kept discount on gross prices", async () => {
+    it("counts a kept percentage on new gross prices like on net prices (recorded 2026-11-18)", async () => {
+      // 95.20 gross at 19 % is 80.00 net; 10 % off gives the same totals as on net prices (D-116).
       const gross = [{ ...wartung[0], unitPrice: "95.20" }];
       const plan = await prepare(
         { positions: gross, priceMode: "gross" },
         withDiscounts([tenPercent]),
       );
+      expect(plan.state.positions?.expected).toEqual({
+        net: "72.00",
+        tax: "13.68",
+        gross: "85.68",
+      });
+    });
+
+    it("leaves the total to sevDesk for a kept fixed amount on gross prices", async () => {
+      // On gross prices sevDesk takes a fixed amount off the gross total, which is not computed
+      // here (D-116, recorded 2026-11-18).
+      const gross = [{ ...wartung[0], unitPrice: "95.20" }];
+      const fixed = discountRow("Invoice", 2301, { percentage: "0", value: "5" });
+      const plan = await prepare({ positions: gross, priceMode: "gross" }, withDiscounts([fixed]));
       expect(plan.state.positions?.expected).toBeUndefined();
+      expect(fact(plan.preview.facts, "Discount on the whole document (Rabatt)")).toBe(
+        'unchanged: 5.00 EUR gross ("Rabatt")',
+      );
       expect(plan.preview.warnings).toContainEqual(
         expect.stringMatching(/^The total per invoice with the kept discount is not computed here/),
       );

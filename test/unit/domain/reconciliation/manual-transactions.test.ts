@@ -207,22 +207,23 @@ describe("planTransactionCreate", () => {
   });
 
   it("says the scan may not have reached that day when it stopped at its row cap", async () => {
-    // More rows than the scan searches, none of them dated that day.
+    // More rows than the scan searches, all dated after that day: sevDesk lists them newest
+    // first by value date (D-145), so they come before the day's rows.
     const rows = Array.from({ length: MAX_SCAN_ROWS + 1 }, (_, index) =>
-      row({ id: String(10_000 + index), valueDate: "2026-11-10T12:00:00+01:00" }),
+      row({ id: String(10_000 + index), valueDate: "2026-11-17T12:00:00+01:00" }),
     );
     const client = createClient(IMPORT, rows);
     const plan = await planTransactionCreate(client, INPUT);
     expect(plan.duplicates).toEqual([]);
     expect(inLanguage(plan.warnings, "en")).toContain(
-      "Account 4004 has more rows than the duplicate check searches (5000), so rows dated " +
-        "2026-11-16 may not have been checked; check it with sevdesk_transactions_list before " +
-        "confirming.",
+      "Account 4004 has more than 5000 rows dated 2026-11-16 or later, more than the duplicate " +
+        "check searches, so rows dated 2026-11-16 may not all have been checked; check it with " +
+        "sevdesk_transactions_list before confirming.",
     );
     expect(inLanguage(plan.warnings, "de")).toContain(
-      "Das Konto 4004 hat mehr Umsätze, als die Prüfung auf Doppelte durchsucht (5000); Umsätze " +
-        "vom 16.11.2026 wurden daher womöglich nicht geprüft. Prüfe es vor der Bestätigung mit " +
-        "sevdesk_transactions_list.",
+      "Das Konto 4004 hat mehr als 5000 Umsätze vom 16.11.2026 oder später, mehr als die " +
+        "Prüfung auf Doppelte durchsucht; Umsätze vom 16.11.2026 wurden daher womöglich nicht " +
+        "alle geprüft. Prüfe es vor der Bestätigung mit sevdesk_transactions_list.",
     );
     // Not the claim that the day itself has more rows: the scan never saw that day.
     expect(inLanguage(plan.warnings, "en").join(" ")).not.toContain("more rows on that day");
@@ -230,6 +231,18 @@ describe("planTransactionCreate", () => {
     const limits = client.callsTo("/CheckAccountTransaction").map((call) => call.query["limit"]);
     expect(limits.every((limit) => typeof limit === "number" && limit <= 1000)).toBe(true);
     expect(limits.reduce<number>((sum, limit) => sum + Number(limit), 0)).toBe(MAX_SCAN_ROWS);
+  });
+
+  it("ends the scan at the first row before that day, without a cap warning (D-145)", async () => {
+    // More rows than the cap, all older than the day: newest first, the first one ends the scan.
+    const rows = Array.from({ length: MAX_SCAN_ROWS + 1 }, (_, index) =>
+      row({ id: String(10_000 + index), valueDate: "2026-11-10T12:00:00+01:00" }),
+    );
+    const client = createClient(IMPORT, rows);
+    const plan = await planTransactionCreate(client, INPUT);
+    expect(plan.duplicates).toEqual([]);
+    expect(plan.warnings).toHaveLength(1);
+    expect(client.callsTo("/CheckAccountTransaction")).toHaveLength(1);
   });
 
   it("says when that day has more rows than the duplicate check reads", async () => {

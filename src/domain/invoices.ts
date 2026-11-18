@@ -531,7 +531,7 @@ export async function getInvoice(
   const discount =
     discounts === undefined
       ? undefined
-      : documentDiscountDto(discounts.rows, record, invoice.currency);
+      : documentDiscountDto(discounts.rows, record, invoice.currency, invoice.priceMode);
   return {
     invoice,
     positions: positions.rows.map((row) => toPositionDto(row, context)),

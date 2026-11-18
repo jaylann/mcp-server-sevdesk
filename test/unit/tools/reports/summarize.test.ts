@@ -392,16 +392,17 @@ describe("sevdesk_records_summarize (community fixtures, fake data)", () => {
         },
         [
           accountsRoute,
+          // Newest first by value date, as sevDesk lists them (D-145).
           rows("/CheckAccountTransaction", [
-            transaction({ id: "1", valueDate: "2026-01-05T00:00:00+01:00", amount: "-1" }),
-            transaction({ id: "2", valueDate: "2026-01-06T00:00:00+01:00", amount: "0.1" }),
-            transaction({ id: "3", valueDate: "2026-01-31T00:00:00+01:00", amount: "0.2" }),
             transaction({
               id: "4",
               valueDate: "2026-01-31T00:00:00+01:00",
               amount: "5",
               status: "400",
             }),
+            transaction({ id: "3", valueDate: "2026-01-31T00:00:00+01:00", amount: "0.2" }),
+            transaction({ id: "2", valueDate: "2026-01-06T00:00:00+01:00", amount: "0.1" }),
+            transaction({ id: "1", valueDate: "2026-01-05T00:00:00+01:00", amount: "-1" }),
           ]),
         ],
       );
@@ -409,12 +410,14 @@ describe("sevdesk_records_summarize (community fixtures, fake data)", () => {
       expect(query).toMatchObject({ "checkAccount[id]": 4002, status: 100 });
       expect(query).not.toHaveProperty("startDate");
       expect(query).not.toHaveProperty("endDate");
-      expect(report.recordsScanned).toBe(4);
+      // Row 1, the first before the range, ends the scan: every later row is older still.
+      expect(report.recordsScanned).toBe(3);
       expect(report.recordsCounted).toBe(2);
       expect(report.totals.lines[0]).toMatchObject({ incoming: eur("0.30"), count: 2 });
       expect(report.notes).toContain(
         "The date range is checked here by value date (sevDesk's own date filter cuts by entry " +
-          "date), so all rows of the account(s) are read; the row cap applies to them.",
+          "date), so the rows of the account(s) are read from the newest down to the range's " +
+          "start (sevDesk lists them newest first by value date); the row cap applies to them.",
       );
     });
   });

@@ -9,6 +9,7 @@
  */
 import { cleanText, trimmedText } from "../common.js";
 import {
+  appliedDiscount,
   type DiscountRow,
   discountRowText,
   severalDiscountsWarning,
@@ -293,7 +294,8 @@ function totalText(input: TemplateUpdatePreviewInput, lang: PreviewLanguage): st
 
 /**
  * The template's discounts on the whole document, which the change keeps: each as every preview
- * shows one (`discountRowText`), with its printed text cleaned (upstream text), or `undefined`.
+ * shows one (`discountRowText`, the basis as sevDesk applies it on the price mode after the
+ * change, `appliedDiscount`), with its printed text cleaned (upstream text), or `undefined`.
  */
 function discountFactText(
   input: TemplateUpdatePreviewInput,
@@ -305,7 +307,8 @@ function discountFactText(
     .map((row) => {
       const text = cleanText(row.text, TEXT_MAX.short);
       const quoted = text === undefined ? "" : lang === "de" ? ` („${text}“)` : ` ("${text}")`;
-      return `${discountRowText(row, input.basics.currency, lang)}${quoted}`;
+      const applied = appliedDiscount(row, input.basics.mode);
+      return `${discountRowText(applied, input.basics.currency, lang)}${quoted}`;
     })
     .join("; ");
   return lang === "de" ? `unverändert: ${list}` : `unchanged: ${list}`;
@@ -576,20 +579,19 @@ function firstRunToday(stored: StoredSchedule): Phrase {
 
 /**
  * New positions on a template with a discount on the whole document: the body leaves the
- * discount alone, but whether sevDesk keeps it when every position is replaced is not recorded
- * (D-116 records the replacement of a discount with `invoicePosSave: null` only). `counted`: the
- * total per invoice in the preview counts the discount.
+ * discount alone, and sevDesk keeps it when every position is replaced (D-116, recorded
+ * 2026-11-18, probe `write-recurring-template-discount`), so it applies to the new positions.
+ * `counted`: the total per invoice in the preview counts the discount.
  */
-function keptDiscountUnrecorded(counted: boolean): Phrase {
+function keptDiscount(counted: boolean): Phrase {
   return phrase(
-    "This template has a discount on the whole document, which the change leaves alone. Whether " +
-      "sevDesk keeps it when every position is replaced is not recorded" +
-      (counted ? "; the total per invoice above counts it as kept." : ".") +
-      " The result says whether sevDesk still lists it.",
-    "Diese Vorlage hat einen Rabatt auf den Gesamtbetrag, den die Änderung nicht berührt. Ob " +
-      "sevDesk ihn behält, wenn alle Positionen ersetzt werden, ist nicht erfasst" +
-      (counted ? "; die Summe je Rechnung oben rechnet ihn als erhalten ein." : ".") +
-      " Das Ergebnis sagt, ob sevDesk ihn danach noch führt.",
+    "This template has a discount on the whole document, which the change leaves alone: " +
+      "sevDesk keeps it when every position is replaced, so it applies to the new positions" +
+      (counted ? ", and the total per invoice above counts it." : "."),
+    "Diese Vorlage hat einen Rabatt auf den Gesamtbetrag, den die Änderung nicht berührt: " +
+      "sevDesk behält ihn, wenn alle Positionen ersetzt werden, er gilt also für die neuen " +
+      "Positionen" +
+      (counted ? ", und die Summe je Rechnung oben rechnet ihn ein." : "."),
   );
 }
 
@@ -597,20 +599,20 @@ function keptDiscountUnrecorded(counted: boolean): Phrase {
 const DISCOUNTS_NOT_COMPUTED: Readonly<Record<"one" | "other", Phrase>> = {
   one: phrase(
     "The total per invoice with the kept discount is not computed here (this server computes it " +
-      "only where that is recorded: net prices, one tax rate, a discount no larger than the net " +
-      "total): sevDesk computes it. Check it in the result before the template's next run.",
+      "for one tax rate, a fixed amount only on net prices, and a discount no larger than the " +
+      "net total): sevDesk computes it. Check it in the result before the template's next run.",
     "Die Summe je Rechnung mit dem erhaltenen Rabatt wird hier nicht berechnet (dieser Server " +
-      "berechnet sie nur, wo das erfasst ist: Nettopreise, ein Steuersatz, ein Rabatt bis zum " +
-      "Nettobetrag): sevDesk berechnet sie. Prüfe sie im Ergebnis vor der nächsten Ausführung der " +
-      "Vorlage.",
+      "berechnet sie bei einem Steuersatz, einen festen Betrag nur bei Nettopreisen und einen " +
+      "Rabatt bis zum Nettobetrag): sevDesk berechnet sie. Prüfe sie im Ergebnis vor der " +
+      "nächsten Ausführung der Vorlage.",
   ),
   other: phrase(
-    "The template's discounts on the whole document (several, a surcharge or a gross amount) are " +
-      "not computed here: sevDesk computes the total per invoice. Check it in the result before " +
-      "the template's next run.",
-    "Die Rabatte der Vorlage auf den Gesamtbetrag (mehrere, ein Aufschlag oder ein Bruttobetrag) " +
-      "werden hier nicht berechnet: sevDesk berechnet die Summe je Rechnung. Prüfe sie im " +
-      "Ergebnis vor der nächsten Ausführung der Vorlage.",
+    "The template's discounts on the whole document (several, a surcharge or one stored as " +
+      "gross) are not computed here: sevDesk computes the total per invoice. Check it in the " +
+      "result before the template's next run.",
+    "Die Rabatte der Vorlage auf den Gesamtbetrag (mehrere, ein Aufschlag oder einer, der als " +
+      "brutto gespeichert ist) werden hier nicht berechnet: sevDesk berechnet die Summe je " +
+      "Rechnung. Prüfe sie im Ergebnis vor der nächsten Ausführung der Vorlage.",
   ),
 };
 
@@ -622,7 +624,7 @@ function discountWarnings(input: TemplateUpdatePreviewInput, lang: PreviewLangua
   const list: (string | undefined)[] = [
     severalDiscountsWarning(discounts.length)?.[lang],
     positions !== undefined && discounts.length > 0
-      ? keptDiscountUnrecorded(expected !== undefined)[lang]
+      ? keptDiscount(expected !== undefined)[lang]
       : undefined,
     positions !== undefined && expected === undefined && state.kind !== "none"
       ? DISCOUNTS_NOT_COMPUTED[state.kind][lang]

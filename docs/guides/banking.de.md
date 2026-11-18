@@ -179,9 +179,9 @@ Teil davon, Groß- und Kleinschreibung) und ob auch ein CSV-Dateiimport Regeln a
 nicht bekannt.
 
 **Die Schätzung in der Vorschau.** Die Vorschau beim Anlegen nennt offene Umsätze, die vermutlich
-gemeint sind: bis zu zehn von höchstens 500 offenen (ungebuchten) Umsätzen, deren
-Auftraggeber/Empfänger oder Verwendungszweck den Text enthält, ohne Rücksicht auf Groß- und
-Kleinschreibung. Das ist eine eigene Schätzung des Servers und als solche gekennzeichnet, nicht
+gemeint sind: bis zu zehn von höchstens 500 offenen (ungebuchten) Umsätzen, den neuesten nach
+Wertstellung, deren Auftraggeber/Empfänger oder Verwendungszweck den Text enthält, ohne Rücksicht
+auf Groß- und Kleinschreibung. Das ist eine eigene Schätzung des Servers und als solche gekennzeichnet, nicht
 sevDesks Abgleich, und das Anlegen der Regel ändert keinen dieser Umsätze. Um einen davon jetzt als
 privat zu markieren, nimm `sevdesk_transaction_mark_private`.
 

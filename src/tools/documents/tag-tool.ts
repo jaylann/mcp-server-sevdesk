@@ -47,7 +47,8 @@ export const documentTagTool = defineWriteTool({
   description:
     "Add a tag (Tag, Schlagwort, e.g. a project, customer or branch) to an invoice " +
     "(Rechnung), credit note (Gutschrift), order (Angebot/Auftrag) or voucher (Beleg), or " +
-    "remove it. Tags are given by name, compared ignoring case and accents as sevDesk does; adding an " +
+    "remove it. Tags are given by name, compared ignoring case, accents and ß/ss as sevDesk " +
+    "does; adding an " +
     "unknown name creates the tag (the preview says so). Removing a tag's last use deletes the " +
     "tag in sevDesk (the preview warns). One document per call: to tag three invoices, call it " +
     "three times. Tier write. List tags with sevdesk_tags_list; find documents tagged with a " +

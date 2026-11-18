@@ -211,12 +211,13 @@ function createFacts(plan: PrivateRuleCreatePlan, lang: PreviewLanguage): Fact[]
   const de = lang === "de";
   const { estimate } = plan;
   const count = estimate.examined;
-  // "The first 1" reads oddly: with one (or none) examined, only the cut is named.
+  // "The newest 1" reads oddly: with one (or none) examined, only the cut is named. sevDesk lists
+  // transactions newest first by value date (D-145).
   const cut =
     count > 1
       ? de
-        ? `(die ersten ${String(count)}; die Liste wurde gekürzt)`
-        : `(the first ${String(count)}; the list was cut)`
+        ? `(die ${String(count)} neuesten nach Wertstellung; die Liste wurde gekürzt)`
+        : `(the newest ${String(count)} by value date; the list was cut)`
       : de
         ? "(die Liste wurde gekürzt)"
         : "(the list was cut)";
@@ -292,9 +293,11 @@ function createWarnings(plan: PrivateRuleCreatePlan): Phrase[] {
     warnings.push(
       phrase(
         `Only ${String(count)} open ${count === 1 ? "transaction was" : "transactions were"} ` +
-          "examined: the list was cut, and more may look like what the rule is meant for.",
+          "examined, the newest by value date: the list was cut, and older ones may look like " +
+          "what the rule is meant for too.",
         `Nur ${String(count)} ${count === 1 ? "offener Umsatz wurde" : "offene Umsätze wurden"} ` +
-          "geprüft: Die Liste wurde gekürzt, und weitere können gemeint scheinen.",
+          `geprüft, ${count === 1 ? "der neueste" : "die neuesten"} nach Wertstellung: Die Liste ` +
+          "wurde gekürzt, und ältere können ebenfalls gemeint scheinen.",
       ),
     );
   }
@@ -312,10 +315,10 @@ function createWarnings(plan: PrivateRuleCreatePlan): Phrase[] {
     const read = String(plan.rulesRead);
     warnings.push(
       phrase(
-        `sevDesk lists more than ${read} rules: the check for an equal rule read the first ` +
-          `${read} only.`,
+        `sevDesk lists more than ${read} rules: the check for an equal rule read the oldest ` +
+          `${read} only (sevDesk lists rules oldest first).`,
         `sevDesk listet mehr als ${read} Regeln: Die Prüfung auf eine gleiche Regel las nur die ` +
-          `ersten ${read}.`,
+          `ältesten ${read} (sevDesk listet die ältesten Regeln zuerst).`,
       ),
     );
   }

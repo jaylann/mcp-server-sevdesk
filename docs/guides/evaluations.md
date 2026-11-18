@@ -60,8 +60,8 @@ anything is counted: you never get the totals of all documents labelled as one p
 - **Tags overlap.** A document can carry several tags, so it counts in each of its tag groups, and
   the tag groups add up to more than the totals. The result says so (`groupsOverlap`).
 - **Cost centres split.** sevDesk keeps one cost centre per document, so the cost-centre groups add
-  up to the totals. Cost centres on single voucher positions are not read: the whole document
-  counts for the cost centre on its head.
+  up to the totals. sevDesk keeps no cost centre on a single voucher position, so the whole
+  document counts for the cost centre on its head.
 - **None.** Documents without a tag or without a cost centre form their own group, `none`.
 - **Incomplete reads.** The tags come from the account's tag assignments, read up to 10,000. With
   more, or when the row cap stops reading, the breakdown is marked incomplete
