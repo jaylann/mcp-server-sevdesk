@@ -1,8 +1,8 @@
 {
   "caseId": "transaction-get-de",
   "model": "claude-sonnet-5-5",
-  "key": "04aff40953f023b74d39b4122045df3c2dfe4ae8a44eb5c9c545587f8ba14fae",
-  "recordedAt": "2026-11-18T15:26:00.172Z",
+  "key": "b1214983c16c21cb2c3a8962b48a7449d49a4ec139e709596cbf65cda30df2fc",
+  "recordedAt": "2026-11-18T17:05:27.697Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -11,7 +11,7 @@
       "inputTokens": 114,
       "outputTokens": 55,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 22422
+      "cacheReadInputTokens": 22584
     }
   }
 }

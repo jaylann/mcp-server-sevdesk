@@ -1,8 +1,8 @@
 {
   "caseId": "vouchers-supplier-de",
   "model": "claude-sonnet-5-5",
-  "key": "30b909214a1f6e68671ea78397fbcb55328e57e1b260565a536c13fecbfe5c27",
-  "recordedAt": "2026-11-18T15:25:29.860Z",
+  "key": "ae8a67843aaf21f676959acd6e47f00a5821f55ace1fcf904171f03c1012f0b9",
+  "recordedAt": "2026-11-18T17:04:53.592Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -14,15 +14,16 @@
           "supplierName": "Hetzner",
           "from": "2026-01-01",
           "to": "2026-12-31",
+          "detail": "summary",
           "limit": 100
         }
       }
     ],
     "usage": {
       "inputTokens": 108,
-      "outputTokens": 137,
+      "outputTokens": 160,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 22422
+      "cacheReadInputTokens": 22584
     }
   }
 }

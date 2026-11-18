@@ -1,8 +1,8 @@
 {
   "caseId": "invoice-enshrine-de",
   "model": "claude-sonnet-5-5",
-  "key": "b517f3ad758af525dff7dce289998452f3f9f91b35cb35a6bd48ae22b44a72df",
-  "recordedAt": "2026-11-18T15:25:15.798Z",
+  "key": "79318881338252b06c761f980b7e47053848b9c223e47647a659f74c899854fb",
+  "recordedAt": "2026-11-18T17:04:41.187Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -11,9 +11,9 @@
     ],
     "usage": {
       "inputTokens": 123,
-      "outputTokens": 192,
+      "outputTokens": 174,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 89134
+      "cacheReadInputTokens": 89296
     }
   }
 }

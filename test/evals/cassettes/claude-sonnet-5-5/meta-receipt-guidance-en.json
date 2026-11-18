@@ -1,8 +1,8 @@
 {
   "caseId": "meta-receipt-guidance-en",
   "model": "claude-sonnet-5-5",
-  "key": "83e6eb840d508d0177dd258a08f0c38feee4f98bccc1293eece2c60ad72f7953",
-  "recordedAt": "2026-11-18T15:24:46.500Z",
+  "key": "58fdfddeaa7471a42b7d2402f3b0670dedc9a78f90a7ff73d62854b3d5de7e67",
+  "recordedAt": "2026-11-18T17:04:08.343Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -17,13 +17,17 @@
           "limit": 100
         }
       },
-      { "type": "tool_use", "name": "sevdesk_reference_lookup", "input": { "kind": "tax_rules" } }
+      {
+        "type": "tool_use",
+        "name": "sevdesk_reference_lookup",
+        "input": { "kind": "tax_rules", "query": "9" }
+      }
     ],
     "usage": {
       "inputTokens": 117,
-      "outputTokens": 292,
+      "outputTokens": 215,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 22422
+      "cacheReadInputTokens": 22584
     }
   }
 }

@@ -1,8 +1,8 @@
 {
   "caseId": "invoice-draft-delete-de",
   "model": "claude-sonnet-5-5",
-  "key": "14eed9b4430d40ea067ecf7b6864371fbf38b2f4da5fa6c296288388fdd9e62a",
-  "recordedAt": "2026-11-18T15:25:47.297Z",
+  "key": "a2a4ff53cd5e865821b3082dfa031bb12385e8b314d17d72d0e24f2b4ab983b9",
+  "recordedAt": "2026-11-18T17:05:14.817Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -15,9 +15,9 @@
     ],
     "usage": {
       "inputTokens": 113,
-      "outputTokens": 286,
+      "outputTokens": 248,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 89134
+      "cacheReadInputTokens": 89296
     }
   }
 }

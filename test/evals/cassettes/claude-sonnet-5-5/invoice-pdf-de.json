@@ -1,8 +1,8 @@
 {
   "caseId": "invoice-pdf-de",
   "model": "claude-sonnet-5-5",
-  "key": "da445bf80f4606bec4bcabae5dc44d4bbae15d7b36de96a901485a390e1e6c08",
-  "recordedAt": "2026-11-18T15:24:57.321Z",
+  "key": "b4dfc6912bde28b53100b7f0d110c2bc8bfdf7dd7a2570378c966a5d0b67b668",
+  "recordedAt": "2026-11-18T17:04:23.154Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -11,7 +11,7 @@
       "inputTokens": 108,
       "outputTokens": 58,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 22422
+      "cacheReadInputTokens": 22584
     }
   }
 }

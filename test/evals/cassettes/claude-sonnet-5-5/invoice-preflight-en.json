@@ -1,19 +1,20 @@
 {
   "caseId": "invoice-preflight-en",
   "model": "claude-sonnet-5-5",
-  "key": "6c72b322226c71f51b8f71b73c111fe46632bd11f101239326a5fc84d354de15",
-  "recordedAt": "2026-11-18T15:25:16.896Z",
+  "key": "c05e10eb80ba4880eda06f72a5e5f1564ee1dbf6f30b800565c6dac7fd5b0323",
+  "recordedAt": "2026-11-18T17:04:42.411Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
     "content": [
-      { "type": "tool_use", "name": "sevdesk_invoice_einvoice_preflight", "input": { "id": 4711 } }
+      { "type": "tool_use", "name": "sevdesk_invoice_einvoice_preflight", "input": { "id": 4711 } },
+      { "type": "tool_use", "name": "sevdesk_invoice_get", "input": { "id": 4711 } }
     ],
     "usage": {
       "inputTokens": 114,
-      "outputTokens": 63,
+      "outputTokens": 116,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 22422
+      "cacheReadInputTokens": 22584
     }
   }
 }

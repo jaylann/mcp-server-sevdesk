@@ -1,8 +1,8 @@
 {
   "caseId": "order-create-de",
   "model": "claude-sonnet-5-5",
-  "key": "0ff204c4debf023affb9132f11390a5e19077997b13ce38db3d735f777ab33ec",
-  "recordedAt": "2026-11-18T15:25:26.299Z",
+  "key": "06722008d6efd3355598b274e12d30e46949f5aeff3fd674bc71ee8949e351c0",
+  "recordedAt": "2026-11-18T17:04:50.408Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -21,16 +21,15 @@
               "taxRate": 19,
               "text": "Pauschale"
             }
-          ],
-          "priceMode": "net"
+          ]
         }
       }
     ],
     "usage": {
       "inputTokens": 130,
-      "outputTokens": 312,
+      "outputTokens": 236,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 89134
+      "cacheReadInputTokens": 89296
     }
   }
 }
