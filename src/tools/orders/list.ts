@@ -53,7 +53,8 @@ export const ordersListTool = defineTool({
     "Entwurf, sent = versendet, rejected = abgelehnt, accepted = angenommen, " +
     "partially_invoiced, invoiced = berechnet), contactId, exact order number, date range and tag (by name). " +
     "Type and number are also checked here (up to 1,000 rows scanned per call; total left " +
-    "out, filteredLocally set). Page with offset = nextOffset while hasMore. " +
+    "out, filteredLocally set). Page with offset = nextOffset while hasMore; pages can skip or " +
+    "repeat a row, so for a complete list narrow the date range until one page holds it. " +
     "Use detail=summary to browse/find. Use sevdesk_order_get for details and positions.",
   toolset: "orders",
   tier: "read",

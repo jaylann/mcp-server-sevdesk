@@ -32,7 +32,7 @@ export const recordsSummarizeTool = defineTool({
     "(vouchers: expense/revenue), invoiceType, checkAccountId (transactions), tag and " +
     "costCentre (documents). Templates (recurring RV/WKR) and reminders (MA) are left out unless " +
     `invoiceType asks for them. Reads up to ${REPORT_SCAN_MAX.toLocaleString("en-US")} rows; ` +
-    "truncated says if more existed. " +
+    "truncated says if rows may be missing (the cap, or a list read page by page). " +
     "Computed by this server from sevDesk records, not a sevDesk report.",
   toolset: "reports",
   tier: "read",
