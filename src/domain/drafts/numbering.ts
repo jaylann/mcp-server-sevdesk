@@ -22,7 +22,12 @@
  *
  * Prepare peeks (a plain read, allowed by the read-only client); execute reserves (a side-effect
  * GET with the write tier). A reserved number that the save then does not use stays a gap in the
- * number range; errors say which number that is.
+ * number range; errors say so.
+ *
+ * Warnings, notes and errors never quote a number (#152): the number range's format is set in the
+ * sevDesk web app, so a number is text this server did not write, and these texts are sentences
+ * the model reads. A preview shows the number as its "Number" fact; a result note points at the
+ * output field that holds it ({@link NUMBER_FIELDS}); an error names no number.
  */
 import { z } from "zod";
 
@@ -40,15 +45,16 @@ const RANGES = {
   creditNote: { path: "/CreditNote/Factory/getNextCreditNoteNumber", noun: "credit note" },
 } as const;
 
+/**
+ * The output field of the draft tools that holds a saved draft's number, by range: result notes
+ * point at it instead of quoting the number (#152).
+ */
+export const NUMBER_FIELDS = { order: "order.number", creditNote: "creditNote.number" } as const;
+
 /** Longest number this server sends back to sevDesk. */
 const NUMBER_MAX = 100;
 /** C0/C1 control characters and line breaks: never part of a document number. */
 const CONTROL = /[\p{Cc}\p{Zl}\p{Zp}]/u;
-/**
- * A number that may be quoted in trusted text (messages, notes): one short token of letters,
- * digits and `. _ / # % + -`, no spaces, so it cannot carry sentences or markup.
- */
-const QUOTABLE = /^[\p{L}\p{N}][\p{L}\p{N}._/#%+-]{0,39}$/u;
 
 /** Failure kinds after which sevDesk may still have reserved the number. */
 const UNCERTAIN_KINDS: ReadonlySet<SevdeskErrorKind> = new Set([
@@ -114,88 +120,79 @@ export async function reserveNextNumber(
 }
 
 /**
- * The same failure with one more trusted sentence about a reserved number that the save did not
- * use; `number` is quoted only when {@link quotableNumber} allows it. `saveAttempted` says
- * whether the save request was sent: if not, nothing was saved for sure; if so, a failure that
- * leaves the outcome open (timeout, network, …) may still have saved the draft.
+ * The same failure with one more trusted sentence about the number reserved for the draft, which
+ * the save did not use (named, not quoted: #152). `saveAttempted` says whether the save request
+ * was sent: if not, nothing was saved for sure; if so, a failure that leaves the outcome open
+ * (timeout, network, …) may still have saved the draft.
  */
 export function reservedNumberError(
   error: SevdeskError,
   noun: string,
-  number: string,
   saveAttempted = true,
 ): SevdeskError {
-  const label = quotableNumber(number) ?? "the reserved number";
-  const skipped = `The ${noun} number ${label} was reserved for this draft and is now skipped in the number range (Nummernkreis)`;
+  const reserved = `The ${noun} number reserved for this draft`;
+  const skipped = `${reserved} is now skipped in the number range (Nummernkreis)`;
   let sentence: string;
   if (!saveAttempted) {
     sentence = `${skipped}; nothing was saved, so repeating the call reserves the next one.`;
   } else if (UNCERTAIN_KINDS.has(error.kind)) {
     sentence =
-      `The ${noun} number ${label} was reserved for this draft; unless sevDesk saved the draft ` +
-      "anyway, that number stays unused (a gap in the number range, Nummernkreis).";
+      `${reserved} stays unused (a gap in the number range, Nummernkreis) unless sevDesk saved ` +
+      "the draft anyway.";
   } else {
     sentence = `${skipped}; repeating the call reserves the next one.`;
   }
   return withSentence(error, sentence);
 }
 
-/** `number` when it is safe to quote in trusted text (see {@link QUOTABLE}), else `undefined`. */
-export function quotableNumber(number: string): string | undefined {
-  return QUOTABLE.test(number) ? number : undefined;
-}
-
 /**
- * Preview warning for a create call that will reserve a number (trusted; the number is quoted only
- * when {@link quotableNumber} allows it). `noun` names the number range, e.g. "offer".
+ * Preview warning for a create call that will reserve a number (trusted). It points at the
+ * preview's "Number" fact instead of quoting the number (#152). `noun` names the number range,
+ * e.g. "offer".
  */
-export function reservationWarning(noun: string, peeked: string): string {
-  const number = quotableNumber(peeked);
-  const which = number === undefined ? "the next number" : `the number ${number}`;
+export function reservationWarning(noun: string): string {
   return (
-    `Saving reserves ${which} from sevDesk's ${noun} number range (Nummernkreis). If saving ` +
-    "fails, that number is skipped (a gap in the range); if another document takes it first, " +
-    "the draft gets the next number."
+    `Saving reserves the next number of sevDesk's ${noun} number range (Nummernkreis), shown ` +
+    "as Number. If saving fails, that number is skipped (a gap in the range); if another " +
+    "document takes it first, the draft gets the next number."
   );
 }
 
 /**
  * Result note when sevDesk reserved a different number than the preview showed (trusted), or
- * `undefined` when they are the same.
+ * `undefined` when they are the same. `field` is the output field that holds the saved number
+ * ({@link NUMBER_FIELDS}); neither number is quoted (#152).
  */
 export function changedNumberNote(
   noun: string,
+  field: string,
   peeked: string,
   reserved: string,
 ): string | undefined {
   if (normalize(peeked) === normalize(reserved)) return undefined;
-  const before = quotableNumber(peeked);
-  const after = quotableNumber(reserved);
-  return before === undefined || after === undefined
-    ? `sevDesk reserved a different ${noun} number than the preview showed (another document ` +
-        "took that one in the meantime); the draft was saved with the reserved number."
-    : `sevDesk reserved ${after} instead of the previewed ${before} (another document took ` +
-        `${before} in the meantime); the draft was saved with ${after}.`;
+  return (
+    `sevDesk reserved a different ${noun} number than the preview showed (another document ` +
+    `took that one in the meantime); the draft was saved with the reserved number (${field}).`
+  );
 }
 
 /**
  * Result note when the read-back shows a different number than the draft was saved with
  * (trusted), or `undefined` when they agree or none was read back (the read-back notes report a
- * missing number). `stored` is the cleaned number of the read-back DTO.
+ * missing number). `stored` is the cleaned number of the read-back DTO; `field` is the output
+ * field that shows it ({@link NUMBER_FIELDS}). Neither number is quoted (#152).
  */
 export function storedNumberNote(
   noun: string,
+  field: string,
   sent: string,
   stored: string | undefined,
 ): string | undefined {
   if (stored === undefined || normalize(stored) === normalize(sent)) return undefined;
-  const before = quotableNumber(sent);
-  const after = quotableNumber(stored);
-  const what =
-    before === undefined || after === undefined
-      ? `sevDesk stored a different ${noun} number than the draft was saved with`
-      : `sevDesk stored the ${noun} number ${after} although the draft was saved with ${before}`;
-  return `${what}; check the number range (Nummernkreis) and the draft before finalizing.`;
+  return (
+    `sevDesk stored a different ${noun} number (${field}) than the draft was saved with; check ` +
+    "the number range (Nummernkreis) and the draft before finalizing."
+  );
 }
 
 /** Credit notes read when checking whether a reserved number is in use already. */
@@ -220,7 +217,7 @@ const numberRowSchema = z.object({ id: zId.optional(), creditNoteNumber: zText }
  * notes (`GET /CreditNote`, every row compared locally, trimmed and case-insensitive: sevDesk
  * ignores filters it does not know, so no number filter is relied on). A number in use is skipped
  * and the next one reserved, at most {@link MAX_RESERVATIONS} times in all; then the call fails
- * with the skipped numbers named. Execute only (it reserves).
+ * and says how many numbers were skipped. Execute only (it reserves).
  */
 export async function reserveFreeCreditNoteNumber(
   client: SevdeskClient,
@@ -234,7 +231,7 @@ export async function reserveFreeCreditNoteNumber(
   } catch (error) {
     // The save was not sent yet: nothing was saved, whatever the failure.
     if (error instanceof SevdeskError) {
-      throw reservedNumberError(error, "credit note", first, false);
+      throw reservedNumberError(error, "credit note", false);
     }
     throw error;
   }
@@ -247,9 +244,9 @@ export async function reserveFreeCreditNoteNumber(
         kind: "validation",
         message:
           `sevDesk's credit note counter handed out ${MAX_RESERVATIONS} numbers in a row that ` +
-          `existing credit notes carry already (${numberList(skipped)}), so nothing was saved; ` +
-          "those numbers are now skipped. Move the credit note number range (Nummernkreis) in " +
-          "sevDesk's settings past the highest credit note number, then repeat the call.",
+          "existing credit notes carry already, so nothing was saved; those numbers are now " +
+          "skipped. Move the credit note number range (Nummernkreis) in sevDesk's settings past " +
+          "the highest credit note number, then repeat the call.",
       });
     }
     try {
@@ -258,7 +255,8 @@ export async function reserveFreeCreditNoteNumber(
       if (error instanceof SevdeskError) {
         throw withSentence(
           error,
-          `Skipped before (in use already): ${numberList(skipped)}. Nothing was saved.`,
+          `${numberCount(skipped.length)} reserved before ${skipped.length === 1 ? "was" : "were"} ` +
+            "skipped (in use already). Nothing was saved.",
         );
       }
       throw error;
@@ -267,11 +265,9 @@ export async function reserveFreeCreditNoteNumber(
   return { number, skipped, truncated: used.truncated };
 }
 
-/** "GU-1000, GU-1001" (unquotable numbers are counted instead of shown). */
-export function numberList(numbers: readonly string[]): string {
-  const shown = numbers.map(quotableNumber).filter((value): value is string => value !== undefined);
-  const hidden = numbers.length - shown.length;
-  return [...shown, ...(hidden > 0 ? [`${hidden} more`] : [])].join(", ");
+/** "1 credit note number", "2 credit note numbers": skipped numbers are counted, not quoted. */
+export function numberCount(count: number): string {
+  return `${count} credit note number${count === 1 ? "" : "s"}`;
 }
 
 /**

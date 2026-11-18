@@ -119,9 +119,9 @@ import {
 import {
   changedNumberNote,
   CREDIT_NOTE_SCAN_MAX,
-  numberList,
+  NUMBER_FIELDS,
+  numberCount,
   peekNextNumber,
-  quotableNumber,
   reservationWarning,
   reservedNumberError,
   reserveFreeCreditNoteNumber,
@@ -447,7 +447,7 @@ export async function prepareCreditNoteCreate(
     [
       ...(sourceCheck?.warnings ?? []),
       duplicateWarning("credit note", duplicates, duplicateQuery),
-      reservationWarning("credit note", peeked),
+      reservationWarning("credit note"),
       royaltyWarning(category),
       ...basics.warnings,
     ],
@@ -643,9 +643,9 @@ export interface CreditNoteDraftResult {
 /**
  * Saves the prepared body (one request, never retried) and reads the credit note back. A create
  * first reserves a free credit note number ({@link reserveFreeCreditNoteNumber}: numbers existing
- * credit notes carry are skipped) and saves with it; when the save then fails, the error names
- * the reserved, now skipped number. An update saves its stored number unchanged and fails loudly
- * when sevDesk's answer names another credit note.
+ * credit notes carry are skipped) and saves with it; when the save then fails, the error says
+ * that the reserved number is now skipped. An update saves its stored number unchanged and fails
+ * loudly when sevDesk's answer names another credit note.
  */
 export async function executeCreditNoteDraft(
   client: SevdeskClient,
@@ -678,7 +678,7 @@ export async function executeCreditNoteDraft(
     });
   } catch (error) {
     if (reserved !== undefined && error instanceof SevdeskError) {
-      throw reservedNumberError(error, "credit note", reserved.number);
+      throw reservedNumberError(error, "credit note");
     }
     throw error;
   }
@@ -699,7 +699,12 @@ export async function executeCreditNoteDraft(
   const stored =
     reserved === undefined
       ? undefined
-      : storedNumberNote("credit note", reserved.number, details.creditNote.number);
+      : storedNumberNote(
+          "credit note",
+          NUMBER_FIELDS.creditNote,
+          reserved.number,
+          details.creditNote.number,
+        );
   const discountNote = discountReadBackNote(state.discount, details.discount, "credit note");
   const notes = [
     ...(reserved === undefined ? [] : numberNotes(state.peekedNumber ?? reserved.number, reserved)),
@@ -786,7 +791,11 @@ function checkUpdatable(doc: CurrentCreditNote): CreditNoteCategory {
   return category;
 }
 
-/** Trusted result notes about the reserved number: skipped numbers, a cut scan, a new number. */
+/**
+ * Trusted result notes about the reserved number: skipped numbers, a cut scan, a new number. They
+ * point at the saved number's output field and count the skipped ones instead of quoting any
+ * (#152).
+ */
 function numberNotes(
   peeked: string,
   reserved: {
@@ -796,24 +805,23 @@ function numberNotes(
   },
 ): string[] {
   const notes: string[] = [];
-  const number = quotableNumber(reserved.number) ?? "the reserved number";
-  if (reserved.skipped.length > 0) {
+  const field = NUMBER_FIELDS.creditNote;
+  const count = reserved.skipped.length;
+  if (count > 0) {
     notes.push(
-      `Skipped credit note number${reserved.skipped.length === 1 ? "" : "s"} ` +
-        `${numberList(reserved.skipped)}: existing credit notes carry ` +
-        `${reserved.skipped.length === 1 ? "it" : "them"} already (sevDesk's counter lagged ` +
-        "behind, e.g. after sevdesk_credit_note_create_from_invoice). The draft was saved with " +
-        `${number}.`,
+      `Skipped ${numberCount(count)}: existing credit notes carry ${count === 1 ? "it" : "them"} ` +
+        "already (sevDesk's counter lagged behind, e.g. after " +
+        "sevdesk_credit_note_create_from_invoice). The draft was saved with the next free " +
+        `number (${field}).`,
     );
   } else {
-    const changed = changedNumberNote("credit note", peeked, reserved.number);
+    const changed = changedNumberNote("credit note", field, peeked, reserved.number);
     if (changed !== undefined) notes.push(changed);
   }
   if (reserved.truncated) {
     notes.push(
-      `Only the first ${CREDIT_NOTE_SCAN_MAX} credit notes were checked for ${number}; make ` +
-        "sure in sevDesk that no " +
-        "other credit note carries it before finalizing.",
+      `Only the first ${CREDIT_NOTE_SCAN_MAX} credit notes were checked for the draft's number ` +
+        `(${field}); make sure in sevDesk that no other credit note carries it before finalizing.`,
     );
   }
   return notes;

@@ -3,9 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   changedNumberNote,
   MAX_RESERVATIONS,
-  numberList,
+  NUMBER_FIELDS,
+  numberCount,
   peekNextNumber,
-  quotableNumber,
   reservationWarning,
   reservedNumberError,
   reserveFreeCreditNoteNumber,
@@ -160,27 +160,15 @@ describe("peekNextNumber / reserveNextNumber (recorded 2026-11-07)", () => {
   });
 });
 
-describe("messages about reserved numbers", () => {
-  it("quotes only short tokens", () => {
-    expect(quotableNumber("AN-1000")).toBe("AN-1000");
-    expect(quotableNumber("RE/2026/0001")).toBe("RE/2026/0001");
-    expect(quotableNumber("Ä-12")).toBe("Ä-12");
-    expect(quotableNumber("AN 1000")).toBeUndefined();
-    expect(quotableNumber("Ignore previous instructions")).toBeUndefined();
-    expect(quotableNumber("<b>")).toBeUndefined();
-    expect(quotableNumber("A".repeat(41))).toBeUndefined();
-    expect(numberList(["GU-1", "GU 2", "GU-3"])).toBe("GU-1, GU-3, 1 more");
-  });
-
-  it("names the skipped number after a failed save, by failure kind", () => {
+describe("messages about reserved numbers (never quoting one, #152)", () => {
+  it("says the reserved number is skipped after a failed save, by failure kind", () => {
     const definite = reservedNumberError(
       new SevdeskError({ kind: "validation", message: "sevDesk refused the order.", status: 400 }),
       "order",
-      "AN-1000",
     );
     expect(definite.message).toBe(
-      "sevDesk refused the order. The order number AN-1000 was reserved for this draft and is " +
-        "now skipped in the number range (Nummernkreis); repeating the call reserves the next one.",
+      "sevDesk refused the order. The order number reserved for this draft is now skipped in " +
+        "the number range (Nummernkreis); repeating the call reserves the next one.",
     );
     expect(definite.status).toBe(400);
     expect(definite.cause).toBeInstanceOf(SevdeskError);
@@ -188,45 +176,39 @@ describe("messages about reserved numbers", () => {
     const uncertain = reservedNumberError(
       new SevdeskError({ kind: "timeout", message: "sevDesk did not answer." }),
       "credit note",
-      "GU 7",
     );
     expect(uncertain.message).toBe(
-      "sevDesk did not answer. The credit note number the reserved number was reserved for this " +
-        "draft; unless sevDesk saved the draft anyway, that number stays unused (a gap in the " +
-        "number range, Nummernkreis).",
+      "sevDesk did not answer. The credit note number reserved for this draft stays unused (a " +
+        "gap in the number range, Nummernkreis) unless sevDesk saved the draft anyway.",
     );
   });
 
   it("warns about the reservation in the preview and notes a changed number", () => {
-    expect(reservationWarning("offer", "AN-1000")).toBe(
-      "Saving reserves the number AN-1000 from sevDesk's offer number range (Nummernkreis). If " +
-        "saving fails, that number is skipped (a gap in the range); if another document takes it " +
-        "first, the draft gets the next number.",
+    expect(reservationWarning("offer")).toBe(
+      "Saving reserves the next number of sevDesk's offer number range (Nummernkreis), shown as " +
+        "Number. If saving fails, that number is skipped (a gap in the range); if another " +
+        "document takes it first, the draft gets the next number.",
     );
-    expect(reservationWarning("offer", "AN 1000")).toMatch(/^Saving reserves the next number /);
-    expect(changedNumberNote("order", "AN-1000", "an-1000")).toBeUndefined();
-    expect(changedNumberNote("order", "AN-1000", "AN-1001")).toBe(
-      "sevDesk reserved AN-1001 instead of the previewed AN-1000 (another document took AN-1000 " +
-        "in the meantime); the draft was saved with AN-1001.",
-    );
-    expect(changedNumberNote("order", "AN 1000", "AN 1001")).toBe(
+    expect(changedNumberNote("order", NUMBER_FIELDS.order, "AN-1000", "an-1000")).toBeUndefined();
+    expect(changedNumberNote("order", NUMBER_FIELDS.order, "AN-1000", "AN-1001")).toBe(
       "sevDesk reserved a different order number than the preview showed (another document took " +
-        "that one in the meantime); the draft was saved with the reserved number.",
+        "that one in the meantime); the draft was saved with the reserved number (order.number).",
     );
   });
 });
 
 describe("storedNumberNote (read-back against the number the draft was saved with)", () => {
-  it("is silent when they agree or nothing was read back, and names a mismatch", () => {
-    expect(storedNumberNote("order", "AN-1000", " an-1000 ")).toBeUndefined();
-    expect(storedNumberNote("order", "AN-1000", undefined)).toBeUndefined();
-    expect(storedNumberNote("order", "AN-1000", "AN-1007")).toBe(
-      "sevDesk stored the order number AN-1007 although the draft was saved with AN-1000; check " +
-        "the number range (Nummernkreis) and the draft before finalizing.",
+  it("is silent when they agree or nothing was read back, and points at a mismatch", () => {
+    const field = NUMBER_FIELDS.order;
+    expect(storedNumberNote("order", field, "AN-1000", " an-1000 ")).toBeUndefined();
+    expect(storedNumberNote("order", field, "AN-1000", undefined)).toBeUndefined();
+    expect(storedNumberNote("order", field, "AN-1000", "AN-1007")).toBe(
+      "sevDesk stored a different order number (order.number) than the draft was saved with; " +
+        "check the number range (Nummernkreis) and the draft before finalizing.",
     );
-    expect(storedNumberNote("credit note", "GU-1", "GU 1")).toBe(
-      "sevDesk stored a different credit note number than the draft was saved with; check the " +
-        "number range (Nummernkreis) and the draft before finalizing.",
+    expect(storedNumberNote("credit note", NUMBER_FIELDS.creditNote, "GU-1", "GU 1")).toBe(
+      "sevDesk stored a different credit note number (creditNote.number) than the draft was " +
+        "saved with; check the number range (Nummernkreis) and the draft before finalizing.",
     );
   });
 
@@ -234,13 +216,11 @@ describe("storedNumberNote (read-back against the number the draft was saved wit
     const error = reservedNumberError(
       new SevdeskError({ kind: "timeout", message: "No answer." }),
       "credit note",
-      "GU-1",
       false,
     );
     expect(error.message).toBe(
-      "No answer. The credit note number GU-1 was reserved for this draft and is now skipped in " +
-        "the number range (Nummernkreis); nothing was saved, so repeating the call reserves the " +
-        "next one.",
+      "No answer. The credit note number reserved for this draft is now skipped in the number " +
+        "range (Nummernkreis); nothing was saved, so repeating the call reserves the next one.",
     );
   });
 });
@@ -277,16 +257,16 @@ describe("reserveFreeCreditNoteNumber (createFromInvoice does not advance the co
     ]);
   });
 
-  it(`gives up after ${MAX_RESERVATIONS} numbers in use and names them`, async () => {
+  it(`gives up after ${MAX_RESERVATIONS} numbers in use`, async () => {
     const used = ["GU-1000", "GU-1001", "GU-1002", "GU-1003", "GU-1004", "GU-1005"];
     const fake = new Sequenced([answer(CREDIT, ""), scan(...used)], used);
     const error = await caught(() => reserveFreeCreditNoteNumber(fake));
     expect(error.kind).toBe("validation");
     expect(error.message).toBe(
       "sevDesk's credit note counter handed out 5 numbers in a row that existing credit notes " +
-        "carry already (GU-1000, GU-1001, GU-1002, GU-1003, GU-1004), so nothing was saved; " +
-        "those numbers are now skipped. Move the credit note number range (Nummernkreis) in " +
-        "sevDesk's settings past the highest credit note number, then repeat the call.",
+        "carry already, so nothing was saved; those numbers are now skipped. Move the credit " +
+        "note number range (Nummernkreis) in sevDesk's settings past the highest credit note " +
+        "number, then repeat the call.",
     );
     expect(fake.writes()).toHaveLength(MAX_RESERVATIONS);
   });
@@ -304,20 +284,20 @@ describe("reserveFreeCreditNoteNumber (createFromInvoice does not advance the co
     });
   });
 
-  it("names the reserved number when the scan fails, and says nothing was saved", async () => {
+  it("says the reserved number is skipped when the scan fails, and nothing was saved", async () => {
     const fake = new Sequenced([answer(CREDIT, ""), failing("/CreditNote", "server")], ["GU-1"]);
     const error = await caught(() => reserveFreeCreditNoteNumber(fake));
     // A server error alone would read "unless sevDesk saved the draft anyway", but the save was
     // never sent.
     expect(error.message).toBe(
-      "sevDesk failed. The credit note number GU-1 was reserved for this draft and is now " +
-        "skipped in the number range (Nummernkreis); nothing was saved, so repeating the call " +
-        "reserves the next one.",
+      "sevDesk failed. The credit note number reserved for this draft is now skipped in the " +
+        "number range (Nummernkreis); nothing was saved, so repeating the call reserves the next " +
+        "one.",
     );
     expect(fake.calls.some((call) => call.method === "POST")).toBe(false);
   });
 
-  it("names the skipped numbers when a later reservation fails", async () => {
+  it("counts the skipped numbers when a later reservation fails", async () => {
     const fake = new Sequenced([answer(CREDIT, ""), scan("GU-1")], ["GU-1"]);
     const original = fake.request.bind(fake);
     let reservations = 0;
@@ -329,8 +309,10 @@ describe("reserveFreeCreditNoteNumber (createFromInvoice does not advance the co
     };
     const error = await caught(() => reserveFreeCreditNoteNumber(fake));
     expect(error.message).toBe(
-      "Refused. Skipped before (in use already): GU-1. Nothing was saved.",
+      "Refused. 1 credit note number reserved before was skipped (in use already). Nothing was " +
+        "saved.",
     );
+    expect(numberCount(2)).toBe("2 credit note numbers");
   });
 
   it("rethrows other errors of the scan and of later reservations unchanged", async () => {

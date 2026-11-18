@@ -71,8 +71,8 @@ import {
 import type { DocumentTotals } from "./document-positions.js";
 import {
   findCreditNotesWithNumber,
+  NUMBER_FIELDS,
   peekNextNumber,
-  quotableNumber,
   reserveNextNumber,
 } from "./drafts/numbering.js";
 import {
@@ -572,6 +572,11 @@ export async function executeCreditNoteFromInvoice(
   return { details, affected, notes };
 }
 
+/** "the new draft's number (creditNote.number)": how a counter note names the new number. */
+const DRAFT_NUMBER = `the new draft's number (${NUMBER_FIELDS.creditNote})`;
+/** "the same number (creditNote.number)": how a note names a clash with the new number. */
+const SAME_NUMBER = `the same number (${NUMBER_FIELDS.creditNote})`;
+
 /**
  * After `createFromInvoice`: when the credit note counter still offers the new draft's number
  * (peek, `useNextNumber=false`), reserves it once (`useNextNumber=true`, a write-tier side-effect
@@ -581,6 +586,10 @@ export async function executeCreditNoteFromInvoice(
  * taken the same number: the credit notes are then checked for it ({@link sameNumberNotes}). The
  * credit note exists already, so a failure here never fails the call: it becomes a trusted note.
  * Returns the notes.
+ *
+ * The notes point at the number (`creditNote.number` of the output) instead of quoting it: the
+ * number range's format is set in the web app, so the number is text this server did not write
+ * (#152). The same goes for a number the counter hands out to a reservation.
  */
 async function advanceCreditNoteCounter(
   client: SevdeskClient,
@@ -595,35 +604,34 @@ async function advanceCreditNoteCounter(
         "half-way on them), so set one in the sevDesk web app first.",
     ];
   }
-  const label = quotableNumber(draftNumber) ?? "the new draft's number";
   const range = { kind: "creditNote" } as const;
   const same = (number: string) => number.trim().toLowerCase() === draftNumber.trim().toLowerCase();
   try {
     if (!same(await peekNextNumber(client, range, signal))) {
-      return await sameNumberNotes(client, draftId, draftNumber, label, signal);
+      return await sameNumberNotes(client, draftId, draftNumber, signal);
     }
     const reserved = await reserveNextNumber(client, range, signal);
     if (!same(reserved)) {
       // The counter moved between the peek and the reservation (another client): the reserved
       // number is lost, and whoever took the draft's number may carry it as well.
-      const taken = quotableNumber(reserved) ?? "another number";
       return [
-        `sevDesk's credit note counter moved on while it was being moved past ${label}: the ` +
-          `reservation took ${taken} instead, which is now skipped (a gap in the number range, ` +
-          `Nummernkreis). Check that no other credit note carries ${label} before finalizing.`,
+        `sevDesk's credit note counter moved on while it was being moved past ${DRAFT_NUMBER}: ` +
+          "the reservation took another number instead, which is now skipped (a gap in the " +
+          "number range, Nummernkreis). Check that no other credit note carries the same " +
+          "number before finalizing.",
       ];
     }
     return [
-      `sevDesk's credit note counter was moved past ${label} (the new draft's number), so the ` +
-        "next credit note cannot get it again.",
-      ...(await laggingCounterNotes(client, draftId, draftNumber, label, signal)),
+      `sevDesk's credit note counter was moved past ${DRAFT_NUMBER}, so the next credit note ` +
+        "cannot get it again.",
+      ...(await laggingCounterNotes(client, draftId, draftNumber, signal)),
     ];
   } catch (error) {
     if (!(error instanceof SevdeskError)) throw error;
     return [
-      `sevDesk's credit note counter could not be checked or moved past ${label}: the next ` +
-        "credit note may get the same number. sevdesk_credit_note_create_draft skips numbers in " +
-        "use; elsewhere check the number before finalizing.",
+      `sevDesk's credit note counter could not be checked or moved past ${DRAFT_NUMBER}: the ` +
+        "next credit note may get the same number. sevdesk_credit_note_create_draft skips " +
+        "numbers in use; elsewhere check the number before finalizing.",
     ];
   }
 }
@@ -638,7 +646,6 @@ async function laggingCounterNotes(
   client: SevdeskClient,
   draftId: number,
   draftNumber: string,
-  label: string,
   signal: AbortSignal | undefined,
 ): Promise<string[]> {
   let others: Awaited<ReturnType<typeof findCreditNotesWithNumber>>;
@@ -650,7 +657,7 @@ async function laggingCounterNotes(
   }
   if (others.ids.length === 0) return [];
   return [
-    `The new draft has the same number (${label}) as ${idList("credit note", others.ids)}: ` +
+    `The new draft has ${SAME_NUMBER} as ${idList("credit note", others.ids)}: ` +
       "sevDesk's counter was behind the numbers in use when it handed that number out. Give " +
       "one of them another number in the sevDesk web app before finalizing either.",
   ];
@@ -666,7 +673,6 @@ async function sameNumberNotes(
   client: SevdeskClient,
   draftId: number,
   draftNumber: string,
-  label: string,
   signal: AbortSignal | undefined,
 ): Promise<string[]> {
   let others: Awaited<ReturnType<typeof findCreditNotesWithNumber>>;
@@ -675,22 +681,22 @@ async function sameNumberNotes(
   } catch (error) {
     if (!(error instanceof SevdeskError)) throw error;
     return [
-      `sevDesk's credit note counter does not offer ${label} (the new draft's number) any more, ` +
-        "and whether another credit note carries the same number could not be checked. Check " +
-        "it with sevdesk_credit_notes_list before finalizing.",
+      `sevDesk's credit note counter does not offer ${DRAFT_NUMBER} any more, and whether ` +
+        "another credit note carries the same number could not be checked. Check it with " +
+        "sevdesk_credit_notes_list before finalizing.",
     ];
   }
   if (others.ids.length > 0) {
     return [
-      `The new draft has the same number (${label}) as ${idList("credit note", others.ids)}: ` +
+      `The new draft has ${SAME_NUMBER} as ${idList("credit note", others.ids)}: ` +
         "sevDesk's counter was moved on by someone else after it handed out that number. " +
         "Give one of them another number in the sevDesk web app before finalizing either.",
     ];
   }
   return others.truncated
     ? [
-        `sevDesk's credit note counter does not offer ${label} (the new draft's number) any ` +
-          "more, and not every credit note could be checked for the same number. Check it with " +
+        `sevDesk's credit note counter does not offer ${DRAFT_NUMBER} any more, and not every ` +
+          "credit note could be checked for the same number. Check it with " +
           "sevdesk_credit_notes_list before finalizing.",
       ]
     : [];
