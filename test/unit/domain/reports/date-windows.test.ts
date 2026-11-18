@@ -137,6 +137,19 @@ describe("scanDateWindows", () => {
     expect(list.requests.some((request) => request.range.from === "2026-07-03")).toBe(false);
   });
 
+  it("keeps the first page when what is left of the cap fits it: newest rows, one request", async () => {
+    // 2,500 rows over 250 days and a cap of one page (the same-file check of the recognition):
+    // splitting could not read more rows, it would only trade the newest for the oldest.
+    const rows = spread("2026-01-01", 2500, 10);
+    const list = datedList(rows);
+    const scan = await scanDateWindows(list.fetch, YEAR, (row) => row.id, options(1000));
+    expect(list.requests).toEqual([{ range: YEAR, offset: 0, limit: 1000 }]);
+    expect(scan).toMatchObject({ scanned: 1000, truncated: true, pagedRanges: [] });
+    // sevDesk lists the newest dates first: the 100 newest days (10 a day) are all there.
+    const newest = rows.filter((row) => row.date >= shiftDays("2026-01-01", 150));
+    expect(new Set(scan.items.map((row) => row.id))).toEqual(new Set(newest.map((row) => row.id)));
+  });
+
   it("never pages with a cap of one page: a busy day only truncates", async () => {
     const list = datedList(spread("2026-03-31", 1500, 1500));
     const scan = await scanDateWindows(list.fetch, YEAR, (row) => row.id, options(1000));

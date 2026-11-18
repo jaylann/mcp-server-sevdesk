@@ -66,7 +66,8 @@ function rangeLabel(range: DateRange): string {
  * dedupe. The cap and progress behave as in `scanPages`: requests ask for at most `max − read`
  * rows, `truncated` is set when the cap stopped reading, and progress is reported after every
  * kept read. Windows are read in date order and splitting is lazy (a half is counted only when
- * it is its turn), so reading stops at the cap without counting the rest.
+ * it is its turn), so reading stops at the cap without counting the rest. A window is not split
+ * when what is left of the cap fits one page: its first page is kept and the scan is truncated.
  *
  * Request bound: a range that fits costs one request, as a plain read did. Otherwise the first
  * page is set aside, each split costs two count requests (`limit` 1), and every window that is
@@ -165,8 +166,13 @@ export async function scanDateWindows<T>(
       await keep(page);
       return;
     }
-    if (limit < REPORT_PAGE_SIZE) {
-      // The cap, not the page size, ended this read.
+    if (
+      limit < REPORT_PAGE_SIZE ||
+      (limit === options.max - state.scanned && page.received >= limit)
+    ) {
+      // The cap, not the page size, ends reading: what was left of it fits this page. Splitting
+      // could read no more rows; it would only trade this page's rows (sevDesk lists the newest
+      // dates first, D-100) for the oldest ones, at the cost of a count per split.
       await keep(page);
       state.truncated = true;
       return;

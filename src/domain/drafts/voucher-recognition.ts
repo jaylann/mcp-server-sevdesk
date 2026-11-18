@@ -301,10 +301,10 @@ export const SAME_FILE_DAYS_AHEAD = 31;
 
 /**
  * Rows the check reads, every row with its receipt embedded (`embed=document`, D-100): one
- * request of sevDesk's largest page when the range fits; otherwise date windows that each fit one
- * page, up to this many rows (`listDocumentHeaders`, #154). Half a year of a small business's
- * vouchers rarely comes near it; past it the result says the check was partial instead of
- * reading as "not found".
+ * request of sevDesk's largest page. A range with more vouchers keeps that page, sevDesk's newest
+ * dates first, rather than splitting it into date windows (`scanDateWindows`, #154: a cap of one
+ * page reads no more rows that way). Half a year of a small business's vouchers rarely comes near
+ * it; past it the result says the check was partial instead of reading as "not found".
  */
 export const SAME_FILE_SCAN_LIMIT = 1_000;
 
