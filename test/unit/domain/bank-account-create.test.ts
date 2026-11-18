@@ -42,9 +42,7 @@ describe("planBankAccountCreate", () => {
       path: CLEARING,
       payload: { name: "Verrechnung Zahlungsanbieter" },
     });
-    expect(plan.preview.action).toBe(
-      'Create the clearing account (Verrechnungskonto) "Verrechnung Zahlungsanbieter".',
-    );
+    expect(plan.preview.action).toBe("Create a new clearing account (Verrechnungskonto).");
     expect(plan.preview.facts).toEqual([
       { label: "Kind", value: "clearing account (Verrechnungskonto)" },
       { label: "Name", value: "Verrechnung Zahlungsanbieter" },

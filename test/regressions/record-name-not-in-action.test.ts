@@ -13,6 +13,10 @@
  * return (the tag tool also gets it as its `tag` argument); the action lines (English and German)
  * must not contain it, and the previews of the tools that named these records must still show it
  * as a fact value. The order-confirmation result's notes no longer quote the new number either.
+ *
+ * Names the model passes when creating a record (a contact, a part, a payment account) are kept
+ * out of the action too: the model often copies them from untrusted text such as a parsed
+ * e-invoice. Every string argument of every case is injected once; the action never carries it.
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
@@ -147,6 +151,128 @@ describe("#147: an account, tag, contact or part name in an action line", () => 
       for (const preview of previews(await injectedPlan(testCase))) {
         expect(preview.facts.some((fact) => fact.value.includes(INJECTED))).toBe(true);
         expect(preview.facts.some((fact) => fact.label.includes(INJECTED))).toBe(false);
+      }
+    },
+  );
+});
+
+/** Where a string sits in a case's arguments, e.g. `["positions", 0, "text"]`. */
+type ArgPath = readonly (string | number)[];
+
+/** Every string in `value`, by path, at any depth. */
+function stringPaths(value: unknown, path: ArgPath = []): ArgPath[] {
+  if (typeof value === "string") return [path];
+  if (Array.isArray(value)) return value.flatMap((inner, i) => stringPaths(inner, [...path, i]));
+  if (typeof value !== "object" || value === null) return [];
+  return Object.entries(value).flatMap(([key, inner]) => stringPaths(inner, [...path, key]));
+}
+
+function valueAt(value: unknown, path: ArgPath): unknown {
+  return path.reduce<unknown>(
+    (inner, key) =>
+      typeof inner === "object" && inner !== null
+        ? Object.entries(inner).find(([name]) => name === String(key))?.[1]
+        : undefined,
+    value,
+  );
+}
+
+function withInjectedAt(value: unknown, path: ArgPath): unknown {
+  const [head, ...rest] = path;
+  if (head === undefined) return INJECTED;
+  if (Array.isArray(value)) {
+    return value.map((inner: unknown, i) => (i === head ? withInjectedAt(inner, rest) : inner));
+  }
+  if (typeof value !== "object" || value === null) return value;
+  return Object.fromEntries(
+    Object.entries(value).map(([key, inner]) => [
+      key,
+      key === head ? withInjectedAt(inner, rest) : inner,
+    ]),
+  );
+}
+
+/**
+ * Prepares `testCase` with {@link INJECTED} as the argument at `path`. Route queries that looked
+ * the original value up (a duplicate check by name or number) look the injected one up instead.
+ */
+async function preparedWithArgument(
+  testCase: WriteToolCase,
+  path: ArgPath,
+): Promise<{ readonly preview: ConfirmationPreview; readonly previewDe?: ConfirmationPreview }> {
+  const original = valueAt(testCase.args, path);
+  const routes = testCase.routes.map((route): FakeRoute => {
+    if (route.query === undefined) return route;
+    const query = Object.fromEntries(
+      Object.entries(route.query).map(([key, value]) => [
+        key,
+        value === original ? INJECTED : value,
+      ]),
+    );
+    return { ...route, query };
+  });
+  const args = withInjectedAt(testCase.args, path);
+  return withCaseEnvironment(testCase, (config) =>
+    prepareWrite(testCase.tool, args, new FakeSevdeskClient(routes), config),
+  );
+}
+
+/**
+ * The names (and numbers) a create call takes as arguments. They are the model's input, not text
+ * read from sevDesk, but the model often copies them from untrusted text (a parsed e-invoice, a
+ * recognized receipt, a customer's e-mail), so the action names the new record by kind only and
+ * the facts show them.
+ */
+const CREATE_NAME_ARGUMENTS: readonly { readonly tool: string; readonly path: ArgPath }[] = [
+  { tool: "sevdesk_contact_create", path: ["organisationName"] },
+  { tool: "sevdesk_contact_create", path: ["firstName"] },
+  { tool: "sevdesk_contact_create", path: ["lastName"] },
+  { tool: "sevdesk_part_create", path: ["name"] },
+  { tool: "sevdesk_part_create", path: ["partNumber"] },
+  { tool: "sevdesk_bank_account_create", path: ["name"] },
+];
+
+describe("#147: a name the model gives in an action line", () => {
+  const createRuns = CREATE_NAME_ARGUMENTS.flatMap(({ tool, path }) =>
+    WRITE_TOOL_CASES.filter(
+      (testCase) => testCase.tool.name === tool && typeof valueAt(testCase.args, path) === "string",
+    ).map((testCase) => [`${testCase.label} (${path.join(".")})`, testCase, path] as const),
+  );
+
+  it("covers every create argument that named the new record", () => {
+    const covered = new Set(
+      createRuns.map(([, testCase, path]) => `${testCase.tool.name}:${path.join(".")}`),
+    );
+    expect(
+      CREATE_NAME_ARGUMENTS.filter(({ tool, path }) => !covered.has(`${tool}:${path.join(".")}`)),
+    ).toEqual([]);
+  });
+
+  it.each(createRuns)(
+    "%s: names the record by kind, the name is a fact",
+    async (_l, testCase, path) => {
+      for (const preview of previews(await preparedWithArgument(testCase, path))) {
+        expect(preview.action).not.toContain(INJECTED);
+        expect(preview.facts.some((fact) => fact.value.includes(INJECTED))).toBe(true);
+      }
+    },
+  );
+
+  // Every other string argument of every case: an argument the tool refuses (an enum, a date, an
+  // id it looks up) is skipped, as the tool never builds a preview from it.
+  it.each(WRITE_TOOL_CASES.map((testCase) => [testCase.label, testCase] as const))(
+    "%s: no string argument reaches the action",
+    async (_label, testCase) => {
+      for (const path of stringPaths(testCase.args)) {
+        let plan: Awaited<ReturnType<typeof preparedWithArgument>>;
+        try {
+          plan = await preparedWithArgument(testCase, path);
+        } catch {
+          continue;
+        }
+        for (const preview of previews(plan)) {
+          expect(preview.action, path.join(".")).not.toContain(INJECTED);
+        }
       }
     },
   );

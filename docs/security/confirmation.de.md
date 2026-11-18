@@ -1,4 +1,4 @@
-<!-- translated-from: docs/security/confirmation.md sha256:09a2852d8197 -->
+<!-- translated-from: docs/security/confirmation.md sha256:688c06be11fc -->
 
 # Bestätigung durch einen Menschen
 
@@ -18,7 +18,10 @@ Angaben (Datensatz, Kunde, Beträge, Daten, Empfänger, Texte).
   Nummer: Auf einem Entwurf kann jeder in der sevDesk-Web-App eine beliebige Nummer eintragen, also
   steht die Nummer nur als Wert bei den Angaben, wie jeder andere aus sevDesk gelesene Text.
   Kontakte, Zahlungskonten, Tags und Artikel nennt er ebenso („Kontakt 1001“, „Zahlungskonto
-  4002“), nie mit den Namen, die ihnen jemand in der Web-App gegeben hat.
+  4002“), nie mit den Namen, die ihnen jemand in der Web-App gegeben hat. Einen Datensatz, den ein
+  Aufruf anlegt, nennt er nur mit seiner Art („Create a new part.“): Sein Name ist ein Argument des
+  Modells, oft aus nicht vertrauenswürdigem Text übernommen, etwa aus einer gelesenen E-Rechnung,
+  und steht deshalb ebenfalls nur als Wert bei den Angaben.
 - Aus den Werten werden unsichtbare, Bidi- und Steuerzeichen entfernt, damit gespeicherter Text dem
   Menschen nichts verbergen kann.
 - Werte werden vollständig mit ihren Zeilenumbrüchen gezeigt (etwa ein E-Mail-Text), jede Zeile

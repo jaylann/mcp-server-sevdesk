@@ -129,7 +129,7 @@ describe("sevdesk_contact_create with custom fields (D-086)", () => {
     );
 
     expect(plan.preview.action).toBe(
-      "Create the organisation contact Beispiel Handel GmbH (Kunde) with 2 custom field values.",
+      "Create a new organisation contact (Kunde) with 2 custom field values.",
     );
     expect(plan.preview.facts.slice(-2)).toEqual([
       { label: "Custom field (setting 19498)", value: "Kundennr extern: EXT-4711" },

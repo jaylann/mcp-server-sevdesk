@@ -22,7 +22,6 @@ import { type CompletedWrite, SevdeskError, withCompletedWrites } from "../sevde
 import { sevdeskPath, toSevdeskId } from "../sevdesk/paths.js";
 import { parseUpstream, zId } from "../sevdesk/schema.js";
 import type { SevdeskClient } from "../sevdesk/types.js";
-import { cleanText } from "./common.js";
 import {
   add,
   compare,
@@ -39,7 +38,6 @@ import { listUnits } from "./reference-data.js";
 /** Part status (spec `Model_Part.status`): 100 active, 50 inactive. */
 const ACTIVE = 100;
 const INACTIVE = 50;
-const DISPLAY_MAX = 200;
 const CURRENCY = "EUR";
 
 // ---------------------------------------------------------------------------------------------
@@ -246,7 +244,9 @@ export async function planPartCreate(
 
   return {
     preview: {
-      action: `Create the part ${display(input.name)} (${display(input.partNumber)}).`,
+      // By kind only: name and number are the model's arguments, often copied from untrusted
+      // text; the "Name" and "Part number" facts show them (#147).
+      action: "Create a new part.",
       facts,
       warnings:
         prices === undefined
@@ -564,10 +564,6 @@ function activeLabel(active: boolean): string {
 
 function unitLabel(id: number, name: string | undefined): string {
   return name === undefined ? `id ${id}` : `${name} (id ${id})`;
-}
-
-function display(value: string): string {
-  return cleanText(value, DISPLAY_MAX) ?? "";
 }
 
 function pushFact(facts: ConfirmationFact[], label: string, value: string | undefined): void {
