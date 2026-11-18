@@ -35,7 +35,7 @@ import { expectSingle } from "../sevdesk/envelope.js";
 import { type CompletedWrite, SevdeskError } from "../sevdesk/errors.js";
 import { sevdeskPath, toSevdeskId } from "../sevdesk/paths.js";
 import { parseUpstream, zId, zOptionalRef, zText } from "../sevdesk/schema.js";
-import type { QueryValue, SevdeskClient } from "../sevdesk/types.js";
+import type { Page, QueryValue, SevdeskClient } from "../sevdesk/types.js";
 import { cleanText, compact } from "./common.js";
 import { type ContactDto, parseContactRecord, toContactDto } from "./contacts.js";
 import { type ChildRows, listChildRows } from "./paging.js";
@@ -587,6 +587,8 @@ export interface CustomFieldMatches {
  * exactly once (the client still sends the explicit `limit` every list request carries) and the
  * caller pages locally. Only the id of every match is read; the contacts kept are parsed and built
  * for output, so a value thousands of contacts share costs no more than {@link FIND_LIMIT} rows.
+ * A match set too large for the client's answer cap fails with advice that fits this search (a
+ * more specific value), not the client's generic one (a smaller limit, a shorter date range).
  */
 export async function findContactsByCustomField(
   client: SevdeskClient,
@@ -594,15 +596,33 @@ export async function findContactsByCustomField(
   value: string,
   signal?: AbortSignal,
 ): Promise<CustomFieldMatches> {
+  const path = "/Contact/Factory/findContactsByCustomFieldValue";
   const query: Record<string, QueryValue> = {
     value,
     "customFieldSetting[id]": toSevdeskId(settingId),
     "customFieldSetting[objectName]": "ContactCustomFieldSetting",
   };
-  const page = await client.list("/Contact/Factory/findContactsByCustomFieldValue", query, {
-    limit: FIND_LIMIT,
-    ...(signal === undefined ? {} : { signal }),
-  });
+  let page: Page;
+  try {
+    page = await client.list(path, query, {
+      limit: FIND_LIMIT,
+      ...(signal === undefined ? {} : { signal }),
+    });
+  } catch (error) {
+    if (!isAnswerCap(error)) throw error;
+    throw new SevdeskError({
+      kind: "unexpected_response",
+      message:
+        "sevDesk answers every contact with this custom field value at once, and that answer " +
+        "is larger than this server reads from one answer, so it was not read. A smaller limit " +
+        "or offset does not help here (sevDesk ignores both for this search); give a more " +
+        "specific value.",
+      method: "GET",
+      path,
+      expectedLimit: true,
+      cause: error,
+    });
+  }
   // First match of each id, by its raw id alone; the full parse waits until the cut is known.
   const firstById = new Map<number, unknown>();
   for (const raw of page.items) {
@@ -617,6 +637,19 @@ export async function findContactsByCustomField(
     items: kept.map((id) => toContactDto(parseContactRecord(firstById.get(id)))),
     truncated,
   };
+}
+
+/**
+ * The client's error for a 2xx answer over its size cap: `unexpected_response` without status,
+ * with `expectedLimit` (the only such error the client raises).
+ */
+function isAnswerCap(error: unknown): boolean {
+  return (
+    error instanceof SevdeskError &&
+    error.kind === "unexpected_response" &&
+    error.status === undefined &&
+    error.expectedLimit
+  );
 }
 
 function validation(message: string): SevdeskError {

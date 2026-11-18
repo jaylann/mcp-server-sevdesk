@@ -16,6 +16,8 @@
  * - Only side-effect-free GETs are retried. A retried POST can create a second invoice.
  * - The token is sent only in the `Authorization` header; redirects are not followed, so it never
  *   reaches another origin, and it is redacted from all upstream text kept on errors.
+ * - Every 2xx body is read with a byte cap while streaming: JSON answers with
+ *   {@link MAX_JSON_RESPONSE_BYTES}, downloads with their own `maxBytes`.
  */
 import type { Config } from "../config.js";
 import { isWriteTier, tierCovers, type WriteTier } from "../safety/tiers.js";
@@ -623,13 +625,29 @@ export async function readCappedBody(
 }
 
 /**
- * Reads a 2xx JSON response into its envelope. An empty 204 yields `objects: undefined`. Empty
- * bodies with other statuses, non-JSON, a missing `objects` member, and `objects: null` next to an
- * `error` member are `unexpected_response` errors.
+ * Largest 2xx JSON answer read (16 MiB), cut off while streaming. The largest recorded rows are
+ * invoices and credit notes with their contact embedded, about 2.8 KB each (fixtures of
+ * 2026-11-07), so a page of 1,000 comes to about 2.8 MB; the cap leaves more than five times
+ * that for long texts in the rows. Downloads have their own caps (`SevdeskRequest.maxBytes`).
+ * Not a setting: no tool's page comes near it, and the domain code that reads larger answers
+ * (the DocServer lists) uses `download` with its own cap.
+ */
+export const MAX_JSON_RESPONSE_BYTES = 16 * 1024 * 1024;
+
+/**
+ * Reads a 2xx JSON response into its envelope, at most {@link MAX_JSON_RESPONSE_BYTES}: a larger
+ * answer (by `Content-Length` or while streaming) is cancelled and fails as an
+ * `unexpected_response` without status and with `expectedLimit`, worded here (size and endpoint,
+ * never the body). An empty 204 yields `objects: undefined`. Empty bodies with other statuses,
+ * non-JSON, a missing `objects` member, and `objects: null` next to an `error` member are
+ * `unexpected_response` errors.
  */
 async function readJsonEnvelope(response: Response, context: ErrorContext): Promise<Envelope> {
   const { status } = response;
-  const text = await response.text();
+  const bytes = await readCappedBody(response, MAX_JSON_RESPONSE_BYTES, (received) =>
+    oversizedAnswer(context, received),
+  );
+  const text = new TextDecoder().decode(bytes);
   if (text.trim().length === 0) {
     if (status === 204) return { objects: undefined, total: undefined };
     throw unexpectedResponse(status, text, context, "the body is empty.");
@@ -648,6 +666,26 @@ async function readJsonEnvelope(response: Response, context: ErrorContext): Prom
     throw unexpectedResponse(status, text, context, "it reports an error despite its status.");
   }
   return envelope;
+}
+
+/**
+ * The error for a JSON answer over {@link MAX_JSON_RESPONSE_BYTES}. `received` is the declared
+ * `Content-Length` or the bytes counted when reading stopped, so the answer has at least that
+ * many. The path is ours (checked by `assertSafePath`: letters, digits, underscores).
+ */
+function oversizedAnswer(context: ErrorContext, received: number): SevdeskError {
+  const limitMib = MAX_JSON_RESPONSE_BYTES / (1024 * 1024);
+  return new SevdeskError({
+    kind: "unexpected_response",
+    message:
+      `sevDesk's answer to ${context.method} ${context.path} has at least ${String(received)} ` +
+      `bytes, more than the ${String(limitMib)} MiB this server reads from one answer, so it ` +
+      "was not read. Ask for less at once: fewer rows (a smaller limit), a shorter date range " +
+      "or a narrower filter.",
+    method: context.method,
+    path: context.path,
+    expectedLimit: true,
+  });
 }
 
 function hasErrorMember(body: unknown): boolean {

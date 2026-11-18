@@ -155,6 +155,13 @@ eine Zeitüberschreitung kann also keine Dublette erzeugen, aber die Änderung k
 sein oder auch nicht. Das Werkzeug sagt das; prüf den Datensatz mit einem Lesewerkzeug, bevor du
 erneut fragst.
 
+**„sevDesk's answer to GET … has at least … bytes, more than the 16 MiB this server reads from one
+answer“.** Der Server liest höchstens 16 MiB einer Antwort von sevDesk und hört dort auf zu lesen,
+damit eine einzelne sehr große Antwort seinen Speicher nicht füllt. Eine Seite mit 1.000
+Rechnungen hat etwa 3 MB; die Meldung deutet also auf ungewöhnlich lange Texte in den Datensätzen
+hin. Frag nach weniger auf einmal: weniger Zeilen, ein kürzerer Zeitraum oder ein engerer Filter.
+Die Grenze ist keine Einstellung.
+
 **„Could not reach sevDesk (network error)“.** Prüf die Internetverbindung und, falls du sie
 gesetzt hast, `SEVDESK_BASE_URL`.
 
