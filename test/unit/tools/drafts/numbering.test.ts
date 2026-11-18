@@ -115,9 +115,9 @@ describe("sevdesk_order_create_draft numbering", () => {
       value: "AN-1000 (reserved when the draft is saved)",
     });
     expect(plan.preview.warnings).toContain(
-      "Saving reserves the number AN-1000 from sevDesk's order confirmation number range " +
-        "(Nummernkreis). If saving fails, that number is skipped (a gap in the range); if " +
-        "another document takes it first, the draft gets the next number.",
+      "Saving reserves the next number of sevDesk's order confirmation number range " +
+        "(Nummernkreis), shown as Number. If saving fails, that number is skipped (a gap in the " +
+        "range); if another document takes it first, the draft gets the next number.",
     );
   });
 
@@ -157,9 +157,10 @@ describe("sevdesk_order_create_draft numbering", () => {
     expect(plan.state.body.order.orderNumber).toBe("AN-1000");
     expect(client.writes()[1]?.body).toMatchObject({ order: { orderNumber: "AN-1001" } });
     expect(output.data.notes).toEqual([
-      "sevDesk reserved AN-1001 instead of the previewed AN-1000 (another document took AN-1000 " +
-        "in the meantime); the draft was saved with AN-1001.",
+      "sevDesk reserved a different order number than the preview showed (another document took " +
+        "that one in the meantime); the draft was saved with the reserved number (order.number).",
     ]);
+    expect(output.data.order.number).toBe("AN-1001");
     expect(output.summary).toMatch(/See notes\.$/);
   });
 
@@ -167,12 +168,13 @@ describe("sevdesk_order_create_draft numbering", () => {
     const client = new FakeSevdeskClient(withRoutes(orderCreateRoutes, readBackOrder("AN-1007")));
     const { output } = await executeWrite(tool, orderCreateArgs, client);
     expect(output.data.notes).toEqual([
-      "sevDesk stored the order number AN-1007 although the draft was saved with AN-1000; check " +
-        "the number range (Nummernkreis) and the draft before finalizing.",
+      "sevDesk stored a different order number (order.number) than the draft was saved with; " +
+        "check the number range (Nummernkreis) and the draft before finalizing.",
     ]);
+    expect(output.data.order.number).toBe("AN-1007");
   });
 
-  it("names the reserved, now skipped number when the save fails", async () => {
+  it("says the reserved number is now skipped when the save fails", async () => {
     const client = new FakeSevdeskClient(
       withRoutes(orderCreateRoutes, failingSave("/Order/Factory/saveOrder", "validation")),
     );
@@ -180,8 +182,8 @@ describe("sevdesk_order_create_draft numbering", () => {
     expect(error.kind).toBe("validation");
     expect(error.status).toBe(400);
     expect(error.message).toBe(
-      "sevDesk refused the request. The order number AN-1000 was reserved for this draft and is " +
-        "now skipped in the number range (Nummernkreis); repeating the call reserves the next one.",
+      "sevDesk refused the request. The order number reserved for this draft is now skipped in " +
+        "the number range (Nummernkreis); repeating the call reserves the next one.",
     );
     expect(error.completedWrites).toEqual([]);
     expect(client.writes().map((call) => call.method)).toEqual(["GET", "POST"]);
@@ -193,7 +195,7 @@ describe("sevdesk_order_create_draft numbering", () => {
     );
     const error = await executeError(() => executeWrite(tool, orderCreateArgs, client));
     expect(error.message).toMatch(
-      /The order number AN-1000 was reserved for this draft; unless sevDesk saved the draft anyway/,
+      /The order number reserved for this draft stays unused \(.*\) unless sevDesk saved the draft anyway\.$/,
     );
   });
 
@@ -230,22 +232,22 @@ describe("sevdesk_credit_note_create_draft numbering", () => {
     ]);
     expect(client.writes()[2]?.body).toMatchObject({ creditNote: { creditNoteNumber: "GU-1003" } });
     expect(output.data.notes?.[0]).toBe(
-      "Skipped credit note number GU-1002: existing credit notes carry it already (sevDesk's " +
-        "counter lagged behind, e.g. after sevdesk_credit_note_create_from_invoice). The draft " +
-        "was saved with GU-1003.",
+      "Skipped 1 credit note number: existing credit notes carry it already (sevDesk's counter " +
+        "lagged behind, e.g. after sevdesk_credit_note_create_from_invoice). The draft was saved " +
+        "with the next free number (creditNote.number).",
     );
     // The read-back fixture still shows GU-1002, which the next note points out.
     expect(output.data.notes?.[1]).toBe(
-      "sevDesk stored the credit note number GU-1002 although the draft was saved with GU-1003; " +
-        "check the number range (Nummernkreis) and the draft before finalizing.",
+      "sevDesk stored a different credit note number (creditNote.number) than the draft was " +
+        "saved with; check the number range (Nummernkreis) and the draft before finalizing.",
     );
   });
 
-  it("names several skipped numbers", async () => {
+  it("counts several skipped numbers", async () => {
     const client = new Reserving(withScan("GU-1002", "GU-1003"), ["GU-1002", "GU-1003", "GU-1004"]);
     const { output } = await executeWrite(tool, creditNoteCreateArgs, client);
     expect(output.data.notes?.[0]).toMatch(
-      /^Skipped credit note numbers GU-1002, GU-1003: existing credit notes carry them already/,
+      /^Skipped 2 credit note numbers: existing credit notes carry them already/,
     );
   });
 
@@ -255,8 +257,9 @@ describe("sevdesk_credit_note_create_draft numbering", () => {
     );
     const { output } = await executeWrite(tool, creditNoteCreateArgs, client);
     expect(output.data.notes?.[0]).toBe(
-      "sevDesk reserved GU-1005 instead of the previewed GU-1002 (another document took GU-1002 " +
-        "in the meantime); the draft was saved with GU-1005.",
+      "sevDesk reserved a different credit note number than the preview showed (another " +
+        "document took that one in the meantime); the draft was saved with the reserved number " +
+        "(creditNote.number).",
     );
   });
 
@@ -269,12 +272,12 @@ describe("sevdesk_credit_note_create_draft numbering", () => {
     const client = new FakeSevdeskClient([...creditNoteCreateRoutes.slice(0, -1), page]);
     const { output } = await executeWrite(tool, creditNoteCreateArgs, client);
     expect(output.data.notes).toContain(
-      "Only the first 5000 credit notes were checked for GU-1002; make sure in sevDesk that no " +
-        "other credit note carries it before finalizing.",
+      "Only the first 5000 credit notes were checked for the draft's number (creditNote.number); " +
+        "make sure in sevDesk that no other credit note carries it before finalizing.",
     );
   });
 
-  it("names the reserved, now skipped number when the save fails", async () => {
+  it("says the reserved number is now skipped when the save fails", async () => {
     const client = new FakeSevdeskClient(
       withRoutes(
         creditNoteCreateRoutes,
@@ -283,9 +286,8 @@ describe("sevdesk_credit_note_create_draft numbering", () => {
     );
     const error = await executeError(() => executeWrite(tool, creditNoteCreateArgs, client));
     expect(error.message).toBe(
-      "sevDesk refused the request. The credit note number GU-1002 was reserved for this draft " +
-        "and is now skipped in the number range (Nummernkreis); repeating the call reserves the " +
-        "next one.",
+      "sevDesk refused the request. The credit note number reserved for this draft is now " +
+        "skipped in the number range (Nummernkreis); repeating the call reserves the next one.",
     );
   });
 

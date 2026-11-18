@@ -142,8 +142,8 @@ describe("sevdesk_credit_note_create_draft (community: sevdesk-rs request shape 
       { label: "Reduces invoice", value: "1001 (RE-1001)" },
     ]);
     expect(plan.preview.warnings).toContain(
-      "Saving reserves the number GU-1002 from sevDesk's credit note number range " +
-        "(Nummernkreis). If saving fails, that number is skipped (a gap in the range); if " +
+      "Saving reserves the next number of sevDesk's credit note number range (Nummernkreis), " +
+        "shown as Number. If saving fails, that number is skipped (a gap in the range); if " +
         "another document takes it first, the draft gets the next number.",
     );
   });

@@ -83,6 +83,7 @@ import {
 } from "./fields.js";
 import {
   changedNumberNote,
+  NUMBER_FIELDS,
   type NumberRange,
   peekNextNumber,
   reservationWarning,
@@ -340,7 +341,7 @@ export async function prepareOrderCreate(
     facts,
     [
       duplicateWarning("order", duplicates, duplicateQuery),
-      reservationWarning(args.type.replace("_", " "), peeked),
+      reservationWarning(args.type.replace("_", " ")),
       ...basics.warnings,
     ],
   );
@@ -485,7 +486,8 @@ export interface OrderDraftResult {
  * Saves the prepared order (one request, never retried) and reads it back. A create first
  * reserves the next number of its range (`useNextNumber=true`) and saves with that number, also
  * when it differs from the previewed one (the result says so); when the save then fails, the
- * error names the reserved, now skipped number. An update saves its stored number unchanged.
+ * error says that the reserved number is now skipped. An update saves its stored number
+ * unchanged.
  */
 export async function executeOrderDraft(
   client: SevdeskClient,
@@ -514,7 +516,7 @@ export async function executeOrderDraft(
     });
   } catch (error) {
     if (reserved !== undefined && error instanceof SevdeskError) {
-      throw reservedNumberError(error, "order", reserved);
+      throw reservedNumberError(error, "order");
     }
     throw error;
   }
@@ -532,12 +534,15 @@ export async function executeOrderDraft(
   const details = await readBack(saved, () =>
     getOrder(client, id, { signal, cacheOwner, withDiscount: true }),
   );
+  const field = NUMBER_FIELDS.order;
   const changed =
     numbering === undefined || reserved === undefined
       ? undefined
-      : changedNumberNote("order", numbering.peeked, reserved);
+      : changedNumberNote("order", field, numbering.peeked, reserved);
   const stored =
-    reserved === undefined ? undefined : storedNumberNote("order", reserved, details.order.number);
+    reserved === undefined
+      ? undefined
+      : storedNumberNote("order", field, reserved, details.order.number);
   const discountNote = discountReadBackNote(state.discount, details.discount, "order");
   const notes = [
     ...(changed === undefined ? [] : [changed]),
