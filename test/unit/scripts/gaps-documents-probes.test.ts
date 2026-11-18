@@ -4,6 +4,7 @@ import { ALL_PROBES } from "../../../scripts/lib/probes/catalog.js";
 import {
   allowanceFacts,
   GAPS_DOCUMENTS_PROBES,
+  givenBack,
   numberStep,
 } from "../../../scripts/lib/probes/gaps-documents-probes.js";
 import { renderReport } from "../../../scripts/lib/probes/report.js";
@@ -862,10 +863,12 @@ describe("gaps-documents probes on a simulated trial account", () => {
             `draft \\d+ saved with it, .*?DELETE ok.*?gone; after deleting the next is \\1: the number is handed out again`,
         ),
       );
-      // The copy made from the offer: the simulation numbers it without moving the counter.
+      // The copy made from the offer: the simulation numbers it without moving the counter, so
+      // its delete gives nothing back (it is not "handed out again").
       expect(text).toMatch(
         new RegExp(
-          `${range} \\d+ from the draft offer \\d+: number the peeked next one; next ${range} number \\S+ → \\S+ \\(did not move\\) after creating, did not move; DELETE ok`,
+          `${range} \\d+ from the draft offer \\d+: number the peeked next one; next ${range} number \\S+ → \\S+ \\(did not move\\) after creating, did not move; DELETE ok` +
+            `.*?after deleting the next is \\S+: the counter never moved past the number, so nothing to give back`,
         ),
       );
     }
@@ -895,6 +898,37 @@ describe("gaps-documents probes on a simulated trial account", () => {
         .filter((record) => record.objectName === "Order")
         .map((record) => record.state),
     ).toEqual(Array<string>(3).fill("deleted by the probe"));
+  });
+
+  it("is inconclusive when no AB or LI draft and no offer could be saved (#134)", async () => {
+    const id = "write-reserved-number-ab-li";
+    const { handler } = gapsAccount();
+    const client = new ScriptedClient((call) =>
+      call.path === "/Order/Factory/saveOrder" ? refuse(422, "Order refused") : handler(call),
+    );
+    const { finding, report } = await run(client, { only: [id] });
+    expect(report.results.find((result) => result.id === id)?.status).toBe("inconclusive");
+    expect(finding(id)).toMatch(
+      /AB: reserved \S+ \(the peeked number\), next moved by one; the draft was refused \(422: Order refused\)\. LI: /,
+    );
+    expect(finding(id)).toMatch(/Derived drafts: the offer was refused \(422: Order refused\)\.$/);
+  });
+
+  it("concludes on a number only when the counter moved past it and the draft is gone", () => {
+    expect(givenBack("AB-1000", "AB-1001", "AB-1000")).toBe("the number is handed out again");
+    expect(givenBack("AB-1000", "AB-1001", "AB-1001")).toBe("the number stays used: a gap");
+    expect(givenBack("AB-1000", "AB-1001", "AB-1005")).toBe(
+      "the next number is neither that number nor the one after it",
+    );
+    // A copy numbered without moving the counter: nothing was taken, so nothing comes back.
+    expect(givenBack("AB-1000", "AB-1000", "AB-1000")).toBe(
+      "the counter never moved past the number, so nothing to give back",
+    );
+    // Without a number the unchanged counter is no gap.
+    expect(givenBack(undefined, "AB-1000", "AB-1000")).toBe(
+      "no number was assigned, so nothing to give back",
+    );
+    expect(givenBack("AB-1000", "AB-1001", undefined)).toBe("the peek after the delete failed");
   });
 
   it("tells how far a number range moved by its trailing digits", () => {

@@ -184,17 +184,28 @@ export function numberStep(before: string | undefined, after: string | undefined
   return step === 0 ? "did not move" : step === 1 ? "moved by one" : `moved by ${step}`;
 }
 
-/** Whether the next number after a delete is the one given back, or a gap stays. */
-function givenBack(
+/**
+ * Whether the next number after a delete is the one given back, or a gap stays. Only a number the
+ * counter moved past can be given back or leave a gap: without a number, or when the peek after
+ * creating still shows it, the delete has nothing to give back.
+ */
+export function givenBack(
   number: string | undefined,
   afterCreate: string | undefined,
   afterDelete: string | undefined,
 ): string {
   if (afterDelete === undefined) return "the peek after the delete failed";
+  if (number === undefined) return "no number was assigned, so nothing to give back";
+  if (afterCreate === number) {
+    return "the counter never moved past the number, so nothing to give back";
+  }
   if (afterDelete === number) return "the number is handed out again";
   if (afterDelete === afterCreate) return "the number stays used: a gap";
   return "the next number is neither that number nor the one after it";
 }
+
+/** What a counter line says when the draft holding the number could not be deleted. */
+const DRAFT_STAYED = "the draft is still there, so whether the number comes back stays open";
 
 /**
  * The body of `write-reserved-number-ab-li` (opt-in): reserves one AB and one LI number, saves and
@@ -203,6 +214,8 @@ function givenBack(
  */
 async function reservedNumbersAbLi(ctx: ProbeContext, own: number[]): Promise<ProbeOutcome> {
   const lines: string[] = [];
+  /** Drafts saved with a reserved number and orders made from the offer: the probe's answers. */
+  let answered = 0;
   for (const range of ["AB", "LI"] as const) {
     const { key } = rangeRequest(range);
     const before = await peekNumber(ctx, range);
@@ -215,7 +228,7 @@ async function reservedNumbersAbLi(ctx: ProbeContext, own: number[]): Promise<Pr
     const draft = await orderDraft(ctx, range, {}, reserved);
     if (draft.id === undefined) {
       lines.push(
-        `${range}: reserved ${shown(ctx, key, reserved)} (${reserved === before ? "the peeked number" : "not the peeked number"}), next ${numberStep(before, afterReserve)}; the draft was refused (${outcomeOf(draft.result)})`,
+        `${range}: reserved ${shown(ctx, key, reserved)} (${reserved === before ? "the peeked number" : "not the peeked number"}), next ${numberStep(before, afterReserve)}; the draft was ${outcomeOf(draft.result)}`,
       );
       continue;
     }
@@ -227,14 +240,17 @@ async function reservedNumbersAbLi(ctx: ProbeContext, own: number[]): Promise<Pr
       `${range}: reserved ${shown(ctx, key, reserved)} (${reserved === before ? "the peeked number" : "not the peeked number"}); ` +
         `${counterNote(ctx, range, before, afterReserve)} after reserving, ${numberStep(before, afterReserve)}; ` +
         `draft ${draft.id} saved with it, ${counterNote(ctx, range, afterReserve, afterSave)} after saving; ${deleted.text}; ` +
-        `after deleting the next is ${shown(ctx, key, afterDelete)}: ${givenBack(reserved, afterReserve, afterDelete)}`,
+        `after deleting the next is ${shown(ctx, key, afterDelete)}: ${deleted.gone ? givenBack(reserved, afterReserve, afterDelete) : DRAFT_STAYED}`,
     );
+    answered += 1;
   }
 
   const offer = await orderDraft(ctx, "AN");
   if (offer.id === undefined) {
-    lines.push(`Derived drafts: the offer was refused (${outcomeOf(offer.result)})`);
-    return { verdict: "observed", finding: `${lines.join(". ")}.` };
+    lines.push(`Derived drafts: the offer was ${outcomeOf(offer.result)}`);
+    return answered === 0
+      ? inconclusive(`${lines.join(". ")}.`)
+      : { verdict: "observed", finding: `${lines.join(". ")}.` };
   }
   own.push(offer.id);
   for (const [factory, range] of [
@@ -263,10 +279,13 @@ async function reservedNumbersAbLi(ctx: ProbeContext, own: number[]): Promise<Pr
     lines.push(
       `${range} ${id} from the draft offer ${offer.id}: number ${number === "" ? "none" : number === before ? "the peeked next one" : "not the peeked one"}; ` +
         `${counterNote(ctx, range, before, afterCreate)} after creating, ${numberStep(before, afterCreate)}; ${deleted.text}; ` +
-        `after deleting the next is ${shown(ctx, key, afterDelete)}: ${givenBack(number === "" ? undefined : number, afterCreate, afterDelete)}`,
+        `after deleting the next is ${shown(ctx, key, afterDelete)}: ${deleted.gone ? givenBack(number === "" ? undefined : number, afterCreate, afterDelete) : DRAFT_STAYED}`,
     );
+    answered += 1;
   }
-  return { verdict: "observed", finding: `${lines.join(". ")}.` };
+  return answered === 0
+    ? inconclusive(`${lines.join(". ")}.`)
+    : { verdict: "observed", finding: `${lines.join(". ")}.` };
 }
 
 /** `next AB number X → Y (moved | did not move)`, scrubbed. */
