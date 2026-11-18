@@ -56,12 +56,7 @@ import {
   typeProblem,
   verifyDraft,
 } from "./derived-documents.js";
-import {
-  type NumberRange,
-  peekNextNumber,
-  quotableNumber,
-  reserveNextNumber,
-} from "./drafts/numbering.js";
+import { type NumberRange, peekNextNumber, reserveNextNumber } from "./drafts/numbering.js";
 import { type LifecycleDocument, readLifecycleDocument, STATUS } from "./lifecycle/documents.js";
 import { getOrder, type OrderDetails } from "./orders.js";
 
@@ -303,6 +298,10 @@ export async function createOrderFromOrder(
  * Trusted notes about the new order's number (D-107, #134): what moving the counter did, then
  * other orders of the type that carry the same number. Neither step fails the call (the order
  * exists); only a cancel or an unexpected error ends it, with `affected` as completed writes.
+ *
+ * The notes point at the number (`order.number` of the output) instead of quoting it: the number
+ * range's format is set in the web app, so the number is text this server did not write (#147).
+ * The same goes for a number the counter hands out to a reservation.
  */
 async function numberNotes(
   client: SevdeskClient,
@@ -318,8 +317,7 @@ async function numberNotes(
         "touched; set a number before sending it.",
     ];
   }
-  const label = quotableNumber(number) ?? "the new number";
-  const target = { info, number, label, affected, signal };
+  const target = { info, number, affected, signal };
   return [
     ...(await advanceOrderCounter(client, target)),
     ...(await sameNumberNotes(client, target, newId)),
@@ -329,12 +327,18 @@ async function numberNotes(
 /** The new order's number and what a failure after the request has to name. */
 interface NumberTarget {
   readonly info: FactoryInfo;
-  /** The number sevDesk gave the new order, as read back. */
+  /** The number sevDesk gave the new order, as read back; compared, never quoted in a note. */
   readonly number: string;
-  /** {@link quotableNumber} of it, or a stand-in. */
-  readonly label: string;
   readonly affected: readonly SevdeskObjectRef[];
   readonly signal: AbortSignal | undefined;
+}
+
+/** The output field the notes point at for the new order's number (#147). */
+const NUMBER_FIELD = "order.number";
+
+/** "the new order confirmation's number (order.number)": how a note names the new number. */
+function newNumber(info: FactoryInfo): string {
+  return `the new ${info.noun}'s number (${NUMBER_FIELD})`;
 }
 
 function sameNumber(a: string, b: string): boolean {
@@ -350,33 +354,33 @@ function sameNumber(a: string, b: string): boolean {
  * says what happened; a failure becomes a note too, except a cancel.
  */
 async function advanceOrderCounter(client: SevdeskClient, target: NumberTarget): Promise<string[]> {
-  const { info, number, label, affected, signal } = target;
+  const { info, number, affected, signal } = target;
   const range: NumberRange = { kind: "order", orderType: info.type };
   const counter = `sevDesk's ${info.type} number counter`;
   try {
     if (!sameNumber(await peekNextNumber(client, range, signal), number)) {
       return [
-        `${counter} does not offer ${label} (the new ${info.noun}'s number) any more: someone ` +
-          "moved it on after sevDesk handed out that number, so it was left as it is.",
+        `${counter} does not offer ${newNumber(info)} any more: someone moved it on after ` +
+          "sevDesk handed out that number, so it was left as it is.",
       ];
     }
     const reserved = await reserveNextNumber(client, range, signal);
     if (!sameNumber(reserved, number)) {
       // The counter moved between the peek and the reservation (another client): the reserved
       // number is lost, and whoever moved it may carry the new order's number as well.
-      const taken = quotableNumber(reserved) ?? "another number";
       return [
-        `${counter} moved on while it was being moved past ${label}: the reservation took ` +
-          `${taken} instead, which is now skipped (a gap in the number range, Nummernkreis).`,
+        `${counter} moved on while it was being moved past ${newNumber(info)}: the reservation ` +
+          "took another number instead, which is now skipped (a gap in the number range, " +
+          "Nummernkreis).",
       ];
     }
     // Hedged: that `useNextNumber=true` advances the AB and LI counters is assumed, not recorded
     // (D-066 recorded AN and credit notes only).
     return [
-      `The new ${info.noun}'s number (${label}) was reserved on ${counter}, which should move ` +
-        `the counter past it so that the next ${info.noun} does not get it again. That a ` +
-        `reservation moves the ${info.type} counter is assumed, not checked against sevDesk; ` +
-        `if it did not, the next call names the ${info.noun} with the same number.`,
+      `The new ${info.noun}'s number (${NUMBER_FIELD}) was reserved on ${counter}, which ` +
+        `should move the counter past it so that the next ${info.noun} does not get it again. ` +
+        `That a reservation moves the ${info.type} counter is assumed, not checked against ` +
+        `sevDesk; if it did not, the next call names the ${info.noun} with the same number.`,
     ];
   } catch (error) {
     if (!(error instanceof SevdeskError)) {
@@ -391,8 +395,8 @@ async function advanceOrderCounter(client: SevdeskClient, target: NumberTarget):
     }
     if (error.kind === "aborted") throw withCompletedWrites(error, affected);
     return [
-      `${counter} could not be checked or moved past ${label}, so the next ${info.noun} may get ` +
-        "the same number; check the number before sending either.",
+      `${counter} could not be checked or moved past ${newNumber(info)}, so the next ` +
+        `${info.noun} may get the same number; check the number before sending either.`,
     ];
   }
 }
@@ -409,7 +413,8 @@ async function sameNumberNotes(
   target: NumberTarget,
   newId: number,
 ): Promise<string[]> {
-  const { info, number, label, affected, signal } = target;
+  const { info, number, affected, signal } = target;
+  const label = `the same number (${NUMBER_FIELD})`;
   let others: OrderScan;
   try {
     others = await scanOrders(
@@ -442,7 +447,7 @@ async function sameNumberNotes(
   const sameIds = idsOf(others.rows);
   if (sameIds.length > 0) {
     return [
-      `The new ${info.noun} has the same number (${label}) as ${idList("order", sameIds)}: ` +
+      `The new ${info.noun} has ${label} as ${idList("order", sameIds)}: ` +
         `sevDesk handed out a number of its ${info.type} range that is in use already. Give one ` +
         "of them another number in the sevDesk web app before sending either.",
     ];

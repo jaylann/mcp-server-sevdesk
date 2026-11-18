@@ -96,7 +96,7 @@ describe("sevdesk_transaction_create", () => {
     const plan = await prepareWrite(tool, ARGS, client);
     expect(plan.preview.action).toBe(
       "Enter a bank transaction of -298.10 EUR (outgoing) dated 2026-11-16 on file-import " +
-        "account Import-Konto (id 4004).",
+        "account 4004.",
     );
     expect(plan.preview.facts).toEqual([
       { label: "Check account", value: "Import-Konto (id 4004, file-import account CSV)" },
@@ -111,8 +111,8 @@ describe("sevdesk_transaction_create", () => {
     ]);
     expect(plan.preview.irreversible).toBe(false);
     expect(plan.previewDe.action).toBe(
-      "Kontoumsatz über -298,10 EUR (Ausgang) vom 16.11.2026 auf dem Dateiimport-Konto " +
-        "Import-Konto (ID 4004) anlegen.",
+      "Kontoumsatz über -298,10 EUR (Ausgang) vom 16.11.2026 auf dem Dateiimport-Konto 4004 " +
+        "anlegen.",
     );
     expect(plan.previewDe.facts.map((fact) => fact.label)).toEqual([
       "Zahlungskonto",
@@ -202,7 +202,7 @@ describe("sevdesk_transaction_create", () => {
     const { plan, output } = await executeWrite(tool, args, client);
     expect(plan.preview.action).toBe(
       "Enter a bank transaction of -298.10 EUR (outgoing) dated 2026-11-16 on file-import " +
-        "account Import-Konto (id 4004), and book it to voucher 2001.",
+        "account 4004, and book it to voucher 2001.",
     );
     expect(plan.preview.facts).toContainEqual({
       label: "Status afterwards",
@@ -214,8 +214,8 @@ describe("sevdesk_transaction_create", () => {
     });
     expect(plan.preview.warnings.at(-1)).toContain("To undo, use sevdesk_transaction_reset");
     expect(plan.previewDe.action).toBe(
-      "Kontoumsatz über -298,10 EUR (Ausgang) vom 16.11.2026 auf dem Dateiimport-Konto " +
-        "Import-Konto (ID 4004) anlegen und zuordnen zu Beleg 2001.",
+      "Kontoumsatz über -298,10 EUR (Ausgang) vom 16.11.2026 auf dem Dateiimport-Konto 4004 " +
+        "anlegen und zuordnen zu Beleg 2001.",
     );
     expect(client.writes().map((call) => [call.method, call.path])).toEqual([
       ["POST", "/CheckAccountTransaction"],

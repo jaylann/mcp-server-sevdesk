@@ -101,7 +101,7 @@ describe("draft order update: several changes at once", () => {
       address: "Dr. Max Mustermann\nHauptstraße 9\n54321 Beispielstadt",
     });
     expect(plan.preview.action).toBe(
-      "Update draft Angebot 3102 for Dr. Max Mustermann (contact 1002): change contact, " +
+      "Update draft Angebot 3102 for contact 1002: change contact, " +
         "address, date, intro text, closing text, delivery terms, tax, currency.",
     );
     expect(plan.preview.facts).toContainEqual({

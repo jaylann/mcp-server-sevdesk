@@ -73,11 +73,12 @@ function staged(options: Options = {}): StagedClient {
   );
 }
 
+/** The counter note: it points at the number in the output instead of quoting it (#147). */
 const MOVED =
-  "The new order confirmation's number (AB-1003) was reserved on sevDesk's AB number counter, " +
-  "which should move the counter past it so that the next order confirmation does not get it " +
-  "again. That a reservation moves the AB counter is assumed, not checked against sevDesk; if " +
-  "it did not, the next call names the order confirmation with the same number.";
+  "The new order confirmation's number (order.number) was reserved on sevDesk's AB number " +
+  "counter, which should move the counter past it so that the next order confirmation does not " +
+  "get it again. That a reservation moves the AB counter is assumed, not checked against " +
+  "sevDesk; if it did not, the next call names the order confirmation with the same number.";
 
 /**
  * What the tool's execute throws after the request it sends (and, when the failure comes after
@@ -319,9 +320,9 @@ describe("sevdesk_order_create_confirmation (D-107)", () => {
     // on, and the older confirmation is named.
     expect(output.data.notes).toEqual([
       MOVED,
-      "The new order confirmation has the same number (AB-1003) as order 2990: sevDesk handed " +
-        "out a number of its AB range that is in use already. Give one of them another number " +
-        "in the sevDesk web app before sending either.",
+      "The new order confirmation has the same number (order.number) as order 2990: sevDesk " +
+        "handed out a number of its AB range that is in use already. Give one of them another " +
+        "number in the sevDesk web app before sending either.",
     ]);
   });
 
@@ -457,8 +458,8 @@ describe("sevdesk_order_create_confirmation (D-107)", () => {
       const { output } = await executeWrite(tool, { orderId: 3001 }, client);
       expect(output.data.notes).toEqual([
         counter,
-        "Whether another order confirmation carries AB-1003 already could not be checked; look " +
-          "it up with sevdesk_orders_list.",
+        "Whether another order confirmation carries the same number (order.number) already " +
+          "could not be checked; look it up with sevdesk_orders_list.",
       ]);
     });
 

@@ -1282,7 +1282,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "type": "string",
         },
         "customFields": {
-          "description": "Custom field values (Zusatzfelder), each {settingId or name, value}. Fields are defined in the sevDesk web app; sevdesk_reference_lookup kind=contact_custom_fields lists them.",
+          "description": "Custom field values (Kontaktfelder), each {settingId or name, value}. Fields are defined in the sevDesk web app; sevdesk_reference_lookup kind=contact_custom_fields lists them.",
           "items": {
             "additionalProperties": false,
             "properties": {
@@ -1490,7 +1490,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "type": "string",
         },
         "customFields": {
-          "description": "Custom field values (Zusatzfelder), each {settingId or name, value}. Fields are defined in the sevDesk web app; sevdesk_reference_lookup kind=contact_custom_fields lists them.",
+          "description": "Custom field values (Kontaktfelder), each {settingId or name, value}. Fields are defined in the sevDesk web app; sevdesk_reference_lookup kind=contact_custom_fields lists them.",
           "items": {
             "additionalProperties": false,
             "properties": {
@@ -1685,7 +1685,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         },
         "customField": {
           "additionalProperties": false,
-          "description": "Contacts whose custom field (Zusatzfeld) has this value: {settingId or name, value}. Not combined with query, customerNumber or category.",
+          "description": "Contacts whose custom field (Kontaktfeld) has this value: {settingId or name, value}. Not combined with query, customerNumber or category.",
           "properties": {
             "name": {
               "description": "Or the field's name; refused when no field or more than one has it.",
@@ -7560,7 +7560,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "type": "string",
         },
         "customFields": {
-          "description": "Custom field values (Zusatzfelder), each {settingId or name, value}. Fields are defined in the sevDesk web app; sevdesk_reference_lookup kind=contact_custom_fields lists them.",
+          "description": "Custom field values (Kontaktfelder), each {settingId or name, value}. Fields are defined in the sevDesk web app; sevdesk_reference_lookup kind=contact_custom_fields lists them.",
           "items": {
             "additionalProperties": false,
             "properties": {
@@ -7738,7 +7738,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "type": "string",
         },
         "customFields": {
-          "description": "Custom field values (Zusatzfelder), each {settingId or name, value}. Fields are defined in the sevDesk web app; sevdesk_reference_lookup kind=contact_custom_fields lists them.",
+          "description": "Custom field values (Kontaktfelder), each {settingId or name, value}. Fields are defined in the sevDesk web app; sevdesk_reference_lookup kind=contact_custom_fields lists them.",
           "items": {
             "additionalProperties": false,
             "properties": {
@@ -7933,7 +7933,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         },
         "customField": {
           "additionalProperties": false,
-          "description": "Contacts whose custom field (Zusatzfeld) has this value: {settingId or name, value}. Not combined with query, customerNumber or category.",
+          "description": "Contacts whose custom field (Kontaktfeld) has this value: {settingId or name, value}. Not combined with query, customerNumber or category.",
           "properties": {
             "name": {
               "description": "Or the field's name; refused when no field or more than one has it.",
@@ -12010,7 +12010,7 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
         },
         "customField": {
           "additionalProperties": false,
-          "description": "Contacts whose custom field (Zusatzfeld) has this value: {settingId or name, value}. Not combined with query, customerNumber or category.",
+          "description": "Contacts whose custom field (Kontaktfeld) has this value: {settingId or name, value}. Not combined with query, customerNumber or category.",
           "properties": {
             "name": {
               "description": "Or the field's name; refused when no field or more than one has it.",

@@ -273,7 +273,8 @@ function actionText(
 ): string {
   const t = CREATE_TEXT[lang];
   const direction = compare(plan.amount.amount, 0) < 0 ? t.out : t.in;
-  const account = `${plan.account.name} (${lang === "de" ? "ID" : "id"} ${String(plan.account.id)})`;
+  // By id: the account's name is text a user typed in the web app; the facts show it (#147).
+  const account = String(plan.account.id);
   const docs = planned?.allocations.map(({ doc }) => documentTitle(doc, lang)) ?? [];
   const and = lang === "de" ? "und" : "and";
   const list =

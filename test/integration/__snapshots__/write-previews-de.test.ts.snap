@@ -61,7 +61,7 @@ Danach nicht zugeordnet: 0,00 EUR (Umsatz vollständig gebucht, Status 400)"
 `;
 
 exports[`German previews > book a credit note payout on the offline account: says the same in German 1`] = `
-"Auszahlung von 23,80 EUR auf Gutschrift 2001 buchen (vollständige Zahlung (FULL_PAYMENT)), über das Zahlungskonto Basiskonto.
+"Auszahlung von 23,80 EUR auf Gutschrift 2001 buchen (vollständige Zahlung (FULL_PAYMENT)), über das Zahlungskonto 4001.
 ! sevDesk legt für diese Zahlung einen neuen Kontoumsatz auf dem Konto 4001 an. Ist die Zahlung bereits als importierter Umsatz in sevDesk vorhanden, muss stattdessen dieser Umsatz verknüpft werden (transactionId), sonst wird sie doppelt gezählt.
 (umkehrbar)
 Gutschrift: GU-1001 (ID 2001)
@@ -80,7 +80,7 @@ An sevDesk gesendet als: Betrag -23,8 (Geld verlässt das Konto)"
 `;
 
 exports[`German previews > book an invoice payment linked to a bank transaction: says the same in German 1`] = `
-"Zahlungseingang von 177,33 EUR auf Rechnung 1001 buchen (vollständige Zahlung (FULL_PAYMENT)), über das Zahlungskonto Geschäftskonto Musterbank, verknüpft mit dem Kontoumsatz 5101.
+"Zahlungseingang von 177,33 EUR auf Rechnung 1001 buchen (vollständige Zahlung (FULL_PAYMENT)), über das Zahlungskonto 4002, verknüpft mit dem Kontoumsatz 5101.
 (umkehrbar)
 Rechnung: RE-1001 (ID 1001)
 Typ: Rechnung (RE)
@@ -101,7 +101,7 @@ Offen nach der Buchung: 0,00 EUR (ausgeglichen)"
 `;
 
 exports[`German previews > book the payment of an expense voucher: says the same in German 1`] = `
-"Auszahlung von 298,10 EUR auf Beleg 2001 buchen (vollständige Zahlung (FULL_PAYMENT)), über das Zahlungskonto Basiskonto.
+"Auszahlung von 298,10 EUR auf Beleg 2001 buchen (vollständige Zahlung (FULL_PAYMENT)), über das Zahlungskonto 4001.
 ! sevDesk legt für diese Zahlung einen neuen Kontoumsatz auf dem Konto 4001 an. Ist die Zahlung bereits als importierter Umsatz in sevDesk vorhanden, muss stattdessen dieser Umsatz verknüpft werden (transactionId), sonst wird sie doppelt gezählt.
 (umkehrbar)
 Beleg: RE-2026-0042 (ID 2001)
@@ -169,7 +169,7 @@ Summe (erwartet): netto 100,00 USD, USt. 19,00 USD, brutto 119,00 USD"
 `;
 
 exports[`German previews > change a recurring invoice template: says the same in German 1`] = `
-"Abo-Rechnung 2301 für Musterfirma GmbH (Kontakt 1001) ändern: Positionen, Fußtext, Intervall.
+"Abo-Rechnung 2301 für Kontakt 1001 ändern: Positionen, Fußtext, Intervall.
 ! Jede Rechnung, die sevDesk nach der Änderung selbst aus dieser Vorlage erzeugt, übernimmt sie; niemand wird erneut gefragt. Diese Freigabe gilt für alle diese Rechnungen, bis die Vorlage endet.
 ! Rechnungen, die sevDesk aus dieser Vorlage schon erzeugt hat, bleiben, wie sie sind; die Änderung gilt nur für spätere.
 ! Die automatische Generierung ist an: An jedem Ausführungstag erzeugt sevDesk etwa eine Minute nach 0 Uhr (Berliner Zeit) selbst einen Rechnungsentwurf aus dieser Vorlage, mit diesen Positionen und Texten und einer Zeile im Kopftext, die den Abrechnungszeitraum nennt (vom Ausführungstag bis zum Tag vor der nächsten Ausführung). sevDesk stellt den Entwurf weder fertig noch versendet ihn, und seine Nummer ist vorläufig (mehrere Entwürfe können dieselbe Nummer zeigen, bis jeder fertiggestellt ist): Jeden Entwurf muss noch jemand fertigstellen und versenden.
@@ -189,7 +189,7 @@ Summe je Rechnung: brutto 65,45 EUR → netto 80,00 EUR, USt. 15,20 EUR, brutto 
 `;
 
 exports[`German previews > change the tax rule of a recurring invoice template: says the same in German 1`] = `
-"Abo-Rechnung 2301 für Musterfirma GmbH (Kontakt 1001) ändern: Steuer, Positionen.
+"Abo-Rechnung 2301 für Kontakt 1001 ändern: Steuer, Positionen.
 ! Jede Rechnung, die sevDesk nach der Änderung selbst aus dieser Vorlage erzeugt, übernimmt sie; niemand wird erneut gefragt. Diese Freigabe gilt für alle diese Rechnungen, bis die Vorlage endet.
 ! Rechnungen, die sevDesk aus dieser Vorlage schon erzeugt hat, bleiben, wie sie sind; die Änderung gilt nur für spätere.
 ! Die automatische Generierung ist an: An jedem Ausführungstag erzeugt sevDesk etwa eine Minute nach 0 Uhr (Berliner Zeit) selbst einen Rechnungsentwurf aus dieser Vorlage, mit diesen Positionen und Texten und einer Zeile im Kopftext, die den Abrechnungszeitraum nennt (vom Ausführungstag bis zum Tag vor der nächsten Ausführung). sevDesk stellt den Entwurf weder fertig noch versendet ihn, und seine Nummer ist vorläufig (mehrere Entwürfe können dieselbe Nummer zeigen, bis jeder fertiggestellt ist): Jeden Entwurf muss noch jemand fertigstellen und versenden.
@@ -310,7 +310,7 @@ Schätzung: Kontoumsatz 5102: 05.01.2026, -12,99 EUR, NETFLIX INTERNATIONAL B.V.
 `;
 
 exports[`German previews > create a recurring invoice template: says the same in German 1`] = `
-"Abo-Rechnung (Vorlage für wiederkehrende Rechnungen) für Musterfirma GmbH (Kontakt 1001) anlegen: 65,45 EUR brutto je Rechnung, monatlich ab 01.12.2026, bis sie beendet wird.
+"Abo-Rechnung (Vorlage für wiederkehrende Rechnungen) für Kontakt 1001 anlegen: 65,45 EUR brutto je Rechnung, monatlich ab 01.12.2026, bis sie beendet wird.
 ! Die automatische Generierung ist an: An jedem Ausführungstag erzeugt sevDesk etwa eine Minute nach 0 Uhr (Berliner Zeit) selbst einen Rechnungsentwurf aus dieser Vorlage, mit diesen Positionen und Texten und einer Zeile im Kopftext, die den Abrechnungszeitraum nennt (vom Ausführungstag bis zum Tag vor der nächsten Ausführung). sevDesk stellt den Entwurf weder fertig noch versendet ihn, und seine Nummer ist vorläufig (mehrere Entwürfe können dieselbe Nummer zeigen, bis jeder fertiggestellt ist): Jeden Entwurf muss noch jemand fertigstellen und versenden.
 ! Dieser Server schaltet das automatische Versenden nie ein. Schaltet es jemand in der sevDesk-Web-App für die Vorlage ein, stellt sevDesk jede erzeugte Rechnung etwa zwei Minuten nach der Ausführungszeit mit ihrer endgültigen Nummer fertig, schickt sie mit dem PDF per E-Mail an den Kunden und schreibt sie fest, bevor jemand sie gesehen hat.
 ! Ändern lässt sich die Vorlage später mit sevdesk_invoice_update_recurring, auch die automatische Generierung ein- oder ausschalten; beenden mit sevdesk_invoice_end_recurring. Löschen lässt sich eine Vorlage nur in der sevDesk-Web-App (Abo-Rechnungen).
@@ -472,14 +472,14 @@ exports[`German previews > delete an organisation with its addresses, communicat
 "Kontakt 1001 (Organisation) und seinen Ansprechpartner aus sevDesk löschen.
 ! Der Kontakt, seine 2 Adressen und seine 3 Kommunikationswege werden aus sevDesk gelöscht; das lässt sich nicht rückgängig machen.
 ! sevDesk löscht den Ansprechpartner der Organisation mit; das lässt sich ebenfalls nicht rückgängig machen.
-! Auch die Werte von Zusatzfeldern des Kontakts und seines Ansprechpartners werden mitgelöscht.
+! Auch die Werte von Kontaktfeldern des Kontakts und seines Ansprechpartners werden mitgelöscht.
 (nicht umkehrbar)
 Kontakt: Musterfirma GmbH (ID 1001)
 Kundennummer: K-1001
 Kategorie: Kunde
 Adressen (werden mitgelöscht): 2
 Kommunikationswege (werden mitgelöscht): 3
-Werte von Zusatzfeldern (werden mitgelöscht): 2
+Werte von Kontaktfeldern (werden mitgelöscht): 2
 Ansprechpartner (werden mitgelöscht): 1
 Ansprechpartner (wird mitgelöscht): Dr. Max Mustermann (Kontakt 1002)"
 `;
@@ -605,7 +605,7 @@ Lieferbedingungen: Lieferung frei Haus"
 `;
 
 exports[`German previews > end a recurring invoice template: says the same in German 1`] = `
-"Abo-Rechnung 2301 für Musterfirma GmbH (Kontakt 1001) beenden: sevDesk erzeugt aus ihr keine Rechnung mehr.
+"Abo-Rechnung 2301 für Kontakt 1001 beenden: sevDesk erzeugt aus ihr keine Rechnung mehr.
 ! Rechnungen, die sevDesk aus dieser Vorlage schon erzeugt hat, bleiben, wie sie sind: Das Beenden storniert, ändert oder löscht keine davon (eine falsche wird mit sevdesk_invoice_cancel storniert).
 ! Eine beendete Vorlage erzeugt nichts, auch nicht bei eingeschalteter automatischer Generierung (erfasst). Sie behält ihre automatische Generierung, wie sie ist, für ein späteres Aktivieren.
 ! Die Vorlage bleibt mit ihren Positionen und ihrem Zeitplan erhalten: sevdesk_invoice_reactivate_recurring startet sie wieder. Löschen lässt sich eine Vorlage nur in der sevDesk-Web-App (Abo-Rechnungen).
@@ -713,7 +713,7 @@ Belegdatei: angehängt (ihr Inhalt wird hier nicht gezeigt)"
 `;
 
 exports[`German previews > enter a bank transaction by hand and book it to an invoice: says the same in German 1`] = `
-"Kontoumsatz über 177,33 EUR (Eingang) vom 09.11.2026 auf dem Dateiimport-Konto Import-Konto (ID 4004) anlegen und zuordnen zu Rechnung 1001.
+"Kontoumsatz über 177,33 EUR (Eingang) vom 09.11.2026 auf dem Dateiimport-Konto 4004 anlegen und zuordnen zu Rechnung 1001.
 ! Der neue Umsatz ändert den Saldo des Kontos 4004 um 177,33 EUR und gilt als ungebucht (Status 100), bis er Dokumenten zugeordnet ist. Löschen lässt er sich nur, solange er ungebucht ist (sevdesk_transaction_delete).
 ! Der Status jedes Dokuments ändert sich (siehe die einzelnen Zuordnungen). Rückgängig machen lässt sich das mit sevdesk_transaction_reset: Das setzt diese Dokumente auf offen zurück und entfernt damit alle ihre Zahlungen.
 (umkehrbar)
@@ -1006,7 +1006,7 @@ Summe (unverändert): 119 EUR"
 `;
 
 exports[`German previews > reactivate a recurring invoice template: says the same in German 1`] = `
-"Abo-Rechnung 2301 für Musterfirma GmbH (Kontakt 1001) wieder aktivieren: sevDesk erzeugt aus ihr wieder Rechnungsentwürfe über 65,45 EUR brutto, den nächsten am 01.12.2026.
+"Abo-Rechnung 2301 für Kontakt 1001 wieder aktivieren: sevDesk erzeugt aus ihr wieder Rechnungsentwürfe über 65,45 EUR brutto, den nächsten am 01.12.2026.
 ! Nach dem Aktivieren erzeugt sevDesk wieder an jedem Ausführungstag selbst einen Rechnungsentwurf aus dieser Vorlage, mit ihren gespeicherten Positionen und Texten; niemand wird erneut gefragt. Diese Freigabe gilt für alle diese Entwürfe, bis die Vorlage endet.
 ! Die automatische Generierung ist an: An jedem Ausführungstag erzeugt sevDesk etwa eine Minute nach 0 Uhr (Berliner Zeit) selbst einen Rechnungsentwurf aus dieser Vorlage, mit diesen Positionen und Texten und einer Zeile im Kopftext, die den Abrechnungszeitraum nennt (vom Ausführungstag bis zum Tag vor der nächsten Ausführung). sevDesk stellt den Entwurf weder fertig noch versendet ihn, und seine Nummer ist vorläufig (mehrere Entwürfe können dieselbe Nummer zeigen, bis jeder fertiggestellt ist): Jeden Entwurf muss noch jemand fertigstellen und versenden.
 ! Dieser Server schaltet das automatische Versenden nie ein. Schaltet es jemand in der sevDesk-Web-App für die Vorlage ein, stellt sevDesk jede erzeugte Rechnung etwa zwei Minuten nach der Ausführungszeit mit ihrer endgültigen Nummer fertig, schickt sie mit dem PDF per E-Mail an den Kunden und schreibt sie fest, bevor jemand sie gesehen hat.

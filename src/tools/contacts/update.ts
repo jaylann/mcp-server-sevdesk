@@ -39,7 +39,7 @@ export const contactUpdateTool = defineWriteTool({
     "organisation as contact person (Ansprechpartner; only an organisation is accepted); " +
     "street/zip/city/country change the billing address (Rechnungsanschrift, or the only " +
     "address; added when there is none); email/phone/website change the main entry of that type " +
-    "or add one; customFields sets or changes custom field values (Zusatzfelder) by field id or " +
+    "or add one; customFields sets or changes custom field values (Kontaktfelder) by field id or " +
     "name. remove deletes single entries of this contact (an address, e-mail, phone, mobile, " +
     "website or custom field value, by the id sevdesk_contact_get shows) or the organisation " +
     "link (kind parentOrganisation, id of that organisation); ids of other contacts are " +

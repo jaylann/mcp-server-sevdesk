@@ -47,7 +47,7 @@ describe("sevdesk_part_update", () => {
       client,
     );
     expect(plan.preview).toEqual({
-      action: "Update part Testartikel (id 6001): name, part number, price, unit.",
+      action: "Update part 6001: name, part number, price, unit.",
       facts: [
         { label: "Part", value: "Testartikel (id 6001, ART-001)" },
         { label: "Name", value: "Testartikel → Testartikel Pro" },

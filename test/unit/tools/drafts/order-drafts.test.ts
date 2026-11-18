@@ -115,8 +115,7 @@ describe("sevdesk_order_create_draft (community order bodies, fake data)", () =>
       orderPosDelete: null,
     });
     expect(plan.preview.action).toBe(
-      "Create a draft Angebot (AN) for Musterfirma GmbH (contact 1001) with 2 positions, gross " +
-        "65.45 EUR.",
+      "Create a draft Angebot (AN) for contact 1001 with 2 positions, gross 65.45 EUR.",
     );
   });
 
@@ -288,7 +287,7 @@ describe("sevdesk_order_update_draft (community order shapes, fake data)", () =>
     expect(plan.state.body.orderPosDelete).toEqual([{ id: 9201, objectName: "OrderPos" }]);
     expect(plan.state.body.orderPosSave).toHaveLength(1);
     expect(plan.preview.action).toBe(
-      "Update draft Angebot 3102 for Musterfirma GmbH (contact 1001): change payment terms, positions.",
+      "Update draft Angebot 3102 for contact 1001: change payment terms, positions.",
     );
     expect(plan.preview.facts.slice(0, 3)).toEqual([
       { label: "Order", value: "3102 (Angebot, number AN-1007, draft)" },

@@ -126,9 +126,7 @@ describe("sevdesk_bank_account_create", () => {
   it("previews without writing and refuses a same-named active account before sending", async () => {
     const client = new FakeSevdeskClient([ACCOUNTS]);
     const plan = await prepareWrite(tool, { kind: "file_import", name: "Kasse 2" }, client);
-    expect(plan.preview.action).toBe(
-      'Create the file-import account (Dateiimport-Konto) "Kasse 2".',
-    );
+    expect(plan.preview.action).toBe("Create a new file-import account (Dateiimport-Konto).");
     await expect(
       prepareWrite(tool, { kind: "file_import", name: "kasse" }, client),
     ).rejects.toMatchObject({ kind: "validation", message: /account 4003 \(a cash register\)/ });

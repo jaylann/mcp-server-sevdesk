@@ -132,9 +132,9 @@ describe("sevdesk_order_create_delivery_note (D-107)", () => {
       ["GET", NEXT_ORDER_NUMBER, "write", { orderType: "LI", useNextNumber: "true" }, undefined],
     ]);
     expect(output.data.notes).toEqual([
-      "The new delivery note's number (LI-1001) was reserved on sevDesk's LI number counter, " +
-        "which should move the counter past it so that the next delivery note does not get it " +
-        "again. That a reservation moves the LI counter is assumed, not checked against " +
+      "The new delivery note's number (order.number) was reserved on sevDesk's LI number " +
+        "counter, which should move the counter past it so that the next delivery note does not " +
+        "get it again. That a reservation moves the LI counter is assumed, not checked against " +
         "sevDesk; if it did not, the next call names the delivery note with the same number.",
     ]);
     expect(output.data.order).toMatchObject({

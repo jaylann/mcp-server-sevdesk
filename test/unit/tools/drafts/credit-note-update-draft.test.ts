@@ -135,7 +135,7 @@ describe("sevdesk_credit_note_update_draft (recorded update shape, fake data)", 
     });
     expect(plan.state.creditNoteId).toBe(2202);
     expect(plan.preview.action).toBe(
-      "Update draft credit note 2202 for Musterfirma GmbH (contact 1001): change title.",
+      "Update draft credit note 2202 for contact 1001: change title.",
     );
     expect(plan.preview.facts).toEqual([
       { label: "Credit note", value: "2202 (number GU-1003, draft)" },

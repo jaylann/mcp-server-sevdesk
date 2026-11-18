@@ -304,12 +304,17 @@ const LABELS = {
   },
 } as const;
 
-function customerText(input: StatusPreviewInput, lang: PreviewLanguage): string {
+/** "contact 1001" / "Kontakt 1001": how the action names the customer, by id only (#147). */
+function customerRef(input: StatusPreviewInput, lang: PreviewLanguage): string {
   const contact = input.template.details.invoice.contact;
-  const word = lang === "de" ? "Kontakt" : "contact";
   if (contact === undefined) return lang === "de" ? "(kein Kontakt)" : "(no contact)";
-  const name = cleanText(contact.name, NAME_MAX);
-  const id = `${word} ${String(contact.id)}`;
+  return `${lang === "de" ? "Kontakt" : "contact"} ${String(contact.id)}`;
+}
+
+/** The "Customer" fact: name and id. */
+function customerText(input: StatusPreviewInput, lang: PreviewLanguage): string {
+  const id = customerRef(input, lang);
+  const name = cleanText(input.template.details.invoice.contact?.name, NAME_MAX);
   return name === undefined ? id : `${name} (${id})`;
 }
 
@@ -374,7 +379,7 @@ function commonFacts(input: StatusPreviewInput, lang: PreviewLanguage): PreviewF
 }
 
 function endAction(input: StatusPreviewInput, lang: PreviewLanguage): string {
-  const customer = customerText(input, lang);
+  const customer = customerRef(input, lang);
   return lang === "de"
     ? `Abo-Rechnung ${String(input.id)} für ${customer} beenden: sevDesk erzeugt aus ihr keine ` +
         "Rechnung mehr."
@@ -460,7 +465,7 @@ function generating(input: StatusPreviewInput): boolean {
 }
 
 function reactivateAction(input: StatusPreviewInput, lang: PreviewLanguage): string {
-  const customer = customerText(input, lang);
+  const customer = customerRef(input, lang);
   const de = lang === "de";
   if (!generating(input)) {
     return de

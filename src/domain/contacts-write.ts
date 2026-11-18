@@ -25,7 +25,7 @@
  *   (recorded 2026-11-16, D-083). sevDesk checks nothing (a person as parent, a parent on an
  *   organisation are stored), so the checks are made here: only a person gets a parent, and the
  *   parent must be an existing organisation.
- * - Custom field values (Zusatzfelder) are a fourth resource, `ContactCustomField`, one record per
+ * - Custom field values (Kontaktfelder) are a fourth resource, `ContactCustomField`, one record per
  *   field and contact (`contact-custom-fields.ts`, D-086). They are sent after the communication
  *   ways: `POST` for a field the contact has no value of yet, `PUT` of the value for one it has.
  * Four things are taken away, and only when an update names them in `remove`: the link to the
@@ -433,8 +433,10 @@ export async function planContactCreate(
   const extras = parts.filter((part): part is string => part !== undefined);
   return {
     preview: {
+      // By kind only: the name is the model's argument, often copied from untrusted text (a
+      // parsed e-invoice, a receipt); the "Name" fact shows it (#147).
       action:
-        `Create the ${kind} contact ${displayName} (${category?.name ?? `category ${categoryId}`})` +
+        `Create a new ${kind} contact (${category?.name ?? `category ${categoryId}`})` +
         `${extras.length === 0 ? "" : ` with ${joinParts(extras)}`}.`,
       facts,
       warnings,
@@ -789,7 +791,9 @@ export async function planContactUpdate(
   }
   return {
     preview: {
-      action: `Update contact ${name} (id ${id}): ${changed.join(", ")}.`,
+      // By id: the stored name is text a user typed in the web app; the "Contact" fact shows it
+      // (#147).
+      action: `Update contact ${id}: ${changed.join(", ")}.`,
       facts,
       warnings,
       irreversible: false,

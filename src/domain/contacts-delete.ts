@@ -509,8 +509,8 @@ export async function prepareContactDelete(
         {
           // sevDesk deletes a contact's custom field values with it (recorded 2026-11-17, D-086).
           label: de
-            ? "Werte von Zusatzfeldern (werden mitgelöscht)"
-            : "Custom field values (Zusatzfelder, deleted with it)",
+            ? "Werte von Kontaktfeldern (werden mitgelöscht)"
+            : "Custom field values (Kontaktfelder, deleted with it)",
           value: customFieldValues[lang],
         },
       );
@@ -550,19 +550,19 @@ function customFieldValuesWarning(
 ): Phrase | undefined {
   if (personCount > 0 && !organisation) {
     return phrase(
-      "Its custom field values (Zusatzfelder) are deleted with it, and so are those of any " +
+      "Its custom field values (Kontaktfelder) are deleted with it, and so are those of any " +
         "contact sevDesk deletes with it.",
-      "Auch die Werte seiner Zusatzfelder werden mitgelöscht, ebenso die jedes Kontakts, den " +
+      "Auch die Werte seiner Kontaktfelder werden mitgelöscht, ebenso die jedes Kontakts, den " +
         "sevDesk mitlöscht.",
     );
   }
   if (personCount > 0) {
     const one = personCount === 1;
     return phrase(
-      "Any custom field values (Zusatzfelder) of the contact and of its " +
+      "Any custom field values (Kontaktfelder) of the contact and of its " +
         `${one ? "contact person" : `${String(personCount)} contact persons`} are deleted with ` +
         "them.",
-      "Auch die Werte von Zusatzfeldern des Kontakts und " +
+      "Auch die Werte von Kontaktfeldern des Kontakts und " +
         `${one ? "seines Ansprechpartners" : `seiner ${String(personCount)} Ansprechpartner`} ` +
         "werden mitgelöscht.",
     );
@@ -571,8 +571,8 @@ function customFieldValuesWarning(
     return undefined;
   }
   return phrase(
-    "Its custom field values (Zusatzfelder) are deleted with it.",
-    "Auch die Werte seiner Zusatzfelder werden mitgelöscht.",
+    "Its custom field values (Kontaktfelder) are deleted with it.",
+    "Auch die Werte seiner Kontaktfelder werden mitgelöscht.",
   );
 }
 

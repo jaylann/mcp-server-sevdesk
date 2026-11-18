@@ -138,9 +138,14 @@ function customerName(input: TemplatePreviewInput): string {
   return cleanText(input.basics.contact.contact.displayName, NAME_MAX) ?? "(unnamed)";
 }
 
+/** "contact 1001" / "Kontakt 1001": how the action names the customer. */
+function customerRef(input: TemplatePreviewInput, lang: PreviewLanguage): string {
+  return `${lang === "de" ? "Kontakt" : "contact"} ${String(input.contactId)}`;
+}
+
+/** The "Customer" fact: name and id. The action names the contact by id only (#147). */
 function customerText(input: TemplatePreviewInput, lang: PreviewLanguage): string {
-  const word = lang === "de" ? "Kontakt" : "contact";
-  return `${customerName(input)} (${word} ${String(input.contactId)})`;
+  return `${customerName(input)} (${customerRef(input, lang)})`;
 }
 
 function actionText(input: TemplatePreviewInput, lang: PreviewLanguage): string {
@@ -151,13 +156,13 @@ function actionText(input: TemplatePreviewInput, lang: PreviewLanguage): string 
   const end = schedule.endDate === undefined ? undefined : dateText(schedule.endDate, lang);
   if (lang === "de") {
     return (
-      `Abo-Rechnung (Vorlage für wiederkehrende Rechnungen) für ${customerText(input, lang)} ` +
+      `Abo-Rechnung (Vorlage für wiederkehrende Rechnungen) für ${customerRef(input, lang)} ` +
       `anlegen: ${gross} brutto je Rechnung, ${interval} ab ${start}` +
       `${end === undefined ? ", bis sie beendet wird" : ` bis ${end}`}.`
     );
   }
   return (
-    `Create a recurring invoice template (Abo-Rechnung) for ${customerText(input, lang)}: ` +
+    `Create a recurring invoice template (Abo-Rechnung) for ${customerRef(input, lang)}: ` +
     `${gross} gross per invoice, ${interval} from ${start}` +
     `${end === undefined ? " until it is ended" : ` to ${end}`}.`
   );

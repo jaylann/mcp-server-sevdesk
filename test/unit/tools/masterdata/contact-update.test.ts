@@ -125,9 +125,7 @@ describe("sevdesk_contact_update", () => {
     const { plan, output } = await executeWrite(tool, args, client);
 
     expect(plan.preview).toEqual({
-      action:
-        "Update contact Musterfirma GmbH (id 1001): name, category, customer number, address, " +
-        "e-mail, phone.",
+      action: "Update contact 1001: name, category, customer number, address, e-mail, phone.",
       facts: [
         { label: "Contact", value: "Musterfirma GmbH (id 1001)" },
         { label: "Name", value: "Musterfirma GmbH → Musterfirma Holding GmbH" },
@@ -481,7 +479,7 @@ describe("sevdesk_contact_update", () => {
         client,
       );
       expect(plan.preview).toEqual({
-        action: "Update contact Dr. Max Mustermann (id 1002): organisation link.",
+        action: "Update contact 1002: organisation link.",
         facts: [
           { label: "Contact", value: "Dr. Max Mustermann (id 1002)" },
           {
@@ -702,9 +700,7 @@ describe("sevdesk_contact_update", () => {
       );
 
       expect(plan.preview).toEqual({
-        action:
-          "Update contact Musterfirma GmbH (id 1001): phone, remove address 3002, remove e-mail " +
-          "4001.",
+        action: "Update contact 1001: phone, remove address 3002, remove e-mail 4001.",
         facts: [
           { label: "Contact", value: "Musterfirma GmbH (id 1001)" },
           { label: "Phone (id 4002)", value: "+49 30 0000000 → +49 30 2222222" },

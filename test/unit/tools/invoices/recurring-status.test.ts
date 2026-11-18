@@ -89,7 +89,7 @@ describe("sevdesk_invoice_end_recurring", () => {
       new FakeSevdeskClient(templateChangeRoutes()),
     );
     expect(plan.preview.action).toBe(
-      "End recurring invoice template 2301 (Abo-Rechnung) for Musterfirma GmbH (contact 1001): " +
+      "End recurring invoice template 2301 (Abo-Rechnung) for contact 1001: " +
         "sevDesk creates no further invoice from it.",
     );
     expect(plan.preview.facts).toEqual([
@@ -114,7 +114,7 @@ describe("sevdesk_invoice_end_recurring", () => {
         "sevDesk web app (Abo-Rechnungen).",
     ]);
     expect(plan.previewDe.action).toBe(
-      "Abo-Rechnung 2301 für Musterfirma GmbH (Kontakt 1001) beenden: sevDesk erzeugt aus ihr " +
+      "Abo-Rechnung 2301 für Kontakt 1001 beenden: sevDesk erzeugt aus ihr " +
         "keine Rechnung mehr.",
     );
     expect(fact(plan.previewDe.facts, "Nächste Ausführung")).toBe(
@@ -244,9 +244,8 @@ describe("sevdesk_invoice_reactivate_recurring", () => {
       ),
     );
     expect(plan.preview.action).toBe(
-      "Reactivate recurring invoice template 2301 (Abo-Rechnung) for Musterfirma GmbH (contact " +
-        "1001): sevDesk generates draft invoices from it again, 65.45 EUR gross each, the next " +
-        "on 2026-12-01.",
+      "Reactivate recurring invoice template 2301 (Abo-Rechnung) for contact 1001: sevDesk " +
+        "generates draft invoices from it again, 65.45 EUR gross each, the next on 2026-12-01.",
     );
     expect(fact(plan.preview.facts, "Automatic generation (Automatische Generierung)")).toBe("on");
     expect(fact(plan.preview.facts, "Next run")).toBe("2026-12-01");
@@ -263,7 +262,7 @@ describe("sevdesk_invoice_reactivate_recurring", () => {
       expect.stringMatching(/^A run falls on the end date itself \(2027-02-01\)/),
     ]);
     expect(plan.previewDe.action).toBe(
-      "Abo-Rechnung 2301 für Musterfirma GmbH (Kontakt 1001) wieder aktivieren: sevDesk erzeugt " +
+      "Abo-Rechnung 2301 für Kontakt 1001 wieder aktivieren: sevDesk erzeugt " +
         "aus ihr wieder Rechnungsentwürfe über 65,45 EUR brutto, den nächsten am 01.12.2026.",
     );
     expect(plan.previewDe.warnings).toHaveLength(plan.preview.warnings.length);
@@ -322,8 +321,8 @@ describe("sevdesk_invoice_reactivate_recurring", () => {
       new FakeSevdeskClient(templateChangeRoutes(off)),
     );
     expect(plan.preview.action).toBe(
-      "Reactivate recurring invoice template 2301 (Abo-Rechnung) for Musterfirma GmbH (contact " +
-        "1001); with automatic generation off, sevDesk creates nothing from it by itself.",
+      "Reactivate recurring invoice template 2301 (Abo-Rechnung) for contact 1001; with " +
+        "automatic generation off, sevDesk creates nothing from it by itself.",
     );
     expect(plan.preview.warnings).toEqual([
       expect.stringMatching(

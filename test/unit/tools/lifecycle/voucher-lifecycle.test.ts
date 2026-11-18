@@ -96,7 +96,7 @@ describe("sevdesk_voucher_book_payment", () => {
     });
     expect(plan.preview.action).toBe(
       "Book a payout of 298.10 EUR on voucher 2001 (full payment (FULL_PAYMENT)) via " +
-        "check account Geschäftskonto Musterbank, linked to bank transaction 5101.",
+        "check account 4002, linked to bank transaction 5101.",
     );
     expect(plan.preview.facts).toContainEqual({ label: "Kind", value: "expense (Ausgabe)" });
     expect(plan.previewDe.facts).toContainEqual({ label: "Art", value: "Ausgabe" });

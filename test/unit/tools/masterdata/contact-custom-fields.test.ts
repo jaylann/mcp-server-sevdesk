@@ -1,5 +1,5 @@
 /**
- * Custom field values (Zusatzfelder) through `sevdesk_contact_create` and
+ * Custom field values (Kontaktfelder) through `sevdesk_contact_create` and
  * `sevdesk_contact_update`, against the behaviour recorded on 2026-11-16 (spec/deviations.md
  * D-086): a value is `POST /ContactCustomField` with the contact and the setting as references,
  * a change is `PUT` with only `objectName` and `value`, a removal is a `DELETE` answering
@@ -129,7 +129,7 @@ describe("sevdesk_contact_create with custom fields (D-086)", () => {
     );
 
     expect(plan.preview.action).toBe(
-      "Create the organisation contact Beispiel Handel GmbH (Kunde) with 2 custom field values.",
+      "Create a new organisation contact (Kunde) with 2 custom field values.",
     );
     expect(plan.preview.facts.slice(-2)).toEqual([
       { label: "Custom field (setting 19498)", value: "Kundennr extern: EXT-4711" },
@@ -339,7 +339,7 @@ describe("sevdesk_contact_update with custom fields (D-086)", () => {
     );
 
     expect(plan.preview.action).toBe(
-      "Update contact Musterfirma GmbH (id 1001): phone, custom field 19498, custom field 19500, " +
+      "Update contact 1001: phone, custom field 19498, custom field 19500, " +
         "remove address 3002, remove custom field value 7002.",
     );
     expect(plan.preview.facts).toEqual(

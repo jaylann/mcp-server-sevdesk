@@ -100,7 +100,7 @@ describe("createOrderFromOrder: the number counter (#134)", () => {
     ]);
     // Hedged: that the reservation moves the AB counter is assumed, not recorded (D-066).
     expect(result.notes).toEqual([
-      "The new order confirmation's number (AB-1003) was reserved on sevDesk's AB number " +
+      "The new order confirmation's number (order.number) was reserved on sevDesk's AB number " +
         "counter, which should move the counter past it so that the next order confirmation " +
         "does not get it again. That a reservation moves the AB counter is assumed, not checked " +
         "against sevDesk; if it did not, the next call names the order confirmation with the " +
@@ -115,9 +115,9 @@ describe("createOrderFromOrder: the number counter (#134)", () => {
       ["LI", "true", true],
     ]);
     expect(result.notes).toEqual([
-      "The new delivery note's number (LI-1001) was reserved on sevDesk's LI number counter, " +
-        "which should move the counter past it so that the next delivery note does not get it " +
-        "again. That a reservation moves the LI counter is assumed, not checked against " +
+      "The new delivery note's number (order.number) was reserved on sevDesk's LI number " +
+        "counter, which should move the counter past it so that the next delivery note does not " +
+        "get it again. That a reservation moves the LI counter is assumed, not checked against " +
         "sevDesk; if it did not, the next call names the delivery note with the same number.",
     ]);
   });
@@ -135,26 +135,27 @@ describe("createOrderFromOrder: the number counter (#134)", () => {
     expect(counterCalls).toEqual([["AB", "false", false]]);
     expect(client.writes()).toHaveLength(1);
     expect(result.notes).toEqual([
-      "sevDesk's AB number counter does not offer AB-1003 (the new order confirmation's number) " +
-        "any more: someone moved it on after sevDesk handed out that number, so it was left as " +
-        "it is.",
-      "The new order confirmation has the same number (AB-1003) as order 2990: sevDesk handed " +
-        "out a number of its AB range that is in use already. Give one of them another number " +
-        "in the sevDesk web app before sending either.",
+      "sevDesk's AB number counter does not offer the new order confirmation's number " +
+        "(order.number) any more: someone moved it on after sevDesk handed out that number, so " +
+        "it was left as it is.",
+      "The new order confirmation has the same number (order.number) as order 2990: sevDesk " +
+        "handed out a number of its AB range that is in use already. Give one of them another " +
+        "number in the sevDesk web app before sending either.",
     ]);
   });
 
-  it("names the number a reservation skipped when the counter moved on in between", async () => {
+  it("notes the number a reservation skipped when the counter moved on in between", async () => {
     const { result, counterCalls } = await run({ reserve: { number: "AB-1004" } });
     // One reservation only: the lost number is reported, not reserved again.
     expect(counterCalls).toEqual([
       ["AB", "false", false],
       ["AB", "true", true],
     ]);
+    // Neither number is quoted: both come from the web app's number range (#147).
     expect(result.notes).toEqual([
-      "sevDesk's AB number counter moved on while it was being moved past AB-1003: the " +
-        "reservation took AB-1004 instead, which is now skipped (a gap in the number range, " +
-        "Nummernkreis).",
+      "sevDesk's AB number counter moved on while it was being moved past the new order " +
+        "confirmation's number (order.number): the reservation took another number instead, " +
+        "which is now skipped (a gap in the number range, Nummernkreis).",
     ]);
   });
 
@@ -166,9 +167,9 @@ describe("createOrderFromOrder: the number counter (#134)", () => {
     });
     expect(result.notes.join("\n")).not.toContain("ignore");
     expect(result.notes[0]).toBe(
-      "sevDesk's AB number counter moved on while it was being moved past the new number: the " +
-        "reservation took AB-1004 instead, which is now skipped (a gap in the number range, " +
-        "Nummernkreis).",
+      "sevDesk's AB number counter moved on while it was being moved past the new order " +
+        "confirmation's number (order.number): the reservation took another number instead, " +
+        "which is now skipped (a gap in the number range, Nummernkreis).",
     );
   });
 
@@ -182,8 +183,9 @@ describe("createOrderFromOrder: the number counter (#134)", () => {
       // Never repeated: a reservation that timed out may have gone through.
       expect(counterCalls).toHaveLength(calls);
       expect(result.notes).toEqual([
-        "sevDesk's AB number counter could not be checked or moved past AB-1003, so the next " +
-          "order confirmation may get the same number; check the number before sending either.",
+        "sevDesk's AB number counter could not be checked or moved past the new order " +
+          "confirmation's number (order.number), so the next order confirmation may get the " +
+          "same number; check the number before sending either.",
       ]);
       expect(client.calls.filter((call) => call.query["orderNumber"] === "AB-1003")).toHaveLength(
         1,

@@ -161,7 +161,7 @@ describe("sevdesk_invoice_update_draft with costCentre", () => {
     const plan = await prepareWrite(tool, { id: 2102, costCentre: "Mustername 3" }, client);
     expect(plan.state.body.invoice.costCentre).toEqual(CENTRE_REF);
     expect(plan.preview.action).toBe(
-      "Update draft invoice 2102 for Musterfirma GmbH (contact 1001): change cost centre.",
+      "Update draft invoice 2102 for contact 1001: change cost centre.",
     );
     expect(plan.preview.facts).toContainEqual({
       label: "Cost centre (Kostenstelle)",
@@ -206,7 +206,7 @@ describe("sevdesk_invoice_update_draft with costCentre", () => {
     expect(plan.state.body.invoice.costCentre).toBeNull();
     expect(client.writes()[0]?.body).toMatchObject({ invoice: { id: 2102, costCentre: null } });
     expect(plan.preview.action).toBe(
-      "Update draft invoice 2102 for Musterfirma GmbH (contact 1001): change cost centre.",
+      "Update draft invoice 2102 for contact 1001: change cost centre.",
     );
     expect(plan.preview.facts).toContainEqual({
       label: "Cost centre (Kostenstelle)",
@@ -269,9 +269,7 @@ describe("sevdesk_invoice_update_draft with costCentre", () => {
       client,
     );
     expect(plan.state.body.invoice).not.toHaveProperty("costCentre");
-    expect(plan.preview.action).toBe(
-      "Update draft invoice 2102 for Musterfirma GmbH (contact 1001): change title.",
-    );
+    expect(plan.preview.action).toBe("Update draft invoice 2102 for contact 1001: change title.");
     expect(client.callsTo("/CostCentre")).toEqual([]);
   });
 
@@ -335,7 +333,7 @@ describe("sevdesk_credit_note_update_draft with costCentre", () => {
       creditNote: { id: 2202, costCentre: CENTRE_REF },
     });
     expect(plan.preview.action).toBe(
-      "Update draft credit note 2202 for Musterfirma GmbH (contact 1001): change cost centre.",
+      "Update draft credit note 2202 for contact 1001: change cost centre.",
     );
     expect(plan.preview.facts).toContainEqual({
       label: "Cost centre (Kostenstelle)",
@@ -372,7 +370,7 @@ describe("sevdesk_credit_note_update_draft with costCentre", () => {
       creditNote: { id: 2202, costCentre: null },
     });
     expect(plan.preview.action).toBe(
-      "Update draft credit note 2202 for Musterfirma GmbH (contact 1001): change cost centre.",
+      "Update draft credit note 2202 for contact 1001: change cost centre.",
     );
     expect(plan.preview.facts).toContainEqual({
       label: "Cost centre (Kostenstelle)",

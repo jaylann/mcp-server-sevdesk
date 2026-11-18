@@ -23,7 +23,7 @@ export const contactDeleteTool = defineWriteTool({
   title: "Delete a sevDesk contact",
   description:
     "Delete a contact (Kontakt löschen) with all its addresses, communication ways and custom " +
-    "field values (Zusatzfelder), e.g. a " +
+    "field values (Kontaktfelder), e.g. a " +
     "duplicate, a test contact or for an erasure request (DSGVO). Deleting an organisation also " +
     "deletes all its contact persons (Ansprechpartner); the preview lists them. Cannot be " +
     "undone. sevDesk refuses it while documents (invoices, also drafts) still reference the " +
