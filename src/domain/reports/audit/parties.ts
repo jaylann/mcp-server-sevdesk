@@ -179,7 +179,10 @@ export interface PartyDirectory {
      * rows (D-146): contacts may be missing from `parties`.
      */
     readonly contactsTruncated: boolean;
-    /** The same for the address list: any contact in `parties` may lack addresses. */
+    /**
+     * The address list stopped at its cap: any contact in `parties` may lack addresses. A read in
+     * several pages does not set it (see `loadPartyDirectory`).
+     */
     readonly addressesTruncated: boolean;
   };
   /** True when addresses or documents had countries but the country table could not be read. */
@@ -258,10 +261,14 @@ export async function loadPartyDirectory(
     coverage: {
       read: contacts.scanned,
       addressesRead: addresses.scanned,
-      truncated: contacts.truncated || addresses.truncated || contacts.paged || addresses.paged,
-      // A list read in more than one page may have missed rows (D-146): as good as capped.
+      truncated: contacts.truncated || addresses.truncated || contacts.paged,
+      // A contact list read in more than one page may have missed a contact (D-146): as good as
+      // capped, but it only leaves the contacts it did not read unjudged. The address list is
+      // not flagged when it pages: every address counts for every party, so a flag would leave
+      // every finding unjudged on any account with more than 1,000 addresses, and its paging is
+      // not measured (D-146, #158). Its rows are still kept once; only its cap counts.
       contactsTruncated: contacts.truncated || contacts.paged,
-      addressesTruncated: addresses.truncated || addresses.paged,
+      addressesTruncated: addresses.truncated,
     },
     countriesUnread: withCountry && countryCodes.size === 0,
   };

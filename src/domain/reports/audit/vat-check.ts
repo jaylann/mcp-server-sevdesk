@@ -669,8 +669,7 @@ async function runVatCheck(context: AuditCheckContext): Promise<AuditCheckResult
   }
   if (contacts?.addressesTruncated === true) {
     notes.push(
-      "The address list stopped at its cap or had to be read page by page: any contact may " +
-        "have further addresses, German or " +
+      "The address list stopped at its cap: any contact may have further addresses, German or " +
         "foreign, so no finding was made that such an address could overturn; findings on a " +
         "customer's VAT id (rules 3 and 21) stand.",
     );
