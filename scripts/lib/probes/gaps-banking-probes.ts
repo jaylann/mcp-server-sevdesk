@@ -1308,10 +1308,14 @@ async function enshrineStatuses(
 
   // 200: linked, a part of the row booked with an open voucher (type N, D-075).
   const linkedRow = await post(-22, "Festschreiben 200");
-  const voucher = await createVoucher(ctx, { label: "Festschreiben 200", status: 100, gross: 10 });
-  if (linkedRow.id === undefined || voucher.id === undefined) {
+  // The open voucher stays on the account (only drafts are deleted), so only for a row to book.
+  const voucher =
+    linkedRow.id === undefined
+      ? undefined
+      : await createVoucher(ctx, { label: "Festschreiben 200", status: 100, gross: 10 });
+  if (linkedRow.id === undefined || voucher?.id === undefined) {
     lines.push(
-      `200: could not prepare (${linkedRow.id === undefined ? outcomeOf(linkedRow.result) : voucherFailure(voucher)})`,
+      `200: could not prepare (${linkedRow.id === undefined || voucher === undefined ? `the row was ${outcomeOf(linkedRow.result)}` : voucherFailure(voucher)})`,
     );
   } else {
     const booked = await bookVoucher(ctx, voucher.id, {
@@ -1342,7 +1346,9 @@ async function enshrineStatuses(
       `350: PUT status 350 ${outcomeOf(marked)}, status ${status}; ${status === "350" ? await enshrineAndTry(autoRow.id) : "350 not reachable by hand on this account, not enshrined"}`,
     );
   }
-  return { verdict: "observed", finding: `On ${account.note}. ${lines.join(". ")}.` };
+  const finding = `On ${account.note}. ${lines.join(". ")}.`;
+  // Without a single row nothing was asked: a setup failure, not an answer.
+  return own.length === 0 ? inconclusive(finding) : { verdict: "observed", finding };
 }
 
 /**
@@ -1540,8 +1546,8 @@ async function ownImportAccount(
 
 /**
  * `PUT /CheckAccountTransaction/{id}/enshrine` (commit). The only enshrine request of any probe;
- * only the opt-in probe `write-transaction-enshrine` calls it, and only for a transaction it created
- * itself in the same run.
+ * only the opt-in probes `write-transaction-enshrine` and `write-transaction-enshrine-statuses`
+ * call it, and only for transactions they created themselves in the same run.
  */
 function enshrineOwnTransaction(ctx: ProbeContext, id: number): Promise<HttpResult> {
   return ctx.http.write("PUT", `/CheckAccountTransaction/${id}/enshrine`, { tier: "commit" });

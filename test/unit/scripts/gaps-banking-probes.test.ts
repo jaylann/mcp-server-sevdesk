@@ -139,6 +139,8 @@ function gapsAccount(
     voucherListRefused?: boolean;
     /** Synthetic (not recorded): a part booked with type N moves the row to 400, not 200. */
     partialBookingFull?: boolean;
+    /** Synthetic (failure test): POST /CheckAccountTransaction answers 500. */
+    transactionCreateRefused?: boolean;
   } = {},
 ) {
   // Far from the digits PERSONAL looks for, so a generated id never matches it.
@@ -360,6 +362,7 @@ function gapsAccount(
     }
     // --- transactions -----------------------------------------------------------------------
     if (method === "POST" && path === "/CheckAccountTransaction") {
+      if (settings.transactionCreateRefused === true) refused(500, "Internal error");
       const account = accounts.get(Number((body["checkAccount"] as Rec)["id"]));
       if (account?.["type"] !== "online") {
         refused(
@@ -1458,6 +1461,21 @@ describe("gap probes on a simulated trial account", () => {
     expect([...full.transactions.values()].filter((row) => row["enshrined"] !== null)).toHaveLength(
       1,
     );
+
+    // No row at all: inconclusive, and no open voucher made for a row that is not there (an
+    // open voucher cannot be deleted, so it would stay on the account for nothing).
+    const none = gapsAccount({ transactionCreateRefused: true });
+    const noneReport = await run(none, [id]);
+    const noneResult = noneReport.results.find((item) => item.id === id);
+    expect(noneResult?.status).toBe("inconclusive");
+    expect(noneResult?.finding).toMatch(
+      /300: the row was refused \(500: Internal error\)\. 200: could not prepare \(the row was refused \(500: Internal error\)\)\. 350: the row was refused/,
+    );
+    expect(
+      none.client.writes().filter((call) => call.path === "/Voucher/Factory/saveVoucher"),
+    ).toEqual([]);
+    expect([...none.vouchers.keys()]).toEqual([8001]);
+    expect(none.client.calls.filter((call) => call.path.endsWith("/enshrine"))).toEqual([]);
   });
 
   it("counts entryDate against valueDate per kind of account, read only (#136)", async () => {
