@@ -4929,19 +4929,23 @@ true, price: 200}`) in `invoicePosSave`, a new position C in `invoicePosSave` an
   200 for the spec's plural `autoMapTransactions: 0`, for `type: "offline"` and for `status: 0`,
   and stored none of them (`autoMapTransaction` stayed `"1"`, the type `online`, the status 100).
   A clearing account was renamed the same way. `defaultAccount` was not tried (it would move the
-  trial's default account).
+  trial's default account). A `name` another active account has (its exact name) was stored as
+  well, with 200: sevDesk does not keep account names apart.
 - **Sources:** spec (`updateCheckAccount`, `Model_CheckAccountUpdate`); recorded 2026-11-18,
   trial account, Update 2.0 (one-off check by the orchestrator, run tag
-  `MCP-E2E 20261118-0925-lgtm`).
+  `MCP-E2E 20261118-0925-lgtm`; the duplicate name in a follow-up check of the same run).
 - **Impact:** A 200 to this `PUT` proves nothing about the fields sent. Handling (#128):
   `sevdesk_bank_account_update` (tier `commit`) sends only the fields that change, under the keys
   sevDesk stores (`autoMapTransaction` singular, `accountingNumber` as a string), never `type`,
   `status` or `defaultAccount`; it reads the account back and fails, naming the fields, when one
   was not stored as sent. Everything but the name is set only on file-import accounts, where it
-  was recorded; clearing accounts and cash registers are only renamed.
+  was recorded; clearing accounts and cash registers are only renamed. It refuses a name another
+  active account has before sending (compared without case and spaces); since sevDesk stores
+  such a name, this refusal is the only guard against two accounts of the same name.
 - **Test:** `test/regressions/check-account-update-archive.test.ts` ("sends only the keys sevDesk
   stores, the singular autoMapTransaction included"); `test/unit/tools/banking/account-update.test.ts`
-  ("sends automatic assignment under sevDesk's singular key, never the spec's plural (D-141)",
+  ("refuses a name another active account has, ignoring case and spaces",
+  "sends automatic assignment under sevDesk's singular key, never the spec's plural (D-141)",
   "fails when the read-back does not show a field as sent, though sevDesk answered 200 (D-141)",
   "sends only the fields that change and refuses a call that changes nothing", "sets IBAN and BIC
   only on a file-import account and shows the IBAN masked").
@@ -5007,13 +5011,19 @@ transaction>], "objectToDelete": <the account>}, "responseCode": 200, "exception
 - **Actual behavior:** `PUT /CheckAccount/{id} {accountingNumber: "1800"}`, a number another
   active account uses, answered HTTP 400 with code 815 and "The given account number is already
   used", and changed nothing. The account factories refuse the same with 422 (D-119). A free
-  number was stored as sent.
+  number was stored as sent. The refusal covers the whole request: `{name, accountingNumber}` with
+  a number another active account uses answered the same 400/815, and the name was not stored
+  either. An archived account's number is free: a `PUT` of another account to the number of an
+  archived one answered 200 and stored it.
 - **Sources:** recorded 2026-11-18, trial account, Update 2.0 (one-off check by the orchestrator,
-  run tag `MCP-E2E 20261118-0925-lgtm`).
+  run tag `MCP-E2E 20261118-0925-lgtm`; the whole-request refusal and the archived account's
+  number in a follow-up check of the same run).
 - **Impact:** Both statuses are the client's `validation` kind. Handling (#128):
-  `sevdesk_bank_account_update` checks the number against the listed accounts first and turns
-  sevDesk's refusal (for a number the list does not show, such as an archived account's) into a
-  sentence of its own, without sevDesk's text.
+  `sevdesk_bank_account_update` checks the number against the active accounts the list shows
+  first (archived ones, which the list leaves out, do not block it) and turns sevDesk's refusal,
+  for a number taken after that check or held by an account beyond the first 1000, into a
+  sentence of its own without sevDesk's text, saying that nothing of the request was changed.
 - **Test:** `test/unit/tools/banking/account-update.test.ts` ("explains sevDesk's 400 for a
-  booking account in use (D-144)", "refuses a booking account in use, and one on an account with
-  booked transactions").
+  booking account in use: nothing of the request was stored (D-144)", "refuses a booking account
+  in use, and one on an account with booked transactions", "takes the booking account number of
+  an archived account (D-144)").

@@ -51,7 +51,8 @@ create one.
 file-import account, a clearing account or a cash register. On a file-import account it can also
 change the booking account (Buchungskonto), the IBAN and BIC, and whether sevDesk assigns imported
 transactions to documents by itself. Give only what changes. The preview shows each change as
-"current → new" next to the account as stored. sevDesk answers a change with success even for
+"current → new" next to the account as stored. An IBAN shows only its last four characters, there
+and in the audit log: note the old one before you replace it. sevDesk answers a change with success even for
 fields it ignores, so the tool reads the account back and fails when a field was not stored. It
 refuses a name or booking account another account has, and a new booking account on an account
 with booked transactions (what sevDesk does with their bookings is not recorded): ask your tax

@@ -1,11 +1,17 @@
-import { describe, expect, it } from "vitest";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
+import { afterEach, describe, expect, it } from "vitest";
+
+import { argumentsHash } from "../../../../src/safety/hashing.js";
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
 import { bankAccountUpdateTool as tool } from "../../../../src/tools/banking/account-update.js";
 import { describeSevdeskError } from "../../../../src/tools/tool-errors.js";
 import { ACCOUNT_BOOKINGS, ACCOUNT_CHECK_ACCOUNTS } from "../../../../src/tools/types.js";
 import { testConfig } from "../../../helpers/config.js";
 import { type FakeRoute, FakeSevdeskClient } from "../../../helpers/fake-client.js";
+import { closeWriteHarnessesAfterEach, writeHarness } from "../../../helpers/write-flow.js";
 import { executeWrite, prepareWrite } from "../../../helpers/write-tools.js";
 import {
   accountRoute,
@@ -183,6 +189,19 @@ describe("sevdesk_bank_account_update", () => {
     ]);
     // The previews (shown, logged, in dry runs) carry only the last four characters.
     expect(JSON.stringify([plan.preview, plan.previewDe])).not.toContain("DE893704");
+    // Neither value can be set again from the preview: no undo is promised.
+    expect(plan.preview.warnings).toEqual([
+      "Nothing else changes: the transactions and the balance (Saldo) stay as they are.",
+      "The previous IBAN is shown masked only, so it cannot be set again from this preview: " +
+        "keep a note of it before approving if it may be needed again.",
+      "Not set before: BIC. This tool cannot remove a value again.",
+    ]);
+    expect(plan.previewDe.warnings).toEqual([
+      "Sonst ändert sich nichts: Umsätze und Saldo bleiben, wie sie sind.",
+      "Die bisherige IBAN wird nur maskiert gezeigt und lässt sich aus dieser Vorschau nicht " +
+        "wieder setzen: Notieren Sie sie vor der Freigabe, falls sie wieder gebraucht wird.",
+      "Vorher nicht gesetzt: BIC. Dieses Tool kann einen Wert nicht wieder entfernen.",
+    ]);
     await expect(prepareWrite(tool, { id: 4003, iban: IBAN }, client)).rejects.toMatchObject({
       kind: "validation",
       message: /cash register \(Kasse\): only its name is changed here/,
@@ -194,6 +213,33 @@ describe("sevdesk_bank_account_update", () => {
       prepareWrite(tool, { id: 4003, autoMapTransactions: false }, client),
     ).rejects.toMatchObject({ kind: "validation", message: /only its name is changed here/ });
     expect(client.writes()).toEqual([]);
+  });
+
+  it("promises an undo only for the values the preview shows in full", async () => {
+    const unknownAutoMap = { ...importAccount, autoMapTransaction: undefined };
+    const client = new FakeSevdeskClient([accountRoute(unknownAutoMap), accountsListRoute()]);
+    const plan = await prepareWrite(
+      tool,
+      { id: 4004, name: "Neu", iban: IBAN, autoMapTransactions: false },
+      client,
+    );
+    expect(plan.preview.facts.at(-1)).toEqual({
+      label: "Automatic assignment of imported transactions",
+      value: "unknown → off",
+    });
+    expect(plan.preview.warnings).toEqual([
+      "Nothing else changes: the transactions and the balance (Saldo) stay as they are. Undo " +
+        "for Name: set the values left of the arrows again with sevdesk_bank_account_update.",
+      "The previous IBAN is shown masked only, so it cannot be set again from this preview: " +
+        "keep a note of it before approving if it may be needed again.",
+      "sevDesk does not say whether automatic assignment was on before, so it cannot be set " +
+        "back from this preview.",
+    ]);
+    expect(plan.previewDe.warnings[0]).toBe(
+      "Sonst ändert sich nichts: Umsätze und Saldo bleiben, wie sie sind. Rückgängig für Name: " +
+        "die Werte links der Pfeile mit sevdesk_bank_account_update wieder setzen.",
+    );
+    expect(plan.previewDe.warnings).toHaveLength(3);
   });
 
   it("checks IBAN check digits and the BIC form before anything is sent", () => {
@@ -244,7 +290,7 @@ describe("sevdesk_bank_account_update", () => {
     expect(client.writes()).toEqual([]);
   });
 
-  it("explains sevDesk's 400 for a booking account in use (D-144)", async () => {
+  it("explains sevDesk's 400 for a booking account in use: nothing of the request was stored (D-144)", async () => {
     const refusal = new SevdeskError({
       kind: "validation",
       status: 400,
@@ -257,17 +303,36 @@ describe("sevdesk_bank_account_update", () => {
       rowsOf(4004, []),
       { method: "PUT", path: "/CheckAccount/4004", response: { error: refusal } },
     ]);
-    const error = await executeWrite(tool, { id: 4004, accountingNumber: 1811 }, client).catch(
-      (caught: unknown) => caught,
-    );
+    const error = await executeWrite(
+      tool,
+      { id: 4004, name: "Import Q2", accountingNumber: 1811 },
+      client,
+    ).catch((caught: unknown) => caught);
     expect(error).toBeInstanceOf(SevdeskError);
+    expect(error).toMatchObject({ completedWrites: [] });
+    expect(client.writes().map((call) => call.body)).toEqual([
+      { name: "Import Q2", accountingNumber: "1811" },
+    ]);
     const text = describeSevdeskError(error as SevdeskError, {
       toolName: tool.name,
       tier: tool.tier,
       config: testConfig(),
     });
+    // Recorded: the name sent along was not stored either; an archived account never holds it.
     expect(text).toMatch(/sevDesk refused booking account 1811: another payment account/);
-    expect(text).not.toContain("already used");
+    expect(text).toContain("sevDesk refuses the whole request, so nothing was changed.");
+    expect(text).not.toMatch(/archived|already used/);
+  });
+
+  it("takes the booking account number of an archived account (D-144)", async () => {
+    // The listed account 4004 is archived with booking account 1810: sevDesk stores the number
+    // for another account.
+    const other = { ...importAccount, id: "4006", accountingNumber: "1812" };
+    const client = staged(other, { ...other, accountingNumber: "1810" }, [rowsOf(4006, [])]);
+    await executeWrite(tool, { id: 4006, accountingNumber: 1810 }, client);
+    expect(client.writes().map((call) => [call.path, call.body])).toEqual([
+      ["/CheckAccount/4006", { accountingNumber: "1810" }],
+    ]);
   });
 
   it("sends automatic assignment under sevDesk's singular key, never the spec's plural (D-141)", async () => {
@@ -297,5 +362,80 @@ describe("sevdesk_bank_account_update", () => {
       message: /not as sent: Automatic assignment of imported transactions\. Other values/,
       completedWrites: [{ objectName: "CheckAccount", id: "4004" }],
     });
+  });
+});
+
+describe("sevdesk_bank_account_update in the audit log", () => {
+  closeWriteHarnessesAfterEach();
+  const dirs: string[] = [];
+  afterEach(async () => {
+    await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+  });
+
+  async function auditPath(): Promise<string> {
+    const dir = await mkdtemp(join(tmpdir(), "sevdesk-account-update-audit-"));
+    dirs.push(dir);
+    return join(dir, "audit.jsonl");
+  }
+
+  const putRoute: FakeRoute = {
+    method: "PUT",
+    path: "/CheckAccount/4004",
+    response: { body: { objects: importAccount } },
+  };
+
+  it("logs the IBAN masked, with the hash of the masked arguments, in every line", async () => {
+    const path = await auditPath();
+    const config = { auditLogPath: path };
+    const call = { name: tool.name, arguments: { id: 4004, iban: "DE89 3704 0044 0532 0130 00" } };
+    // A dry run; a change read back as sent (executed); one read back unchanged (failed).
+    const dry = await writeHarness({
+      tools: [tool],
+      routes: [accountRoute(importAccount)],
+      config,
+    });
+    await dry.client.callTool({ ...call, arguments: { ...call.arguments, dryRun: true } });
+    const done = await writeHarness({
+      tools: [tool],
+      routes: [],
+      config,
+      wrap: () =>
+        new StagedClient(
+          [accountRoute(importAccount)],
+          [putRoute, accountRoute({ ...importAccount, iban: IBAN })],
+        ),
+    });
+    expect((await done.client.callTool(call)).isError).toBeFalsy();
+    const failing = await writeHarness({
+      tools: [tool],
+      routes: [accountRoute(importAccount), putRoute],
+      config,
+    });
+    expect((await failing.client.callTool(call)).isError).toBe(true);
+
+    const text = await readFile(path, "utf8");
+    expect(text).not.toContain(IBAN);
+    expect(text).not.toContain("0532013000");
+    const lines = text
+      .split("\n")
+      .filter((line) => line !== "")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    expect(lines.map((line) => line["event"])).toEqual([
+      "dry_run",
+      "confirmation_requested",
+      "executing",
+      "executed",
+      "confirmation_requested",
+      "executing",
+      "failed",
+    ]);
+    const masked = { id: 4004, iban: "****3000" };
+    const maskedHash = argumentsHash(tool.name, masked);
+    expect(maskedHash).not.toBe(argumentsHash(tool.name, { id: 4004, iban: IBAN }));
+    expect(lines[0]?.["args"]).toEqual({ ...masked, dryRun: true });
+    for (const line of lines) {
+      expect(line["args"]).toMatchObject(masked);
+      expect(line["argsHash"]).toBe(maskedHash);
+    }
   });
 });

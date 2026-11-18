@@ -1,4 +1,4 @@
-<!-- translated-from: docs/guides/banking.md sha256:f7c735832fc6 -->
+<!-- translated-from: docs/guides/banking.md sha256:2074c304a84e -->
 
 # Bank und Kasse
 
@@ -53,7 +53,8 @@ ein; über die API lässt sie sich nicht anlegen.
 Dateiimport-Konto, ein Verrechnungskonto oder eine Kasse um. Bei einem Dateiimport-Konto ändert es
 auch das Buchungskonto, IBAN und BIC und ob sevDesk importierte Umsätze selbst Dokumenten zuordnet.
 Gib nur an, was sich ändert. Die Vorschau zeigt jede Änderung als „bisher → neu“ neben dem
-Konto, wie es gespeichert ist. sevDesk meldet eine Änderung auch für Felder als erfolgreich, die es
+Konto, wie es gespeichert ist. Eine IBAN zeigt nur ihre letzten vier Zeichen, dort und im
+Audit-Log: Notiere dir die alte, bevor du sie ersetzt. sevDesk meldet eine Änderung auch für Felder als erfolgreich, die es
 übergeht; das Werkzeug liest das Konto deshalb zurück und schlägt fehl, wenn ein Feld nicht
 gespeichert wurde. Es lehnt einen Namen oder ein Buchungskonto ab, das ein anderes Konto hat, und
 ein neues Buchungskonto auf einem Konto mit gebuchten Umsätzen (was sevDesk dann mit deren

@@ -5,8 +5,10 @@
  * What sevDesk does with `PUT /CheckAccount/{id}` (recorded on the trial account, Update 2.0,
  * spec/deviations.md D-097, D-141, D-144):
  * - It stores `name`, `iban`, `bic`, `autoMapTransaction` (singular, as rows read) and a free
- *   `accountingNumber`. A booking account number another account uses is refused with 400 "The
- *   given account number is already used".
+ *   `accountingNumber`. A booking account number another active account uses is refused with 400
+ *   "The given account number is already used", and then nothing of the request is stored; an
+ *   archived account's number is free. A name another active account has is stored (200): the
+ *   name check below is the only guard against two accounts of the same name.
  * - It answers 200 also for keys it ignores: the spec's plural `autoMapTransactions`, `type` and
  *   `status`. So a 200 proves nothing, and every field sent is read back
  *   (`GET /CheckAccount/{id}`); one that was not stored fails the call.
@@ -18,9 +20,9 @@
  * recorded); anything but the name on a clearing account or cash register (the other fields were
  * recorded on a file-import account only; renaming on a file-import and a clearing account); a name
  * another active account has, compared as `sevdesk_bank_account_create` does; a booking account
- * number a listed account uses; a new booking account on an account with booked transactions
- * (what sevDesk does with their bookings is not recorded); and a call that changes nothing. The
- * PUT is never retried.
+ * number another active (listed) account uses; a new booking account on an account with booked
+ * transactions (what sevDesk does with their bookings is not recorded); and a call that changes
+ * nothing. The PUT is never retried.
  */
 import { z } from "zod";
 
@@ -212,7 +214,10 @@ export async function planBankAccountUpdate(
     }
     if (payload.accountingNumber !== undefined) {
       const wanted = payload.accountingNumber;
-      const owner = others.find((entry) => entry.account.accountingNumber === wanted);
+      // An archived account's number is free: sevDesk stores it for another account (D-144).
+      const owner = others.find(
+        (entry) => !entry.archived && entry.account.accountingNumber === wanted,
+      );
       if (owner !== undefined) {
         refuse(
           `Booking account ${wanted} is already used by payment account ` +
@@ -255,14 +260,7 @@ export async function planBankAccountUpdate(
       ),
     );
   }
-  warnings.push(
-    phrase(
-      "Nothing else changes: the transactions and the balance (Saldo) stay as they are. Undo: " +
-        "set the values left of the arrows again with sevdesk_bank_account_update.",
-      "Sonst ändert sich nichts: Umsätze und Saldo bleiben, wie sie sind. Rückgängig: die Werte " +
-        "links der Pfeile mit sevdesk_bank_account_update wieder setzen.",
-    ),
-  );
+  warnings.push(...undoWarnings(payload, stored));
 
   return {
     ...bothPreviews((lang) => ({
@@ -416,6 +414,97 @@ function updateFacts(
   return facts;
 }
 
+/**
+ * What the preview shows of a field's value before the change: `shown` in full (it can be set
+ * again), `masked` (the IBAN, last four only), `empty` (nothing stored; this tool cannot clear a
+ * field, every argument needs a value) or `unknown` (sevDesk left it out).
+ */
+type PreviousValue = "shown" | "masked" | "empty" | "unknown";
+
+function previousValue(
+  field: keyof BankAccountUpdatePayload,
+  stored: StoredCheckAccount,
+): PreviousValue {
+  switch (field) {
+    case "name":
+      return stored.storedName === undefined || stored.storedName === "" ? "empty" : "shown";
+    case "accountingNumber":
+      return stored.account.accountingNumber === undefined ? "empty" : "shown";
+    case "iban":
+      return stored.iban === undefined ? "empty" : "masked";
+    case "bic":
+      return stored.bic === undefined ? "empty" : "shown";
+    case "autoMapTransaction":
+      return stored.autoMap === undefined ? "unknown" : "shown";
+  }
+}
+
+/**
+ * The closing warnings: nothing else changes, and how far this tool can undo the change. Only a
+ * value the preview shows in full can be set again, so the undo sentence names just those fields
+ * when others changed too, and a sentence each says why the others cannot.
+ */
+function undoWarnings(payload: BankAccountUpdatePayload, stored: StoredCheckAccount): Phrase[] {
+  const changed = FIELD_ORDER.filter((field) => payload[field] !== undefined);
+  const withPrevious = (kind: PreviousValue): (keyof BankAccountUpdatePayload)[] =>
+    changed.filter((field) => previousValue(field, stored) === kind);
+  const labels = (fields: readonly (keyof BankAccountUpdatePayload)[], lang: PreviewLanguage) =>
+    fields.map((field) => FIELD_LABELS[field][lang]).join(", ");
+  const shown = withPrevious("shown");
+  const empty = withPrevious("empty");
+
+  const nothingElse = phrase(
+    "Nothing else changes: the transactions and the balance (Saldo) stay as they are.",
+    "Sonst ändert sich nichts: Umsätze und Saldo bleiben, wie sie sind.",
+  );
+  // "Undo:" when every changed value can be set again, else "Undo for <those fields>:".
+  const all = shown.length === changed.length;
+  const undo =
+    shown.length === 0
+      ? undefined
+      : phrase(
+          `Undo${all ? "" : ` for ${labels(shown, "en")}`}: set the values left of the arrows ` +
+            "again with sevdesk_bank_account_update.",
+          `Rückgängig${all ? "" : ` für ${labels(shown, "de")}`}: die Werte links der Pfeile mit ` +
+            "sevdesk_bank_account_update wieder setzen.",
+        );
+  const warnings = [
+    undo === undefined
+      ? nothingElse
+      : phrase(`${nothingElse.en} ${undo.en}`, `${nothingElse.de} ${undo.de}`),
+  ];
+  if (withPrevious("masked").length > 0) {
+    warnings.push(
+      phrase(
+        "The previous IBAN is shown masked only, so it cannot be set again from this preview: " +
+          "keep a note of it before approving if it may be needed again.",
+        "Die bisherige IBAN wird nur maskiert gezeigt und lässt sich aus dieser Vorschau nicht " +
+          "wieder setzen: Notieren Sie sie vor der Freigabe, falls sie wieder gebraucht wird.",
+      ),
+    );
+  }
+  if (empty.length > 0) {
+    warnings.push(
+      phrase(
+        `Not set before: ${labels(empty, "en")}. This tool cannot remove a value again.`,
+        `Vorher nicht gesetzt: ${labels(empty, "de")}. Dieses Tool kann einen Wert nicht ` +
+          "wieder entfernen.",
+      ),
+    );
+  }
+  if (withPrevious("unknown").length > 0) {
+    warnings.push(
+      phrase(
+        "sevDesk does not say whether automatic assignment was on before, so it cannot be set " +
+          "back from this preview.",
+        "sevDesk gibt nicht an, ob die automatische Zuordnung vorher an war; sie lässt sich aus " +
+          "dieser Vorschau nicht zurücksetzen.",
+      ),
+    );
+  }
+  return warnings;
+}
+
 // ---------------------------------------------------------------------------------------------
 // Execute
 // ---------------------------------------------------------------------------------------------
@@ -487,9 +576,11 @@ function stored(
 }
 
 /**
- * sevDesk's refusal of a booking account number another account uses: 400 "The given account
- * number is already used" (D-144; also by an account the list leaves out, which the pre-check
- * cannot see). Becomes a trusted sentence of our own; any other error is left as it is.
+ * sevDesk's refusal of a booking account number another active account uses: 400 "The given
+ * account number is already used" (D-144). The pre-check passed, so the number was taken after
+ * it, or by an account beyond the 1000 it reads. sevDesk refuses the whole request (recorded: a
+ * name sent along was not stored), so the message can say that nothing changed. Becomes a trusted
+ * sentence of our own; any other error is left as it is.
  */
 function accountingNumberRefusal(
   error: unknown,
@@ -507,9 +598,9 @@ function accountingNumberRefusal(
   return new SevdeskError({
     kind: "validation",
     message:
-      `sevDesk refused booking account ${requested}: another payment account already uses it, ` +
-      "possibly one the account list leaves out (archived). sevDesk refused the whole request. " +
-      "Choose another number.",
+      `sevDesk refused booking account ${requested}: another payment account already uses it ` +
+      "(taken after the check, or beyond the first 1000 accounts the check reads). sevDesk " +
+      "refuses the whole request, so nothing was changed. Choose another number.",
     ...(error.status === undefined ? {} : { status: error.status }),
     ...(error.exceptionUuid === undefined ? {} : { exceptionUuid: error.exceptionUuid }),
     ...(error.method === undefined ? {} : { method: error.method }),
