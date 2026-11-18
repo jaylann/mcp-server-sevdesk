@@ -1,24 +1,19 @@
 {
   "caseId": "profit-en",
   "model": "claude-sonnet-5-5",
-  "key": "cf2f477d1a9c4451ecf1af7009f0e72ef8ef966a3657bac699ff5f0f269493a9",
-  "recordedAt": "2026-11-13T18:18:35.476Z",
+  "key": "7a51f260db38282b0f394f9661af36d38314e815a62f69b4af4b9b1e7a42b23b",
+  "recordedAt": "2026-11-18T15:26:22.559Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
     "content": [
-      { "type": "tool_use", "name": "sevdesk_profit_and_loss", "input": { "year": 2026 } },
-      {
-        "type": "tool_use",
-        "name": "sevdesk_profit_and_loss",
-        "input": { "year": 2026, "basis": "accrual" }
-      }
+      { "type": "tool_use", "name": "sevdesk_profit_and_loss", "input": { "year": 2026 } }
     ],
     "usage": {
       "inputTokens": 89,
-      "outputTokens": 137,
+      "outputTokens": 58,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 17341
+      "cacheReadInputTokens": 22422
     }
   }
 }

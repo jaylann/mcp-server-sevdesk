@@ -1,0 +1,23 @@
+{
+  "caseId": "invoice-draft-delete-de",
+  "model": "claude-sonnet-5-5",
+  "key": "14eed9b4430d40ea067ecf7b6864371fbf38b2f4da5fa6c296288388fdd9e62a",
+  "recordedAt": "2026-11-18T15:25:47.297Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      {
+        "type": "tool_use",
+        "name": "sevdesk_document_delete_draft",
+        "input": { "kind": "invoice", "id": 9101 }
+      }
+    ],
+    "usage": {
+      "inputTokens": 113,
+      "outputTokens": 286,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 89134
+    }
+  }
+}

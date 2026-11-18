@@ -1,8 +1,8 @@
 {
   "caseId": "orders-open-en",
   "model": "claude-sonnet-5-5",
-  "key": "441eb88b1b29386f83f36889582b0dd1ce2fd590c2b3be35aabb9bc759c4a5c9",
-  "recordedAt": "2026-11-13T18:17:34.108Z",
+  "key": "47dccf0c31ff7defcc271cc1d7fa381606e4ec1e61c2909eb47dff5d8b5dfb50",
+  "recordedAt": "2026-11-18T15:25:22.662Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -10,34 +10,19 @@
       {
         "type": "tool_use",
         "name": "sevdesk_orders_list",
-        "input": { "type": "offer", "status": "sent", "detail": "summary", "limit": 100 }
+        "input": { "type": "offer", "status": "sent", "limit": 100 }
       },
       {
         "type": "tool_use",
         "name": "sevdesk_orders_list",
-        "input": { "type": "offer", "status": "draft", "detail": "summary", "limit": 100 }
-      },
-      {
-        "type": "tool_use",
-        "name": "sevdesk_orders_list",
-        "input": { "type": "offer", "status": "accepted", "detail": "summary", "limit": 100 }
-      },
-      {
-        "type": "tool_use",
-        "name": "sevdesk_orders_list",
-        "input": {
-          "type": "offer",
-          "status": "partially_invoiced",
-          "detail": "summary",
-          "limit": 100
-        }
+        "input": { "type": "offer", "status": "draft", "limit": 100 }
       }
     ],
     "usage": {
       "inputTokens": 93,
-      "outputTokens": 617,
+      "outputTokens": 272,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 17341
+      "cacheReadInputTokens": 22422
     }
   }
 }

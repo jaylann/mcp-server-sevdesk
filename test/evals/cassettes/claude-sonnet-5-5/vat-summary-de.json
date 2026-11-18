@@ -1,19 +1,20 @@
 {
   "caseId": "vat-summary-de",
   "model": "claude-sonnet-5-5",
-  "key": "15a1fc3004f2277fd16752743f58541fe86ba384b954f9df905f73d73251e42f",
-  "recordedAt": "2026-11-13T18:18:31.972Z",
+  "key": "9d873d031f2fab02c13b404a95ca5c464ece669594d0f66686bcf9de122a2ff2",
+  "recordedAt": "2026-11-18T15:26:20.730Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
     "content": [
-      { "type": "tool_use", "name": "sevdesk_vat_summary", "input": { "year": 2026, "month": 10 } }
+      { "type": "tool_use", "name": "sevdesk_vat_summary", "input": { "year": 2026, "month": 10 } },
+      { "type": "tool_use", "name": "sevdesk_account_info", "input": {} }
     ],
     "usage": {
       "inputTokens": 137,
-      "outputTokens": 77,
+      "outputTokens": 106,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 17341
+      "cacheReadInputTokens": 22422
     }
   }
 }

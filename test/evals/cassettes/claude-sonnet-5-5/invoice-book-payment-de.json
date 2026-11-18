@@ -1,13 +1,12 @@
 {
   "caseId": "invoice-book-payment-de",
   "model": "claude-sonnet-5-5",
-  "key": "320b2498a48c85d56b9cc2ee6e2db428d37578498c9fbaffa255b779c560fcf4",
-  "recordedAt": "2026-11-13T18:17:14.856Z",
+  "key": "c207b61c621b39888cbb445688d81054f89e65d6217398c11a317fc4887f082e",
+  "recordedAt": "2026-11-18T15:25:06.465Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
     "content": [
-      { "type": "tool_use", "name": "sevdesk_invoice_get", "input": { "id": 4711 } },
       {
         "type": "tool_use",
         "name": "sevdesk_invoice_book_payment",
@@ -16,9 +15,9 @@
     ],
     "usage": {
       "inputTokens": 155,
-      "outputTokens": 337,
+      "outputTokens": 315,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 56615
+      "cacheReadInputTokens": 89134
     }
   }
 }

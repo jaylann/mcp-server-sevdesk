@@ -1,16 +1,12 @@
 {
   "caseId": "voucher-delete-de",
   "model": "claude-sonnet-5-5",
-  "key": "5bf317c656589c0460a33e97eb9c63a48358e20f76bbfe3744d8854d19e89f58",
-  "recordedAt": "2026-11-13T18:17:59.427Z",
+  "key": "fe95d9ac1a7bd6d34a6d6990c467108f03b4f349360c352a4a526c88a0700b68",
+  "recordedAt": "2026-11-18T15:25:44.134Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
     "content": [
-      {
-        "type": "text",
-        "text": "Ich prüfe zuerst den Beleg und sehe mir die Vorschau des Löschens an."
-      },
       { "type": "tool_use", "name": "sevdesk_voucher_get", "input": { "id": 9001 } },
       {
         "type": "tool_use",
@@ -20,9 +16,9 @@
     ],
     "usage": {
       "inputTokens": 111,
-      "outputTokens": 300,
+      "outputTokens": 293,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 56615
+      "cacheReadInputTokens": 89134
     }
   }
 }

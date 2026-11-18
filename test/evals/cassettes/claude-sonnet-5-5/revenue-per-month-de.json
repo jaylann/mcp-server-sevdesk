@@ -1,8 +1,8 @@
 {
   "caseId": "revenue-per-month-de",
   "model": "claude-sonnet-5-5",
-  "key": "707b9042ac6062b639ab363e338dbe05e6e787f36b4f3319444ea830138199f3",
-  "recordedAt": "2026-11-13T18:18:25.529Z",
+  "key": "bbe09d1dcdb44738d2543db8c568f6e4442eb6f3a48dc7a89272c03013342bc8",
+  "recordedAt": "2026-11-18T15:26:15.354Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -22,7 +22,7 @@
       "inputTokens": 104,
       "outputTokens": 134,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 17341
+      "cacheReadInputTokens": 22422
     }
   }
 }
