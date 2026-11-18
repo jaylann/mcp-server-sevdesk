@@ -16,6 +16,8 @@ extend-exclude = [
   "src/pages/text/de.ts",
   "test/integration/__snapshots__/write-previews-de.test.ts.snap",
   "src/pages/assets.generated.ts",
+  # The compiled page stylesheet (`pnpm pages:css`), cut into lines mid-word.
+  "src/pages/styles.generated.ts",
 ]
 
 [default]
