@@ -45,6 +45,18 @@ export const RECURRING_CASES: readonly WriteToolCase[] = [
     writes: [{ method: "POST", path: "/Invoice/Factory/saveInvoice" }],
   },
   {
+    // Reverse charge for a domestic customer: the preview carries the tax-rule hint.
+    label: "change the tax rule of a recurring invoice template",
+    tool: invoiceUpdateRecurringTool,
+    args: {
+      id: 2301,
+      taxRuleId: 21,
+      positions: [{ name: "Wartung", quantity: 1, unitPrice: "80.00", taxRate: 0 }],
+    },
+    routes: templateChangeRoutes(),
+    writes: [{ method: "POST", path: "/Invoice/Factory/saveInvoice" }],
+  },
+  {
     label: "end a recurring invoice template",
     tool: invoiceEndRecurringTool,
     args: { id: 2301 },

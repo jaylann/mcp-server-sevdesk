@@ -9,7 +9,9 @@
  * (`../drafts/invoice.ts`: `INVOICE_TAX_OPTIONS`, `newInvoiceContent`, `newInvoicePositions` over
  * `resolveCreateBasics`): tax rule and rates against the account's VAT regulation, units, contact,
  * address and contact person. What an invoice draft may not carry, a template may not either. On
- * top come the schedule (`schedule.ts`) and a total above zero.
+ * top come the schedule (`schedule.ts`) and a total above zero. The preview carries the invoice
+ * draft's hint when the tax rule is not one a sale to the customer usually takes
+ * (`invoiceTaxRuleHint`): every invoice from the template takes that rule.
  *
  * One `saveInvoice` without an id, never retried; then the template is read back (the invoice and
  * its positions, and the raw record with automatic generation and sending embedded, for what the
@@ -53,6 +55,7 @@ import { addressInputShape } from "../drafts/recipient.js";
 import { type CreateArgs, type DraftCallOptions, resolveCreateBasics } from "../drafts/shared.js";
 import { getInvoice, type InvoiceDetails, listInvoices } from "../invoices.js";
 import { compare } from "../money.js";
+import { invoiceTaxRuleHint } from "../vat/tax-rule-helper.js";
 import { type SaveTemplateBody, saveTemplateBodySchema } from "./payload.js";
 import { templatePreviews } from "./preview.js";
 import { firstRunDueAtOnce, TEMPLATE_SAVE_STATUS } from "./run-date.js";
@@ -197,6 +200,12 @@ export async function prepareRecurringInvoiceCreate(
       autoGenerate: args.autoGenerate,
       today,
       similar,
+      taxHint: invoiceTaxRuleHint(
+        basics.rule.id,
+        basics.regime,
+        basics.contact.contact,
+        basics.address.countryCode,
+      ),
     }),
     binding: sha256Hex(canonicalJson({ kind: "recurring-invoice-template", body })),
     state: { body, schedule, expected: basics.expected, preparedOn: today },

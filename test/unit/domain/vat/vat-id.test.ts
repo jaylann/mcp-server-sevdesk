@@ -47,7 +47,12 @@ describe("EU member states", () => {
   it("lists the 27 member states once, Greece with the VAT prefix EL", () => {
     expect(EU_MEMBER_STATES).toHaveLength(27);
     expect(new Set(EU_MEMBER_STATES.map((state) => state.code)).size).toBe(27);
-    expect(euMemberState("gr")).toMatchObject({ vatPrefix: "EL", name: "Greece" });
+    expect(euMemberState("gr")).toMatchObject({
+      vatPrefix: "EL",
+      name: "Greece",
+      nameDe: "Griechenland",
+    });
+    expect(new Set(EU_MEMBER_STATES.map((state) => state.nameDe)).size).toBe(27);
     expect(euMemberStateByVatPrefix("EL")?.code).toBe("GR");
     expect(isEuMemberState("CH")).toBe(false);
     expect(isEuMemberState("GB")).toBe(false);

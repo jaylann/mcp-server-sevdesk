@@ -20,6 +20,7 @@ import { compact } from "../common.js";
 import type { ContactDto } from "../contacts.js";
 import type { CountryReadOptions } from "../country-codes.js";
 import { invoiceAddressOf, loadContact } from "../drafts/recipient.js";
+import type { Phrase } from "../preview-text.js";
 import { taxRuleById } from "../reference-data.js";
 import {
   CUSTOMER_AREAS,
@@ -204,16 +205,17 @@ export async function suggestTaxRule(
 }
 
 /**
- * The draft-invoice preview hint when `ruleId` is not a rule a sale to this contact usually takes
- * (`taxRuleMismatchWarning`), judged from the contact (VAT ID, kind) and the invoice address's
- * country (`countryCode`, any case). Undefined when the rule fits or the country is unknown.
+ * The preview hint of a draft invoice or recurring invoice template when `ruleId` is not a rule a
+ * sale to this contact usually takes (`taxRuleMismatchWarning`), in English and German, judged
+ * from the contact (VAT ID, kind) and the invoice address's country (`countryCode`, any case).
+ * Undefined when the rule fits or the country is unknown.
  */
 export function invoiceTaxRuleHint(
   ruleId: number,
   regime: TaxRegime | undefined,
   contact: ContactDto,
   countryCode: string | undefined,
-): string | undefined {
+): Phrase | undefined {
   const country = isoCountry(countryCode);
   if (country === undefined) return undefined;
   return taxRuleMismatchWarning(ruleId, {

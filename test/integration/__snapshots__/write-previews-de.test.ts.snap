@@ -188,6 +188,26 @@ Ende: keines (die Vorlage läuft, bis sie beendet wird)
 Summe je Rechnung: brutto 65,45 EUR → netto 80,00 EUR, USt. 15,20 EUR, brutto 95,20 EUR"
 `;
 
+exports[`German previews > change the tax rule of a recurring invoice template: says the same in German 1`] = `
+"Abo-Rechnung 2301 für Musterfirma GmbH (Kontakt 1001) ändern: Steuer, Positionen.
+! Jede Rechnung, die sevDesk nach der Änderung selbst aus dieser Vorlage erzeugt, übernimmt sie; niemand wird erneut gefragt. Diese Freigabe gilt für alle diese Rechnungen, bis die Vorlage endet.
+! Rechnungen, die sevDesk aus dieser Vorlage schon erzeugt hat, bleiben, wie sie sind; die Änderung gilt nur für spätere.
+! Die automatische Generierung ist an: An jedem Ausführungstag erzeugt sevDesk etwa eine Minute nach 0 Uhr (Berliner Zeit) selbst einen Rechnungsentwurf aus dieser Vorlage, mit diesen Positionen und Texten und einer Zeile im Kopftext, die den Abrechnungszeitraum nennt (vom Ausführungstag bis zum Tag vor der nächsten Ausführung). sevDesk stellt den Entwurf weder fertig noch versendet ihn, und seine Nummer ist vorläufig (mehrere Entwürfe können dieselbe Nummer zeigen, bis jeder fertiggestellt ist): Jeden Entwurf muss noch jemand fertigstellen und versenden.
+! Steuerregel 21 (Reverse Charge gem. §13b Abs. 1 USTG EU Umsätze) ist für diesen Kunden (Unternehmen in Deutschland mit USt-IdNr.) nicht üblich. Üblich ist 1 für Lieferungen, sonstige Leistungen und digitale Leistungen. Im Einzelfall kann sie trotzdem richtig sein; sevdesk_tax_rule_suggest erklärt die Wahl. Ein Hinweis, keine Steuerberatung.
+(umkehrbar)
+Vorlage: 2301 (Abo-Rechnung, aktiv)
+Automatische Generierung: an
+Kunde: Musterfirma GmbH (Kontakt 1001)
+Steuerregel: 21 Reverse Charge gem. §13b Abs. 1 USTG EU Umsätze
+Steuerhinweis: Reverse Charge gem. §13b Abs. 1 USTG EU Umsätze
+Positionen: 2 Positionen durch 1 Position ersetzen
+Position 1: Wartung: 1 × 80,00 EUR netto, 0 % USt. → netto 80,00 EUR
+Nächste Ausführung: 01.12.2026
+Folgende Ausführungen: 01.01.2027, 01.02.2027, 01.03.2027
+Ende: keines (die Vorlage läuft, bis sie beendet wird)
+Summe je Rechnung: brutto 65,45 EUR → netto 80,00 EUR, USt. 0,00 EUR, brutto 80,00 EUR"
+`;
+
 exports[`German previews > convert a USD draft voucher to EUR: says the same in German 1`] = `
 "Belegentwurf 2101 aktualisieren: Währung, Belegnummer, Betragseingabe, Positionen.
 ! Die Währung wird mit den angegebenen Positionsbeträgen auf EUR umgestellt. Es wird kein Wechselkurs berechnet; die alten Beträge werden nicht übernommen.
