@@ -607,4 +607,14 @@ describe("the draft check", () => {
     expect(abroad?.en).toMatch(/^Tax rule 99 is not the usual rule .*\(a consumer in CH\)/);
     expect(abroad?.de).toMatch(/^Steuerregel 99 ist für diesen Kunden \(Privatkunde in CH\)/);
   });
+
+  it("puts the article before German country names that take one", () => {
+    const consumer = { regime: "regular" as const, customerType: "consumer" as const };
+    expect(taxRuleMismatchWarning(3, { ...consumer, country: "NL" })?.de).toContain(
+      "(Privatkunde in den Niederlanden) nicht üblich.",
+    );
+    expect(taxRuleMismatchWarning(3, { ...consumer, country: "sk" })?.de).toContain(
+      "(Privatkunde in der Slowakei) nicht üblich.",
+    );
+  });
 });

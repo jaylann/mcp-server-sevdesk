@@ -192,6 +192,12 @@ const OTHER_PLACE_NAMES_DE: Readonly<Record<string, string>> = {
   [NORTHERN_IRELAND]: "Nordirland",
 };
 
+/** German places named with an article, after "in": "in den Niederlanden", not "in Niederlande". */
+const IN_PLACE_DE: Readonly<Record<string, string>> = {
+  NL: "in den Niederlanden",
+  SK: "in der Slowakei",
+};
+
 /** Whether the customer is in Northern Ireland: country XI, or GB with a VAT ID of Northern Ireland. */
 function inNorthernIreland(place: Pick<SaleFacts, "country" | "vatId">): boolean {
   const code = place.country.trim().toUpperCase();
@@ -1116,7 +1122,8 @@ function customerLabel(facts: DraftSaleFacts, lang: PreviewLanguage): string {
         : vatId === "without"
           ? " ohne USt-IdNr. in gültigem Format"
           : "";
-    return `${who} in ${place}${id}`;
+    const where = IN_PLACE_DE[facts.country.trim().toUpperCase()] ?? `in ${place}`;
+    return `${who} ${where}${id}`;
   }
   const id =
     vatId === "with"
