@@ -1,4 +1,4 @@
-<!-- translated-from: docs/guides/evaluations.md sha256:a8025748f82c -->
+<!-- translated-from: docs/guides/evaluations.md sha256:d539da5fd042 -->
 
 # Auswertungen und Exporte
 
@@ -229,7 +229,7 @@ von 0 und ein Entwurf, der vor weniger als 21 Tagen angelegt wurde, wie alt sein
 ist. Ausgangsrechnungen werden nur auf liegen gebliebene Entwürfe geprüft: Ihre Nummern kommen aus
 dem Nummernkreis von sevDesk, und eine doppelt gestellte Rechnung wird mit einer Stornorechnung
 berichtigt. Um diese Entwürfe zu finden, listet die Prüfung jede Rechnung und Gutschrift mit Datum
-im Zeitraum (ein Abruf je 1.000): Die Listen von sevDesk haben laut Spezifikation einen
+im Zeitraum (höchstens 1.000 je Abruf): Die Listen von sevDesk haben laut Spezifikation einen
 Statusfilter, aber keine Aufzeichnung zeigt, dass er nur Entwürfe liefert, deshalb wird er nicht
 genutzt.
 
@@ -379,6 +379,13 @@ Was sie leisten und was bei dir bleibt:
   auf, Dokumente zu lesen, weil eine Anfrage 120 Sekunden dauern darf
   ([Grenzen im Fernzugriff](../remote/operations.de.md)). Bei der voreingestellten Anfragerate sind
   das einige hundert Dokumente: Frag nach einem Monat statt nach einem Quartal oder Jahr.
+- **Lange Dokumentlisten.** sevDesk hält Dokumente mit demselben Datum nicht von einer Seite seiner
+  Listen zur nächsten in fester Reihenfolge, daher kann seitenweises Lesen Dokumente überspringen.
+  Die Auswertungen und Prüfungen lesen jede Liste deshalb in Abrufen von höchstens 1.000
+  Dokumenten, die jeweils einen eigenen Datumsbereich abdecken: Ein Zeitraum mit mehr wird in
+  kürzere Bereiche geteilt, was ein paar Abrufe mehr kostet. Nur ein einzelner Tag mit mehr als
+  1.000 Dokumenten einer Art muss seitenweise gelesen werden; das Ergebnis sagt dann, dass
+  Dokumente dieses Tages fehlen können, und gilt als unvollständig.
 - **Nur deutsche Konten.** Steuerregeln und UStVA-Zeilen folgen deutschem Recht; österreichische
   Konten werden in 1.0 nicht unterstützt.
 

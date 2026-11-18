@@ -8,7 +8,8 @@
  * checksums, never file content; its confinement is in `src/safety/local-folder.ts`) and the
  * vouchers dated from {@link RECEIPT_MARGIN_DAYS} days before the period to as many days after
  * it, drafts included, each with its receipt's `contentHash` (`GET /Voucher?embed=document`, one
- * request per 1,000 vouchers; spec/deviations.md D-100, recorded 2026-11-17). A
+ * request when the range fits a page of 1,000, else date windows that each fit one, because
+ * sevDesk's order is not stable between pages; spec/deviations.md D-100). A
  * voucher's receipt checksum is the SHA-256 of the bytes uploaded to sevDesk, so a local file
  * matches only the very same bytes. Nothing is read by id, nothing is sent to sevDesk.
  *
@@ -58,7 +59,7 @@ import { berlinDateOf } from "../../../sevdesk/dates.js";
 import type { SevdeskClient } from "../../../sevdesk/types.js";
 import { compact, statusDto, statusDtoSchema } from "../../common.js";
 import { contactLink, voucherLink } from "../../links.js";
-import { type DocumentHeader, listDocumentHeaders } from "../positions-scan.js";
+import { type DocumentHeader, listDocumentHeaders, pagedRangesNote } from "../positions-scan.js";
 import { plural, type ReportRunOptions, shiftDays } from "../shared.js";
 import type { ReportPeriod } from "../vat.js";
 import { numberKey } from "./duplicates-check.js";
@@ -466,6 +467,8 @@ interface VoucherReceipts {
   /** The vouchers whose receipt has no checksum (no file can match them), by date. */
   readonly unhashed: readonly DocumentHeader[];
   readonly truncated: boolean;
+  /** Set when a day had to be read page by page and vouchers may be missing (D-100). */
+  readonly pagedNote: string | undefined;
 }
 
 async function readVoucherReceipts(
@@ -510,6 +513,7 @@ async function readVoucherReceipts(
     notEmbedded: unhashed.filter((header) => header.receipt?.embedded === false).length,
     unhashed,
     truncated: listed.truncated,
+    pagedNote: pagedRangesNote(listed),
   };
 }
 
@@ -522,6 +526,7 @@ const NO_VOUCHERS: VoucherReceipts = {
   notEmbedded: 0,
   unhashed: [],
   truncated: false,
+  pagedNote: undefined,
 };
 
 /** A file's extension as sevDesk's `extension` would read it: lower case, `jpeg` as `jpg`. */
@@ -895,6 +900,12 @@ function notesOf(
     notes.push(
       "The voucher listing stopped at its cap: files may count as not found although they are " +
         "booked. Use a shorter period.",
+    );
+  }
+  if (vouchers.pagedNote !== undefined) {
+    notes.push(
+      `${vouchers.pagedNote} A file on a voucher not read counts as not found although it is ` +
+        "booked.",
     );
   }
   if (findingsOmitted > 0) {

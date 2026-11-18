@@ -4,11 +4,13 @@
  * (Belege) count, and what their positions add up to per VAT rate and booking account, in EUR.
  *
  * Two steps, so the expensive one stays bounded:
- * 1. **Headers** ({@link listDocumentHeaders}, {@link fetchDocumentHeader}): one list read per
- *    1,000 documents (`GET /Invoice`, `/CreditNote`, `/Voucher` with sevDesk's date filter, D-046),
- *    mapped with the detail mappers of the document modules, so tax rule, delivery dates, contact
- *    and EUR totals are known without positions. Drafts, recurring templates (WKR, RV) and
- *    reminders (MA, D-049) are counted and left out.
+ * 1. **Headers** ({@link listDocumentHeaders}, {@link fetchDocumentHeader}): list reads of
+ *    `GET /Invoice`, `/CreditNote` and `/Voucher` with sevDesk's date filter (D-046), each one
+ *    page of at most 1,000 documents: a period with more is split into date windows that fit a
+ *    page, because sevDesk's order is not stable between pages (D-100, `date-windows.ts`). Mapped
+ *    with the detail mappers of the document modules, so tax rule, delivery dates, contact and EUR
+ *    totals are known without positions. Drafts, recurring templates (WKR, RV) and reminders (MA,
+ *    D-049) are counted and left out.
  * 2. **Positions** ({@link scanPositions}): one request per document (`GET /InvoicePos`,
  *    `/CreditNotePos`, `/VoucherPos` filtered by parent), at most {@link MAX_SCAN_DOCUMENTS}
  *    documents, a few in parallel (the client paces them), with progress and cancellation. With
@@ -65,11 +67,12 @@ import type {
 } from "../reconciliation/transaction-log.js";
 import { taxRuleById } from "../reference-data.js";
 import { listVoucherPositions, mapVoucherDetail, type VoucherPositionDto } from "../vouchers.js";
+import { scanDateWindows } from "./date-windows.js";
 import {
   deadlineReached,
+  REPORT_PAGE_SIZE,
   type ReportDeadline,
   type ReportRunOptions,
-  scanPages,
   throwIfAborted,
 } from "./shared.js";
 
@@ -471,19 +474,48 @@ export interface HeaderList {
   readonly rowsRead: number;
   /** True when the row cap stopped reading while more rows existed. */
   readonly truncated: boolean;
+  /**
+   * Days (or ranges) with more documents of one kind than one page holds, which had to be read
+   * page by page, e.g. `"vouchers on 2026-03-31"`. sevDesk's order is not stable between pages
+   * (D-100), so documents of these days may be missing; see {@link pagedRangesNote}. Empty
+   * normally.
+   */
+  readonly pagedRanges: readonly string[];
+}
+
+/**
+ * The trusted note for a listing that had to read past one page ({@link HeaderList.pagedRanges}),
+ * or `undefined` when every read was a single page. Reports add it to their notes and count such
+ * a listing as incomplete.
+ */
+export function pagedRangesNote(list: Pick<HeaderList, "pagedRanges">): string | undefined {
+  if (list.pagedRanges.length === 0) return undefined;
+  return (
+    `sevDesk lists more than ${REPORT_PAGE_SIZE.toLocaleString("en-US")} documents of one kind ` +
+    `for ${list.pagedRanges.join(", ")}, so they were read page by page; sevDesk's order is not ` +
+    "stable between pages, so documents of those days may be missing here."
+  );
 }
 
 /**
  * Lists the documents dated `from`–`to` (document date; sevDesk filters with `startDate`/`endDate`
  * and every row is re-checked here, D-046) of the given kinds, mapped to headers. Drafts, templates
  * and reminders are counted in `excluded` and not returned.
+ *
+ * Every read is the first page of its query: a period with more than 1,000 documents of a kind is
+ * split into date windows that fit one page ({@link scanDateWindows}, which also bounds the
+ * requests), because sevDesk's order is not stable between pages and paging with `offset` skipped
+ * and repeated vouchers on the trial account (D-100, #154). Only a single day with more than one
+ * page is read page by page and named in `pagedRanges`. A document is returned once even if two
+ * reads gave it.
  */
 export async function listDocumentHeaders(
   client: SevdeskClient,
   params: HeaderListParams,
   options: ReportRunOptions = {},
 ): Promise<HeaderList> {
-  const dates = documentDateFilter({ from: params.from, to: params.to });
+  // Validates the range before anything is sent (a local `validation` error when from > to).
+  documentDateFilter({ from: params.from, to: params.to });
   const today = params.today ?? berlinDateOf(Date.now());
   const max = params.maxRows ?? MAX_HEADER_ROWS;
   const excluded: Record<ExclusionReason, number> = {
@@ -494,6 +526,7 @@ export async function listDocumentHeaders(
   };
   const headers: DocumentHeader[] = [];
   const drafts: DocumentHeader[] = [];
+  const pagedRanges: string[] = [];
   let rowsRead = 0;
   let truncated = false;
   for (const kind of params.kinds ?? SCAN_DOCUMENT_KINDS) {
@@ -504,8 +537,9 @@ export async function listDocumentHeaders(
     }
     const embed =
       kind === "voucher" && params.voucherReceipts === true ? { embed: "document" } : {};
-    const scan = await scanPages(
-      async (offset, limit) => {
+    const scan = await scanDateWindows(
+      async (window, offset, limit) => {
+        const dates = documentDateFilter(window);
         const page = await readPage(
           client,
           source.path,
@@ -522,6 +556,8 @@ export async function listDocumentHeaders(
           nextOffset: page.state.nextOffset,
         };
       },
+      { from: params.from, to: params.to },
+      (header) => header.id,
       {
         max: max - rowsRead,
         noun: source.noun,
@@ -532,6 +568,7 @@ export async function listDocumentHeaders(
     );
     rowsRead += scan.scanned;
     truncated ||= scan.truncated;
+    pagedRanges.push(...scan.pagedRanges.map((range) => `${source.noun} on ${range}`));
     for (const header of scan.items) {
       if (params.accept !== undefined && !params.accept(header)) continue;
       if (header.excluded === undefined) headers.push(header);
@@ -545,6 +582,7 @@ export async function listDocumentHeaders(
     excluded,
     rowsRead,
     truncated,
+    pagedRanges,
   };
 }
 

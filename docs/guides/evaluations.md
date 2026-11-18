@@ -210,8 +210,8 @@ suppliers with another amount or without a number, a gross amount of 0, and a dr
 than 21 days ago, however old its document date. Sales invoices are checked for stuck drafts only:
 their numbers come from sevDesk's own number range, and an invoice issued twice is corrected with
 a cancellation invoice. To find those drafts the check lists every invoice and credit note dated in
-the period (one request per 1,000): sevDesk's lists declare a status filter, but no recording shows
-that it returns only drafts, so it is not used.
+the period (at most 1,000 per request): sevDesk's lists declare a status filter, but no recording
+shows that it returns only drafts, so it is not used.
 
 To confirm a same-amount pair the check compares the SHA-256 checksums of the vouchers' receipt
 files, which sevDesk sends with the voucher list (no extra read per voucher). sevDesk stores no
@@ -347,6 +347,12 @@ what they leave to you:
   after about 90 seconds, because a request may take 120 ([remote limits](../remote/operations.md)).
   At the default request rate that is a few hundred documents: ask for a month instead of a quarter
   or a year.
+- **Long document lists.** sevDesk does not keep documents of the same date in a fixed order from
+  one page of its lists to the next, so reading a list page by page can skip documents. The reports
+  and checks therefore read every list in requests of at most 1,000 documents that each cover their
+  own date range: a period with more is split into shorter ranges, which costs a few more requests.
+  Only a single day with more than 1,000 documents of one kind has to be read page by page; the
+  result then says that documents of that day may be missing and counts as incomplete.
 - **German accounts only.** Tax rules and UStVA lines follow German law; Austrian accounts are not
   supported in 1.0.
 
