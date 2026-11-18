@@ -147,11 +147,30 @@ The draft exists as soon as the file is sent, also when the recognition finds no
 then says so and names the draft, to complete or to delete with
 [`sevdesk_voucher_delete_draft`](../tools.md#sevdesk_voucher_delete_draft). sevDesk does not
 notice a file it has seen before: every call makes another draft, so send each receipt once.
-Duplicates can only be looked for after the recognition: the result names vouchers with the same
-date, gross amount and Belegnummer, and says when it could not compare every voucher of that day
-or had nothing to compare. Later checks see such a draft differently: sevDesk stores no checksum
-for a receipt its recognition attached, so
-[`sevdesk_receipt_folder_check`](../tools.md#sevdesk_receipt_folder_check) cannot find it, while
+
+Two checks look for duplicates:
+
+- **Before the upload**, the tool compares the file's SHA-256 with the checksums sevDesk stores
+  for the receipts of the vouchers dated in the last six months and the next month (up to 1,000
+  vouchers, drafts included). When a voucher already carries the very same file, the call is
+  refused before anything is sent, and the refusal names the voucher: its id, number, date, gross
+  amount and status. Check it; if the file really has to be filed again, call again with
+  `allowDuplicate: true`. That only saves you a wasted draft, it is not a safety confirmation. A
+  dry run runs the same check: on a match it is refused the same way. The result says when the
+  check read only part of the vouchers or could not read them (the file is then sent without the
+  check).
+- **After the recognition**, the result names vouchers with the same date, gross amount and
+  Belegnummer, and says when it could not compare every voucher of that day or had nothing to
+  compare.
+
+The checksum check has a known gap: sevDesk stores no checksum for a receipt its recognition
+attached. So it finds receipts filed with
+[`sevdesk_voucher_create_draft`](../tools.md#sevdesk_voucher_create_draft),
+[`sevdesk_voucher_receipt_save`](../tools.md#sevdesk_voucher_receipt_save) or
+[`sevdesk_voucher_import_einvoice`](../tools.md#sevdesk_voucher_import_einvoice), but not the same
+file sent to the recognition before; the result counts such receipts as not compared. For the same
+reason [`sevdesk_receipt_folder_check`](../tools.md#sevdesk_receipt_folder_check) cannot find such
+a draft, while
 [`sevdesk_records_audit`](evaluations.md#vouchers-booked-twice-and-stuck-drafts-duplicates) still
 pairs duplicate drafts by number and gross amount.
 

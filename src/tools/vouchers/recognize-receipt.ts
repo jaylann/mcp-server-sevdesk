@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { compact, moneySchema, statusDto, statusDtoSchema } from "../../domain/common.js";
 import { prefetchReceipt } from "../../domain/drafts/voucher-checks.js";
 import { voucherRecognitionInputShape } from "../../domain/drafts/voucher-inputs.js";
 import {
@@ -10,7 +11,10 @@ import {
   RECOGNITION_WAIT_MS,
   type RecognitionResult,
   type RecognitionSleep,
+  SAME_FILE_SCAN_LIMIT,
+  type SameFileScan,
 } from "../../domain/drafts/voucher-recognition.js";
+import { voucherLink } from "../../domain/links.js";
 import { canReadFiles } from "../../safety/file-access.js";
 import { defineWriteTool } from "../define-tool.js";
 import { ACCOUNT_VOUCHER_DRAFTS, type ToolOutput } from "../types.js";
@@ -50,6 +54,48 @@ const recognitionOutput = voucherDraftOutput.extend({
       "Other vouchers of the same kind with the same date, gross total and Belegnummer. The " +
         "notes say when the check could not look at every voucher of that day.",
     ),
+  sameFileCheck: z
+    .object({
+      checked: z
+        .enum(["complete", "partial", "failed"])
+        .describe(
+          `complete: every voucher of the range was read; partial: only the first ` +
+            `${String(SAME_FILE_SCAN_LIMIT)} (sevDesk has more); failed: the vouchers could not ` +
+            "be read and the file was sent unchecked.",
+        ),
+      from: z.string().describe("First Belegdatum read, YYYY-MM-DD."),
+      to: z.string().describe("Last Belegdatum read, YYYY-MM-DD."),
+      vouchersRead: z.number().int().optional().describe("Voucher rows read (drafts included)."),
+      withoutChecksum: z
+        .number()
+        .int()
+        .optional()
+        .describe(
+          "Receipts of those vouchers without a checksum in sevDesk (receipts made by this " +
+            "recognition never have one): not compared.",
+        ),
+      vouchers: z
+        .array(
+          z.object({
+            id: z.number().int(),
+            number: z.string().optional().describe("Belegnummer (text from sevDesk)."),
+            date: z.string().optional().describe("Belegdatum, YYYY-MM-DD."),
+            gross: moneySchema.optional(),
+            status: statusDtoSchema,
+            link: z.string().optional().describe("Opens the voucher in the sevDesk web app."),
+          }),
+        )
+        .optional()
+        .describe(
+          "Vouchers that already carried this file before the upload (same SHA-256); only with " +
+            "allowDuplicate, which sent it anyway.",
+        ),
+    })
+    .describe(
+      "The check before the upload: the file's SHA-256 against the receipts of the vouchers " +
+        "dated from..to. Receipts made by this recognition have no checksum, so a file " +
+        "recognised before is not found.",
+    ),
 });
 
 type RecognitionOutput = z.output<typeof recognitionOutput>;
@@ -60,6 +106,8 @@ type RecognitionOutput = z.output<typeof recognitionOutput>;
  * (`POST /Voucher/Factory/createVoucherFromFile`, D-103; mechanism
  * in `src/domain/drafts/voucher-recognition.ts`). Tier `write`: it only creates a draft, which
  * cannot be finalized before a tax rule and booking accounts are set through the normal update.
+ * Before the upload it refuses a file already attached to a voucher (same SHA-256, #127) unless
+ * `allowDuplicate`, which only saves a wasted draft and guards nothing else.
  * `sleep` is injected by tests; the registered tool waits with a real timer.
  */
 export function voucherRecognizeReceiptTool(
@@ -70,16 +118,16 @@ export function voucherRecognizeReceiptTool(
     title: "Draft a voucher with sevDesk's receipt recognition",
     description:
       "Create a draft voucher (Beleg; expense or revenue) from a receipt file with " +
-      "sevDesk's own receipt recognition (Belegerkennung): sevDesk creates the draft with the " +
-      "file attached at once and fills in date, Belegnummer, sums, a supplier text and " +
-      `positions within seconds; the tool waits up to ${WAIT_SECONDS} s. The result says which ` +
-      "fields sevDesk filled in (unchecked; positions and tax rates can be wrong even when the " +
-      "total is right) and what is missing: always the tax rule and booking accounts, usually a " +
-      "supplier contact. Complete the draft with sevdesk_voucher_update_draft before " +
+      "sevDesk's own receipt recognition (Belegerkennung): sevDesk attaches the file and fills " +
+      "in date, Belegnummer, sums, a supplier text and positions within seconds; the tool waits " +
+      `up to ${WAIT_SECONDS} s. The result lists what sevDesk filled in (unchecked; positions ` +
+      "and tax rates can be wrong even when the total is right) and what is missing (always tax " +
+      "rule and booking accounts): complete it with sevdesk_voucher_update_draft before " +
       "sevdesk_voucher_finalize. PDF (PNG/JPEG: recognition unmeasured) from SEVDESK_FILE_DIRS, " +
-      "an upload or an allowed https link (read again on the real call; fileSha256 pins its " +
-      "bytes). Every call creates a new draft, also for a file sent before or when nothing is " +
-      "recognised (delete it with sevdesk_voucher_delete_draft). When you know the fields, use " +
+      "an upload or an allowed https link (fileSha256 pins its bytes). Refuses a file already " +
+      "attached to a voucher of about the last six months (same SHA-256; allowDuplicate " +
+      "overrides: a waste guard, not a safety gate). Earlier recognitions have no checksum and " +
+      "are not found: every call makes a new draft. Known fields: " +
       "sevdesk_voucher_create_draft. Update 2.0 only. Tier write; dryRun previews.",
     toolset: "vouchers",
     tier: "write",
@@ -125,6 +173,32 @@ export function voucherRecognizeReceiptTool(
   });
 }
 
+/** The checksum check before the upload, as the output shows it. */
+function sameFileOutput(scan: SameFileScan): RecognitionOutput["sameFileCheck"] {
+  if (scan.outcome === "failed") return { checked: "failed", from: scan.from, to: scan.to };
+  return {
+    checked: scan.outcome,
+    from: scan.from,
+    to: scan.to,
+    vouchersRead: scan.read,
+    withoutChecksum: scan.withoutChecksum,
+    ...(scan.matches.length === 0
+      ? {}
+      : {
+          vouchers: scan.matches.map((voucher) =>
+            compact({
+              id: voucher.id,
+              number: voucher.number,
+              date: voucher.date,
+              gross: voucher.gross,
+              status: statusDto("voucher", voucher.statusCode),
+              link: voucherLink(voucher.id),
+            }),
+          ),
+        }),
+  };
+}
+
 /** The tool output: the draft as read back, the recognition facts and the trusted notes. */
 function recognitionToolOutput(result: RecognitionResult): ToolOutput<RecognitionOutput> {
   const { voucher, positions, positionsComplete } = result.details;
@@ -147,6 +221,7 @@ function recognitionToolOutput(result: RecognitionResult): ToolOutput<Recognitio
         waitedSeconds: result.waitedMs / 1_000,
       },
       ...(duplicates.length === 0 ? {} : { possibleDuplicates: [...duplicates] }),
+      sameFileCheck: sameFileOutput(result.sameFile),
       ...(result.notes.length === 0 ? {} : { notes: [...result.notes] }),
       ...(result.notesDe.length === 0 ? {} : { notesDe: [...result.notesDe] }),
     },

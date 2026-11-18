@@ -116,7 +116,7 @@ export function createSafetyRuntime(
           callId: binding.callId,
           tool: binding.toolName,
           tier: binding.tier,
-          argsHash: binding.argsHash,
+          argsHash: binding.auditArgsHash ?? binding.argsHash,
           previewHash: binding.previewHash,
           reference,
           decision,

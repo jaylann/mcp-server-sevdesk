@@ -341,6 +341,16 @@ export interface WriteToolDefinition<
    */
   readonly preload?: (args: z.output<I>, ctx: PreloadContext) => Promise<void>;
   /**
+   * The arguments as the audit log records them, for a tool whose arguments carry personal data
+   * the log must not hold in full (e.g. an IBAN, logged masked). When set, every audit line of
+   * the call writes this as `args` and its hash as `argsHash`, so the hash cannot be traced back
+   * to the full value by trying candidates. The confirmation and the browser approval stay bound
+   * to the hash of the real arguments. Must be pure and must not throw. The metadata lint
+   * (`test/integration/metadata-lint.test.ts`) requires it for every write tool with an IBAN
+   * argument.
+   */
+  readonly auditArgs?: (args: z.output<I>) => Readonly<Record<string, unknown>>;
+  /**
    * Performs exactly the writes the preview describes, then reads the result back and returns
    * it, with every created or changed record in `affected`. Runs only after `prepare` succeeded
    * (and, for confirmed tiers, after approval), never in a dry run.

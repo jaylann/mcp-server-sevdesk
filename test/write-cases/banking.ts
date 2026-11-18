@@ -1,4 +1,6 @@
+import { bankAccountArchiveTool } from "../../src/tools/banking/account-archive.js";
 import { bankAccountCreateTool } from "../../src/tools/banking/account-create.js";
+import { bankAccountUpdateTool } from "../../src/tools/banking/account-update.js";
 import {
   privateRuleCreateTool,
   privateRuleDeleteTool,
@@ -257,6 +259,40 @@ export const BANKING_CASES: readonly WriteToolCase[] = [
       },
     ],
     writes: [{ method: "POST", path: "/CheckAccount/Factory/fileImportAccount" }],
+  },
+  {
+    label: "rename a file-import account",
+    tool: bankAccountUpdateTool,
+    args: { id: 4004, name: "Import Sparkasse" },
+    // The tool confirms every field sent on the read-back (D-141).
+    routes: changedByWrite(
+      "/CheckAccount/4004",
+      importAccount,
+      { ...importAccount, name: "Import Sparkasse" },
+      {
+        method: "PUT",
+        path: "/CheckAccount/4004",
+        objects: { ...importAccount, name: "Import Sparkasse" },
+      },
+      [accountsListRoute()],
+    ),
+    setup: resetWrites,
+    writes: [{ method: "PUT", path: "/CheckAccount/4004" }],
+  },
+  {
+    label: "archive a file-import account with an open transaction",
+    tool: bankAccountArchiveTool,
+    args: { id: 4004 },
+    // The tool confirms the archive by status 0 on the read-back (D-097).
+    routes: changedByWrite(
+      "/CheckAccount/4004",
+      importAccount,
+      { ...importAccount, status: "0", iban: null },
+      { method: "DELETE", path: "/CheckAccount/4004", objects: [null] },
+      [accountsListRoute(), listRoute("/CheckAccountTransaction", [handMade])],
+    ),
+    setup: resetWrites,
+    writes: [{ method: "DELETE", path: "/CheckAccount/4004" }],
   },
   {
     label: "create a private-transaction rule",

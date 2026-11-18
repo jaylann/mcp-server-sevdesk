@@ -131,6 +131,20 @@ export function withCompletedWrites(
   });
 }
 
+/**
+ * sevDesk's refusal to delete a record that others reference: "Cannot delete because of existing
+ * necessary references" inside HTTP 200 (the client's `unexpected_response`; contacts and cost
+ * centres D-085, payment accounts with booked transactions D-142), or the same text with the 409
+ * the spec declares. Only the upstream text identifies it; it is never shown.
+ */
+export function isReferenceRefusal(error: SevdeskError): boolean {
+  return (
+    (error.kind === "unexpected_response" || error.kind === "validation") &&
+    (error.status === 200 || error.status === 409) &&
+    /necessary references/i.test(error.upstreamMessage ?? "")
+  );
+}
+
 /** Kinds after which a side-effect-free GET may be retried. */
 export function isRetryableKind(kind: SevdeskErrorKind): boolean {
   return kind === "rate_limited" || kind === "server" || kind === "network" || kind === "timeout";

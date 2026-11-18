@@ -125,6 +125,13 @@ const accountRecordSchema = z.object({
   status: zNullableInt,
   balance: zDecimalString.optional(),
   accountingNumber: zText,
+  bic: zText,
+  /**
+   * Whether sevDesk assigns imported rows to documents by itself. Rows and `PUT` use this singular
+   * key; the spec's plural `autoMapTransactions` is ignored on `PUT` (D-141). An odd value reads
+   * as unknown rather than failing every account read.
+   */
+  autoMapTransaction: zBool01.optional().catch(undefined),
 });
 
 type AccountRecord = z.output<typeof accountRecordSchema>;
@@ -534,6 +541,52 @@ export async function listCheckAccountEntries(
   return { entries, complete: accountPageComplete(page.items.length, page.total) };
 }
 
+/**
+ * One check account as stored, with the fields the account update changes, for comparisons.
+ * `iban` and `bic` are untrusted: show the IBAN only masked ({@link maskIban}) and the BIC only
+ * through `cleanText`.
+ */
+export interface StoredCheckAccount extends CheckAccountEntry {
+  /** The IBAN reduced to upper-case letters and digits; `undefined` when none is stored. */
+  readonly iban: string | undefined;
+  /** The BIC reduced to upper-case letters and digits; `undefined` when none is stored. */
+  readonly bic: string | undefined;
+  /** `autoMapTransaction` as stored (D-141); `undefined` when sevDesk leaves it out. */
+  readonly autoMap: boolean | undefined;
+}
+
+/**
+ * One check account by id (`GET /CheckAccount/{id}`) as stored: unlike the list, this also
+ * reaches an archived account (D-097). An unknown id is sevDesk's `not_found`.
+ */
+export async function getStoredCheckAccount(
+  client: SevdeskClient,
+  accountId: number,
+  signal?: AbortSignal,
+): Promise<StoredCheckAccount> {
+  const id = toSevdeskId(accountId);
+  const payload = await client.request({
+    method: "GET",
+    path: sevdeskPath("CheckAccount", id),
+    ...(signal === undefined ? {} : { signal }),
+  });
+  const record = parseAccount(expectSingle(payload, `check account ${String(id)}`));
+  return {
+    account: toAccountDto(record),
+    storedName: record.name?.trim(),
+    archived: record.status === ARCHIVED_STATUS,
+    iban: bankCode(record.iban),
+    bic: bankCode(record.bic),
+    autoMap: record.autoMapTransaction,
+  };
+}
+
+/** An IBAN or BIC as upper-case letters and digits only; `undefined` when nothing is left. */
+function bankCode(value: string | undefined): string | undefined {
+  const code = (value ?? "").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+  return code === "" ? undefined : code.slice(0, 34);
+}
+
 /** Whether one page of {@link ACCOUNT_PAGE_SIZE} holds every account sevDesk has. */
 function accountPageComplete(received: number, total: number | undefined): boolean {
   return total === undefined ? received < ACCOUNT_PAGE_SIZE : total <= received;
@@ -758,6 +811,43 @@ export async function listTransactions(
     scanCapped,
     hasMore: !ended && (total === undefined || position < total),
     nextOffset: position,
+  };
+}
+
+/** At most this many rows of one account are read to check what a change of the account touches. */
+export const ACCOUNT_ROWS_MAX = 1000;
+
+/** The live transactions of one account, split by whether they are booked. */
+export interface AccountTransactions {
+  /** Unbooked rows (status 100). */
+  readonly open: readonly TransactionDto[];
+  /** Every other row: linked, private or booked (status 200 and higher, or unknown). */
+  readonly booked: readonly TransactionDto[];
+  /** False when the account has more than {@link ACCOUNT_ROWS_MAX} rows, so not all were read. */
+  readonly complete: boolean;
+}
+
+/**
+ * The transactions of one account (`GET /CheckAccountTransaction` filtered by the account, one page
+ * of {@link ACCOUNT_ROWS_MAX}), for the account update and archive checks. Deleted rows are not
+ * listed by sevDesk (D-096) and are skipped here too; a row without a readable status counts as
+ * booked, so a check never takes it for an open one.
+ */
+export async function readAccountTransactions(
+  client: SevdeskClient,
+  accountId: number,
+  signal?: AbortSignal,
+): Promise<AccountTransactions> {
+  const page = await listTransactions(
+    client,
+    { checkAccountId: accountId, limit: ACCOUNT_ROWS_MAX, offset: 0 },
+    { signal },
+  );
+  const live = page.items.filter((row) => row.deleted !== true);
+  return {
+    open: live.filter((row) => row.status?.code === TRANSACTION_STATUS_CODES.created),
+    booked: live.filter((row) => row.status?.code !== TRANSACTION_STATUS_CODES.created),
+    complete: !page.hasMore,
   };
 }
 

@@ -162,6 +162,10 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
 | [D-132](#d-132-recurring-templates-generation-and-auto-sending-are-switches-read-by-embed)         | Recurring templates: generation and auto-sending are switches read by `embed`          | Open                  |
 | [D-135](#d-135-saveinvoice-keeps-the-price-of-a-position-sent-by-its-id-without-an-error)          | `saveInvoice` keeps the price of a position sent by its id, without an error           | Open                  |
 | [D-140](#d-140-languages-invoices-store-en-orders-and-credit-notes-the-locale-or-german)           | Languages: invoices store `en`, orders and credit notes the locale or German           | Open                  |
+| [D-141](#d-141-put-checkaccount-answers-200-also-for-keys-it-ignores)                              | `PUT /CheckAccount` answers 200 also for keys it ignores                               | Open                  |
+| [D-142](#d-142-an-account-with-booked-transactions-is-not-archived-the-refusal-is-http-200)        | An account with booked transactions is not archived; the refusal is HTTP 200           | Open                  |
+| [D-143](#d-143-an-archived-account-cannot-be-restored-and-archiving-clears-its-iban)               | An archived account cannot be restored, and archiving clears its IBAN                  | Open                  |
+| [D-144](#d-144-put-checkaccount-refuses-a-booking-account-in-use-with-400-not-422)                 | `PUT /CheckAccount` refuses a booking account in use with 400, not 422                 | Open                  |
 
 ## Entries
 
@@ -3733,15 +3737,18 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
     endpoint fileImportAccount or clearingAccount to create new CheckAccounts": registers are
     made in the web app only.
   - `PUT /CheckAccount/{id} {name}` answers the account in `objects` (one object) and changes
-    `name` and `update`.
+    `name` and `update`. The other fields it takes, and the ones it ignores with 200: D-141.
   - `DELETE /CheckAccount/{id}` answers 2xx `{objects: [null]}` and **archives** the account:
     `GET /CheckAccount/{id}` still answers it with `status` `"0"`, and `GET /CheckAccount` leaves
     it out (`read-check-account-kinds` listed 6 accounts right after the banking run, all at 100;
     `read-transaction-soft-delete` and the fixture's `total` count 7, after
     `write-transaction-enshrine` had made its own file-import account). An account that still
-    holds a transaction is archived just as well, and its transaction gets `deletedAt` (D-096). The
-    unfiltered `GET /CheckAccountTransaction` lists no row of an archived account
-    (`read-transaction-soft-delete`, 53 rows, none outside the active accounts).
+    holds an open transaction (status 100) is archived just as well, and its transaction gets
+    `deletedAt` (D-096). The unfiltered `GET /CheckAccountTransaction` lists no row of an archived
+    account (`read-transaction-soft-delete`, 53 rows, none outside the active accounts). Recorded
+    again on 2026-11-18 for an empty file-import account, one with an open transaction and a
+    clearing account (type `offline`): all three archived the same way. An account with a booked
+    transaction is not archived (D-142); what archiving does besides: D-143.
   - Rows carry `autoMapTransaction` (singular), not the spec's `autoMapTransactions`. A
     file-import account is type `online` with `importType` `CSV` and `bankServer` null; the
     offline base account and clearing accounts are `offline`; the Kasse is `register`. No
@@ -3750,7 +3757,8 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
 - **Sources:** spec (`createClearingAccount`, `updateCheckAccount`, `deleteCheckAccount`,
   `Model_CheckAccountResponse`); recorded 2026-11-16, trial account, Update 2.0 (probes
   `write-check-account-factories`, `read-check-account-kinds`, `read-transaction-soft-delete`;
-  `test/fixtures/recorded/2026-11-16/banking/check-accounts.json`).
+  `test/fixtures/recorded/2026-11-16/banking/check-accounts.json`); recorded 2026-11-18, trial
+  account, Update 2.0 (one-off check by the orchestrator, run tag `MCP-E2E 20261118-0925-lgtm`).
 - **Impact:** The account tools of #88 offer file-import and clearing accounts only, say that a
   cash register is set up in the web app, describe "delete" as archiving (the account and its
   rows stay readable by id, but leave the transaction list), and tell a file-import account by `importType`, never by `type`
@@ -3763,8 +3771,15 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   The account list's `fileImport` (with `importType`) is true only for an `online` account with
   `importType` `CSV` or `MT940` and no `bankServer` (how a connected account reads is not
   recorded, so one that names a data provider never counts as a file-import account); `type`
-  keeps its meaning.
-- **Test:** `test/contract/recorded-gaps-banking.test.ts` (the recorded list through
+  keeps its meaning. Handling (#128): `sevdesk_bank_account_archive` (tier `commit`) sends the
+  `DELETE` for a file-import or clearing account, calls it archiving, lists the open
+  transactions it deletes, and confirms status 0 on the read-back; it refuses cash registers,
+  the default account and bank-connected accounts (none of them recorded).
+- **Test:** `test/unit/tools/banking/account-archive.test.ts` ("archives an account, names its
+  open transactions and confirms status 0 on the read-back", "archives a clearing account that is
+  not the default", "refuses cash registers, the default account, bank-connected and archived
+  accounts", "fails when the read-back still shows the account active");
+  `test/contract/recorded-gaps-banking.test.ts` (the recorded list through
   `listBankAccounts`: file-import accounts as `bank` with `fileImport` and `importType` `CSV`,
   the offline account as `clearing`, only active rows, an incomplete page);
   `test/unit/tools/banking/accounts.test.ts` ("tells file-import accounts by importType without a
@@ -3928,8 +3943,14 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   rendered file or a recognized receipt); `test/unit/domain/reports/audit/receipt-folder.test.ts`
   (matches by the listed checksum, counts receipts without one and rows without the embedded
   document, never matches by size); `test/unit/domain/reports/audit/duplicates-check.test.ts`
-  (checksums from the list with `embed=document`, no read by id). Handling: done,
-  `sevdesk_receipt_folder_check` and the `duplicates` check of `sevdesk_records_audit` (#92).
+  (checksums from the list with `embed=document`, no read by id);
+  `test/unit/tools/vouchers/recognize-receipt.test.ts` ("the same file before the upload (#127)":
+  one list read with `embed=document`, a refusal naming the voucher, `allowDuplicate`, a receipt
+  with `contentHash` null never matched but counted, a row without the embedded document, partial
+  and failed reads); `test/regressions/recognition-same-file.test.ts` (the refusal before the
+  upload, and the same file recognised before not found). Handling: done,
+  `sevdesk_receipt_folder_check` and the `duplicates` check of `sevdesk_records_audit` (#92), and
+  the checksum check of `sevdesk_voucher_recognize_receipt` before its upload (#127, see D-103).
 
 ### D-101: The ZIP exports answer files only with `download=true` and change no document
 
@@ -4124,17 +4145,29 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   answer already names the attached receipt (`document`), so a remote upload is released right
   then, not after the read-back: a read that fails afterwards cannot leave an upload id that a
   retry turns into a second draft.
-  Because sevDesk does not deduplicate, the tool's own scan after the recognition is the only
-  guard: other vouchers of the same direction with the same date, gross total and recognised
-  Belegnummer (the supplier text is not compared), reported, not refused. It reads one page of
-  up to 1,000 vouchers; when sevDesk has more, when it failed, or when there was no recognised
-  date and total to compare, the result says that the check was partial or did not run.
+  Because sevDesk does not deduplicate, the tool runs two duplicate checks of its own. Before the
+  upload (#127, in `prepare`, so a dry run shows it too) it compares the file's
+  SHA-256 with the `contentHash` of the receipts of the vouchers dated from 183 days before today
+  to 31 days after it (`GET /Voucher?embed=document`, D-100; drafts included, both directions,
+  one request of up to 1,000 rows) and refuses a match before anything is sent unless
+  `allowDuplicate` (a waste guard, not a safety gate); the refusal names up to three vouchers with
+  id, fenced Belegnummer, date, gross total and status (fewer when three would pass the
+  500-character error cap and cut its closing instruction), and the result lists allowed matches in
+  `sameFileCheck.vouchers`. A failed read does not block the upload (the result says it ran
+  unchecked), a cut one is reported as partial, and receipts without a checksum are counted as
+  not compared. After the recognition it looks for other vouchers of the same direction with the
+  same date, gross total and recognised Belegnummer (the supplier text is not compared), reported,
+  not refused. It reads one page of up to 1,000 vouchers; when sevDesk has more, when it failed,
+  or when there was no recognised date and total to compare, the result says that the check was
+  partial or did not run.
   The receipt of such a draft has a Document with `contentHash` null (D-100, recorded
-  2026-11-17 for a PDF and a PNG), so `sevdesk_receipt_folder_check` cannot match it (it counts
-  it under `coverage.vouchers.withoutChecksum`) and the audit's same-receipt rule
-  (`voucher_receipt_twice`) cannot see it; the audit's `duplicates` check still pairs two such
-  drafts by direction, document number and gross amount across suppliers (`draft_twice`, or
-  `draft_repeats_voucher` against a booked voucher). The preview says so.
+  2026-11-17 for a PDF and a PNG), so the checksum check before a later upload of the same file
+  cannot find it (only the scan after the recognition can), `sevdesk_receipt_folder_check`
+  cannot match it (it counts it under `coverage.vouchers.withoutChecksum`) and the audit's
+  same-receipt rule (`voucher_receipt_twice`) cannot see it; the audit's `duplicates` check still
+  pairs two such drafts by direction, document number and gross amount across suppliers
+  (`draft_twice`, or `draft_repeats_voucher` against a booked voucher). The preview, the
+  description and the result say so.
   `sevdesk_voucher_finalize` refuses the draft, expense or revenue, until both the tax rule and
   every booking account are set (`storedRule`, `storedPositionsFor`).
 - **Test:** `test/unit/scripts/gaps-banking-probes.test.ts` ("runs the opt-in probes only when
@@ -4145,7 +4178,13 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   once, after waits, and not within the bound; a partial recognition; the several-rates note;
   duplicates, a partial scan, a page without a count and a skipped scan; an unreadable answer; a
   refused upload; a cancelled wait and a failed read naming the draft; recognised text kept out
-  of summary and notes). The upload release: `test/unit/tools/remote-files.test.ts` (released
+  of summary and notes; the checksum check before the upload: its query, the refusal in a dry
+  run and a real call, at most three vouchers named with the number fenced, fewer when the error
+  cap would cut the instruction, `allowDuplicate`, a
+  receipt with `contentHash` null not found, partial, failed and cancelled reads);
+  `test/regressions/recognition-same-file.test.ts` (the same file refused before the upload,
+  sent with `allowDuplicate`, and not found when the earlier copy came from the recognition). The
+  upload release: `test/unit/tools/remote-files.test.ts` (released
   from the answer also when the read fails, kept when neither the answer nor the read-back
   shows the receipt). The tier: `test/unit/sevdesk/paths.test.ts` (the multipart POST stays
   `write`). The safety net:
@@ -4905,3 +4944,113 @@ true, price: 200}`) in `invoicePosSave`, a new position C in `invoicePosSave` an
   `test/unit/tools/documents/layout-tool.test.ts` ("takes the eight languages sevDesk lists, and
   nothing unknown", "refuses a language the document does not list, naming the ones it does",
   "fails when sevDesk stores German instead of the language sent (D-140)").
+
+### D-141: `PUT /CheckAccount` answers 200 also for keys it ignores
+
+- **Status:** Open. **Evidence:** spec + recorded.
+- **Spec says:** `Model_CheckAccountUpdate` takes `name`, `defaultAccount`, `autoMapTransactions`
+  (plural), `accountingNumber` (string), `iban` and `bic`; the answer is the changed account.
+- **Actual behavior:** On a file-import account, `PUT /CheckAccount/{id}` answered 200 and stored
+  `name`, `iban`, `bic` (both as sent), a free `accountingNumber` (`"1809"`) and
+  `autoMapTransaction: 0` (singular, the key the rows carry: read back `"0"`). It also answered
+  200 for the spec's plural `autoMapTransactions: 0`, for `type: "offline"` and for `status: 0`,
+  and stored none of them (`autoMapTransaction` stayed `"1"`, the type `online`, the status 100).
+  A clearing account was renamed the same way. `defaultAccount` was not tried (it would move the
+  trial's default account). A `name` another active account has (its exact name) was stored as
+  well, with 200: sevDesk does not keep account names apart.
+- **Sources:** spec (`updateCheckAccount`, `Model_CheckAccountUpdate`); recorded 2026-11-18,
+  trial account, Update 2.0 (one-off check by the orchestrator, run tag
+  `MCP-E2E 20261118-0925-lgtm`; the duplicate name in a follow-up check of the same run).
+- **Impact:** A 200 to this `PUT` proves nothing about the fields sent. Handling (#128):
+  `sevdesk_bank_account_update` (tier `commit`) sends only the fields that change, under the keys
+  sevDesk stores (`autoMapTransaction` singular, `accountingNumber` as a string), never `type`,
+  `status` or `defaultAccount`; it reads the account back and fails, naming the fields, when one
+  was not stored as sent. Everything but the name is set only on file-import accounts, where it
+  was recorded; clearing accounts and cash registers are only renamed. It refuses a name another
+  active account has before sending (compared without case and spaces); since sevDesk stores
+  such a name, this refusal is the only guard against two accounts of the same name.
+- **Test:** `test/regressions/check-account-update-archive.test.ts` ("sends only the keys sevDesk
+  stores, the singular autoMapTransaction included"); `test/unit/tools/banking/account-update.test.ts`
+  ("refuses a name another active account has, ignoring case and spaces",
+  "sends automatic assignment under sevDesk's singular key, never the spec's plural (D-141)",
+  "fails when the read-back does not show a field as sent, though sevDesk answered 200 (D-141)",
+  "sends only the fields that change and refuses a call that changes nothing", "sets IBAN and BIC
+  only on a file-import account and shows the IBAN masked").
+
+### D-142: An account with booked transactions is not archived; the refusal is HTTP 200
+
+- **Status:** Open. **Evidence:** recorded.
+- **Spec says:** `DELETE /CheckAccount/{checkAccountId}` "Deletes a check account"; 200 is
+  success, refusals are 4xx.
+- **Actual behavior:** `DELETE /CheckAccount/{id}` of an account with a booked transaction
+  (status 200, linked to a voucher by `bookAmount`), and of one whose booked transaction was
+  also enshrined, answered HTTP 200 with
+  `{"objects": null, "error": {"message": "Cannot delete because of existing necessary
+references", "code": 159, "errorCode": 0, "data": {"total": 1, "objects": [<the booked
+transaction>], "objectToDelete": <the account>}, "responseCode": 200, "exceptionUUID": …}}`.
+  Nothing changed: the account stayed at status 100, the transaction at 200, the voucher at 750
+  with its paid amount. Three tries gave the same answer. Accounts with only open transactions
+  are archived (D-097).
+- **Sources:** recorded 2026-11-18, trial account, Update 2.0 (one-off check by the orchestrator,
+  run tag `MCP-E2E 20261118-0925-lgtm`).
+- **Impact:** The client raises a 2xx body with `objects: null` and an `error` as
+  `unexpected_response` (as for contacts, D-085). Handling (#128): `sevdesk_bank_account_archive`
+  reads the account's transactions first and refuses any row that is not open (status 100),
+  naming up to five by id, and refuses an account with more rows than one check reads (1000).
+  sevDesk's refusal stays the backstop for a booking made after the check and becomes a trusted
+  sentence of our own (`isReferenceRefusal`, shared with the contact delete), without sevDesk's
+  text. `sevdesk_bank_account_update` refuses a new booking account on an account with booked
+  transactions the same way, since what sevDesk does with their bookings is not recorded.
+- **Test:** `test/regressions/check-account-update-archive.test.ts` ("is a refusal in our words,
+  not an archive, and the DELETE is sent once"); `test/unit/tools/banking/account-archive.test.ts`
+  ("refuses an account with booked transactions before sending", "explains sevDesk's refusal
+  inside HTTP 200 for a booking made after the check (D-142)");
+  `test/unit/tools/banking/account-update.test.ts` ("refuses a booking account in use, and one on
+  an account with booked transactions").
+
+### D-143: An archived account cannot be restored, and archiving clears its IBAN
+
+- **Status:** Open. **Evidence:** recorded.
+- **Spec says:** Nothing about archiving; `Model_CheckAccountUpdate` has no `status`.
+- **Actual behavior:** `PUT /CheckAccount/{id} {status: 100}` on an archived account answered
+  200 and changed nothing (status stayed 0, the account stayed out of the list); `{status: 0}` on
+  an active account did not archive it either (D-141). No other way back was found through the
+  API. `DELETE` set the stored `iban` to null and kept `bic`. A second `DELETE` on the archived
+  account answered 200 and changed nothing. A `PUT {name}` on an archived account was stored, and
+  the account stayed archived. Whether the web app restores an archived account was not checked.
+- **Sources:** recorded 2026-11-18, trial account, Update 2.0 (one-off check by the orchestrator,
+  run tag `MCP-E2E 20261118-0925-lgtm`).
+- **Impact:** Archiving is irreversible as far as the server can tell. Handling (#128):
+  `sevdesk_bank_account_archive` marks its preview irreversible, says that the account cannot be
+  restored through the API and, when the account has an IBAN, that sevDesk clears it; it refuses
+  an archived account. `sevdesk_bank_account_update` refuses archived accounts too, and neither
+  tool sends `status`.
+- **Test:** `test/unit/tools/banking/account-archive.test.ts` ("is an irreversible commit tool
+  that locks the accounts and the bookings", "archives an account, names its open transactions
+  and confirms status 0 on the read-back": the IBAN warning); `test/unit/tools/banking/account-update.test.ts`
+  ("refuses bank-connected and archived accounts before sending").
+
+### D-144: `PUT /CheckAccount` refuses a booking account in use with 400, not 422
+
+- **Status:** Open. **Evidence:** recorded.
+- **Spec says:** `accountingNumber` "Must be unique among all your CheckAccounts"; the refusal is
+  not described.
+- **Actual behavior:** `PUT /CheckAccount/{id} {accountingNumber: "1800"}`, a number another
+  active account uses, answered HTTP 400 with code 815 and "The given account number is already
+  used", and changed nothing. The account factories refuse the same with 422 (D-119). A free
+  number was stored as sent. The refusal covers the whole request: `{name, accountingNumber}` with
+  a number another active account uses answered the same 400/815, and the name was not stored
+  either. An archived account's number is free: a `PUT` of another account to the number of an
+  archived one answered 200 and stored it.
+- **Sources:** recorded 2026-11-18, trial account, Update 2.0 (one-off check by the orchestrator,
+  run tag `MCP-E2E 20261118-0925-lgtm`; the whole-request refusal and the archived account's
+  number in a follow-up check of the same run).
+- **Impact:** Both statuses are the client's `validation` kind. Handling (#128):
+  `sevdesk_bank_account_update` checks the number against the active accounts the list shows
+  first (archived ones, which the list leaves out, do not block it) and turns sevDesk's refusal,
+  for a number taken after that check or held by an account beyond the first 1000, into a
+  sentence of its own without sevDesk's text, saying that nothing of the request was changed.
+- **Test:** `test/unit/tools/banking/account-update.test.ts` ("explains sevDesk's 400 for a
+  booking account in use: nothing of the request was stored (D-144)", "refuses a booking account
+  in use, and one on an account with booked transactions", "takes the booking account number of
+  an archived account (D-144)").
