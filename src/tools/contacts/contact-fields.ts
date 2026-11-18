@@ -150,13 +150,15 @@ export const contactWriteOutput = z.object({
   addresses: z.array(addressDtoSchema).describe("Postal addresses (Adressen)."),
   addressesComplete: z
     .boolean()
-    .describe("False when sevDesk had more rows than could be read: addresses is partial."),
+    .describe("False when not every address could be read for certain: addresses may be partial."),
   communicationWays: z
     .array(communicationWayDtoSchema)
     .describe("Emails, phone numbers and websites (Kommunikationswege)."),
   communicationWaysComplete: z
     .boolean()
-    .describe("False when sevDesk had more rows than could be read: communicationWays is partial."),
+    .describe(
+      "False when not every row could be read for certain: communicationWays may be partial.",
+    ),
   customFields: z
     .array(customFieldDtoSchema)
     .optional()

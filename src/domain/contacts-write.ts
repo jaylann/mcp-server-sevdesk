@@ -417,6 +417,16 @@ export async function planContactCreate(
       "The duplicate check could not read every existing contact or e-mail address; a duplicate " +
         "may exist that was not found.",
     );
+  } else if (nameMatches.paged || emailMatches.paged) {
+    // It ran over every row, but in several pages, which can skip one (D-146).
+    const lists = [
+      nameMatches.paged ? "contacts" : undefined,
+      emailMatches.paged ? "e-mail addresses" : undefined,
+    ].filter((list) => list !== undefined);
+    warnings.push(
+      `The duplicate check read the existing ${lists.join(" and ")} page by page, and sevDesk ` +
+        "can skip a row between pages; a duplicate may exist that was not found.",
+    );
   }
   if (input.customerNumber === undefined) {
     warnings.push(
@@ -1151,15 +1161,14 @@ function sameValue(type: CommunicationType, current: string, next: string): bool
 interface ScanResult {
   /** Matching contact ids, ascending, de-duplicated. */
   readonly ids: readonly number[];
-  /**
-   * True when the scan stopped at its cap before the end, or read more than one page, which can
-   * skip a row (D-146).
-   */
+  /** True when the scan stopped at its cap before the end. */
   readonly truncated: boolean;
+  /** True when the scan read more than one page, which can skip a row (D-146). */
+  readonly paged: boolean;
 }
 
 function emptyScan(): ScanResult {
-  return { ids: [], truncated: false };
+  return { ids: [], truncated: false, paged: false };
 }
 
 async function readContactRecord(
@@ -1203,7 +1212,8 @@ async function findContactsByName(
     );
   return {
     ids: uniqueIds(matches.map((record) => record.id)),
-    truncated: list.truncated || list.paged,
+    truncated: list.truncated,
+    paged: list.paged,
   };
 }
 
@@ -1233,7 +1243,7 @@ async function findContactsByEmail(
         row.contact !== undefined,
     )
     .map((row) => row.contact?.id ?? 0);
-  return { ids: uniqueIds(ids), truncated: list.truncated || list.paged };
+  return { ids: uniqueIds(ids), truncated: list.truncated, paged: list.paged };
 }
 
 /**

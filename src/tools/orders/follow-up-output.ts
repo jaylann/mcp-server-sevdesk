@@ -30,7 +30,7 @@ export const derivedOrderOutput = z.object({
   positions: z.array(positionDtoSchema).describe("Its positions (Positionen)."),
   positionsComplete: z
     .boolean()
-    .describe("False when sevDesk had more position rows than could be read."),
+    .describe("False when not every position could be read for certain."),
   sourceOrderId: z.number().int().describe("The order it was created from."),
   sourceOrderStatus: statusDtoSchema
     .optional()

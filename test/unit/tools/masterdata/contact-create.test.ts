@@ -351,6 +351,28 @@ describe("sevdesk_contact_create", () => {
     );
   });
 
+  it("says the e-mail check read the list page by page when it holds more than one page", async () => {
+    // 1,200 e-mail addresses: read in two pages of 1,000 (D-146), every one of them read.
+    const ways = Array.from({ length: 1200 }, (_, index) => ({
+      id: String(80_000 + index),
+      objectName: "CommunicationWay",
+      type: "EMAIL",
+      value: `kontakt${String(index)}@example.com`,
+      contact: { id: String(20_000 + index), objectName: "Contact" },
+    }));
+    const client = new FakeSevdeskClient(routes({ byEmail: { body: { objects: ways } } }));
+    const plan = await prepareWrite(
+      tool,
+      { organisationName: "Neu GmbH", email: "neu@example.com" },
+      client,
+    );
+    expect(plan.preview.warnings).toContain(
+      "The duplicate check read the existing e-mail addresses page by page, and sevDesk can " +
+        "skip a row between pages; a duplicate may exist that was not found.",
+    );
+    expect(plan.preview.warnings.join(" ")).not.toContain("could not read every");
+  });
+
   it("refuses a customer number that is taken", async () => {
     const client = new FakeSevdeskClient(
       withCustomerNumber({ fixture: "contacts/contact-1002.json" }),

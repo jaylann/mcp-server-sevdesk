@@ -5513,30 +5513,45 @@ transaction>], "objectToDelete": <the account>}, "responseCode": 200, "exception
   marked as possibly incomplete; a row that comes twice is kept once.
   - `listAll` (`src/sevdesk/client.ts`) keeps a row with an id once and reports `paged` when rows
     came from more than one page; `scanPages` (`src/domain/reports/shared.ts`) does the same
-    (`paged`, `idOf`). Their callers treat a paged read like a capped one: `listChildRows`
-    (positions, a contact's addresses) answers `complete: false`; the credit note number check,
-    the derived-document and order follow-up checks, the duplicate check of a new contact and the
-    e-invoice contact index (which then also searches by name) say that not everything was
-    checked; the aging and cash reports, open items of `sevdesk_reconcile_suggest` and the
-    contact directory of the VAT check set `truncated`, and the reports `pagedRead` and a note.
+    (`paged`, `idOf`). Their callers treat a paged read as possibly incomplete: `listChildRows`
+    (positions, a contact's addresses and custom field values, the uses of one tag) answers
+    `complete: false`; the credit note number check, the derived-document and order follow-up
+    checks say that not everything was checked; the duplicate check of a new contact and the
+    e-invoice contact index (which then also searches by name) say that they read the list page by
+    page; the aging and cash reports, open items of `sevdesk_reconcile_suggest` and the contact
+    list of the VAT check set `truncated`, and the reports `pagedRead` and a note.
   - `sevdesk_records_summarize` over a whole date range reads invoices, credit notes and vouchers
     in date windows of one page each (`scanDateWindows`, as the tax reports and audits do since
-    #154), so a long list is no longer paged; without a range it pages and says so.
+    #154), so a long list is no longer paged; without a range it pages and says so. The voucher
+    type (`voucherType=VOU`, which sevDesk might ignore, D-035) is re-checked per page there
+    rather than scanned for, so sevDesk's `total` stays and the windows can be split by it.
   - The order follow-up scan sends `orderByOrderNumber=ASC` (every order has a number, D-027):
     one sample paged stably with it; it is still marked when it reads more than one page.
   - Lists the user pages (`sevdesk_invoices_list`, `sevdesk_credit_notes_list`,
     `sevdesk_orders_list`, `sevdesk_vouchers_list`, `sevdesk_changed_since`) say in their
     description that pages can skip or repeat a row and how to narrow the range instead.
   - Not marked: transactions (`listTransactions`, the payments of a period,
-    `sevdesk_reconcile_suggest`'s transaction pages), the booking log, tags and tag relations,
-    booking accounts and private-transaction rules paged stably in every recording (D-145, D-088,
-    D-099 and above) and are read in pages of 1,000; where their rows are collected, a row is
-    kept once. Contacts sort by `customerNumber`, which is nearly unique (6 of 54 rows tied);
-    no order parameter is sent for them, and the guard above covers the scans that page them.
+    `sevdesk_reconcile_suggest`'s transaction pages), the booking log, the tag list and the
+    account-wide tag relations (`sevdesk_tags_list`, the breakdown by tag), booking accounts and
+    private-transaction rules paged stably in every recording (D-145, D-088, D-099 and above) and
+    are read in pages of 1,000; where their rows are collected, a row is kept once. The uses of
+    one tag read through `listChildRows` are marked (above). Contacts sort by `customerNumber`,
+    which is nearly unique (6 of 54 rows tied); no order parameter is sent for them, and the
+    guard above covers the scans that page them.
+  - The contact addresses of the VAT check (`GET /ContactAddress`, every address of the account)
+    are not marked either: every address counts for every party, so a mark would leave every
+    purchase and sale finding unjudged on an account with more than 1,000 addresses. Their paging
+    is not measured (11 rows on the trial, too few to tell); a real account (#158) can answer it.
+    Only the cap of that list counts as incomplete; its rows are kept once.
 - **Test:** `test/regressions/list-paging-ties.test.ts` (a list whose ties are broken per page:
   `listAll` keeps rows once and says it paged, a credit note summary over a range sees 2,500
-  credit notes once each from first pages only, without a range it says rows may be missing, the
-  credit note number check and an order with 1,200 positions are not called complete);
-  `test/unit/domain/document-positions.test.ts`, `test/unit/tools/contacts/get.test.ts` (rows read
-  in two pages are not complete). Live: probes `read-list-paging-order` and
+  credit notes once each from first pages only, so does a voucher summary of 2,500 vouchers with
+  recurring templates mixed in, without a range it says rows may be missing, the credit note
+  number check and an order with 1,200 positions are not called complete);
+  `test/unit/domain/reports/date-windows.test.ts` (a re-checked page splits by sevDesk's count, an
+  empty second page is not a paged range, repeats are counted);
+  `test/unit/domain/reports/audit/vat-check.test.ts` ("still judges every party when the address
+  list is read in two pages"); `test/unit/domain/document-positions.test.ts`,
+  `test/unit/tools/contacts/get.test.ts` (rows read in two pages are not complete). Live: probes
+  `read-list-paging-order` and
   `write-list-paging-seed` (`test/unit/scripts/list-paging-probes.test.ts`).

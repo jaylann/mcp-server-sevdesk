@@ -12,7 +12,7 @@ export const creditNoteDraftOutput = z.object({
   positions: z.array(positionDtoSchema).describe("Positionen as sevDesk stored them."),
   positionsComplete: z
     .boolean()
-    .describe("False when sevDesk had more position rows than could be read back."),
+    .describe("False when not every position could be read back for certain."),
   discount: documentDiscountSchema
     .optional()
     .describe("Discount on the whole credit note (Rabatt) as stored; left out when there is none."),

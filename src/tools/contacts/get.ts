@@ -17,21 +17,23 @@ const output = z.object({
   addresses: z.array(addressDtoSchema).describe("Postal addresses (Adressen)."),
   addressesComplete: z
     .boolean()
-    .describe("False when sevDesk had more rows than could be read: addresses is partial."),
+    .describe("False when not every address could be read for certain: addresses may be partial."),
   communicationWays: z
     .array(communicationWayDtoSchema)
     .describe("Emails, phone numbers and websites (Kommunikationswege)."),
   communicationWaysComplete: z
     .boolean()
-    .describe("False when sevDesk had more rows than could be read: communicationWays is partial."),
+    .describe(
+      "False when not every row could be read for certain: communicationWays may be partial.",
+    ),
   customFields: z
     .array(customFieldDtoSchema)
     .describe("Custom field values (Kontaktfelder), with the field's id and name."),
   customFieldsComplete: z
     .boolean()
     .describe(
-      "False when sevDesk had more values than could be read, or they could not be read at all " +
-        "(see the summary): customFields is partial.",
+      "False when not every value could be read for certain, or they could not be read at all " +
+        "(see the summary): customFields may be partial.",
     ),
 });
 

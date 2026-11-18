@@ -470,7 +470,7 @@ export async function readTemplateSchedule(
 export interface InvoiceDetails {
   readonly invoice: InvoiceDetail;
   readonly positions: readonly z.output<typeof positionDtoSchema>[];
-  /** False when sevDesk had more position rows than could be read. */
+  /** False when not every position could be read for certain (a cap, or several pages). */
   readonly positionsComplete: boolean;
   /** The document discount, when asked for (`withDiscount`) and the invoice has one. */
   readonly discount?: DocumentDiscount | undefined;

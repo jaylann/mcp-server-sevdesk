@@ -347,10 +347,10 @@ export async function listContactNames(
 export interface ContactDetails {
   readonly contact: ContactDto;
   readonly addresses: readonly AddressDto[];
-  /** False when sevDesk had more address rows than could be read; `addresses` is then partial. */
+  /** False when not every address could be read for certain; `addresses` may be partial. */
   readonly addressesComplete: boolean;
   readonly communicationWays: readonly CommunicationWayDto[];
-  /** False when sevDesk had more rows than could be read; `communicationWays` is then partial. */
+  /** False when not every row could be read for certain; `communicationWays` may be partial. */
   readonly communicationWaysComplete: boolean;
 }
 

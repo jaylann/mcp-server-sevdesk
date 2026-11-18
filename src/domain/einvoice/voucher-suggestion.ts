@@ -162,7 +162,12 @@ export const einvoiceVoucherSuggestionSchema = z.object({
     ),
   supplierSearch: z.object({
     scanned: z.number().int().describe("Contacts compared."),
-    complete: z.boolean().describe("False when the account has more contacts than were read."),
+    complete: z
+      .boolean()
+      .describe(
+        "False when not every contact could be read for certain: more than were read, or read " +
+          "page by page.",
+      ),
   }),
   taxRuleId: z.number().int().optional().describe("Suggested sevDesk tax rule (Steuerregel)."),
   taxRuleName: z.string().optional(),
@@ -232,6 +237,11 @@ export interface ContactIndex {
   readonly rows: readonly ContactMatchRow[];
   readonly scanned: number;
   readonly complete: boolean;
+  /**
+   * True when every contact up to the cap was read, but in more than one page, which can skip one
+   * (D-146); `complete` is then false too. Absent or false when the cap cut the scan.
+   */
+  readonly paged?: boolean | undefined;
 }
 
 /** Inputs of the pure {@link suggestVoucherFields}. */
@@ -484,7 +494,15 @@ export function suggestVoucherFields(
         : "The contact matched by name only; confirm it before booking.",
     );
   }
-  if (!inputs.contacts.complete) {
+  if (!inputs.contacts.complete && inputs.contacts.paged === true) {
+    warnings.push(
+      de
+        ? `Die ${String(inputs.contacts.scanned)} Kontakte wurden seitenweise gelesen; dabei kann sevDesk einen Kontakt überspringen. Ein passender Kontakt kann fehlen; suche mit sevdesk_contacts_search.`
+        : `The ${String(inputs.contacts.scanned)} contacts were read page by page, and sevDesk ` +
+            "can skip a contact between pages; a matching contact may be missing (search with " +
+            "sevdesk_contacts_search).",
+    );
+  } else if (!inputs.contacts.complete) {
     warnings.push(
       de
         ? `Nur die ersten ${String(inputs.contacts.scanned)} Kontakte wurden verglichen. Weitere passende Kontakte können existieren; suche mit sevdesk_contacts_search.`
@@ -975,7 +993,12 @@ export async function loadContactIndex(
       if (!known.has(row.contact.id)) rows.push(row);
     }
   }
-  return { rows, scanned: rows.length, complete: !incomplete };
+  return {
+    rows,
+    scanned: rows.length,
+    complete: !incomplete,
+    ...(scan.paged && !scan.truncated ? { paged: true } : {}),
+  };
 }
 
 function toMatchRow(raw: unknown): ContactMatchRow {

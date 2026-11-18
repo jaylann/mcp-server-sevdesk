@@ -10,7 +10,7 @@ export const voucherDraftOutput = z.object({
   positions: z.array(voucherPositionDtoSchema).describe("Belegpositionen as sevDesk stored them."),
   positionsComplete: z
     .boolean()
-    .describe("False when sevDesk had more position rows than could be read back."),
+    .describe("False when not every position could be read back for certain."),
   receipt: z
     .object({
       name: z.string().describe("Local file name of the attached receipt (Belegbild)."),
