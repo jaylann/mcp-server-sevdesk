@@ -5008,7 +5008,9 @@ pdf, sevClient, name, default, img}]}`, `GET /DocServer/getTemplatesWithThumb?ty
   `write-discount-mixed-tax`, `write-discount-foreign-currency`, `write-discount-order-derived`,
   `write-recurring-template-discount`, `read-recurring-generated-discounts` (invoices generated
   from the discounted template of `write-recurring-template-due`, the day after; pending) and
-  `write-einvoice-discount` (opt-in: the allowance in the e-invoice XML).
+  `write-einvoice-discount` (opt-in: the allowance in the e-invoice XML); (#155, pending)
+  `write-discount-mixed-tax-uneven` (rounding of uneven splits over two and three rates, two
+  rates on gross prices, a fixed amount with `isNet` false on net prices, surcharges).
 
 ### D-119: The account factories refuse an `accountingNumber` in use or not allowed (422)
 

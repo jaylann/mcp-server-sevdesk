@@ -1521,6 +1521,159 @@ async function discountMixedTax(ctx: ProbeContext, own: OwnDocument[]): Promise<
   };
 }
 
+/** One position of `write-discount-mixed-tax-uneven`: its price (net or gross) and rate. */
+interface PricedPosition {
+  readonly price: number;
+  readonly taxRate: number;
+}
+
+/** One case of `write-discount-mixed-tax-uneven` (#155). */
+interface UnevenCase {
+  /** Net prices (showNet true) or gross ones. */
+  readonly showNet: boolean;
+  /** In the order they are sent. */
+  readonly positions: readonly PricedPosition[];
+  readonly percentage: boolean;
+  readonly value: number;
+  /** `isNet` sent with the discount; left out when undefined. */
+  readonly isNet?: boolean;
+  /** A surcharge (`discount: false`) instead of a deduction. */
+  readonly surcharge?: boolean;
+  /** Tried instead when sevDesk refuses `positions` (a 0 % position under tax rule 1). */
+  readonly fallback?: readonly PricedPosition[];
+}
+
+const at = (price: number, taxRate: number): PricedPosition => ({ price, taxRate });
+
+/**
+ * The cases of `write-discount-mixed-tax-uneven`. The first two are the uneven split of #155; the
+ * three-rate ones force a cent remainder; the rest were chosen so that, read together, the stored
+ * sumNet and sumTax tell apart every candidate rounding (per-rate deduction rounded or exact; tax
+ * rounded on the total, on the deduction, per rate on the deduction or per rate on the rest; the
+ * remainder on the largest, first, last, highest or lowest rate; a percentage taken off the total
+ * or off each rate). Gross cases ask whether the split follows the net or the gross shares.
+ */
+const UNEVEN_CASES: readonly UnevenCase[] = [
+  { showNet: true, positions: [at(70, 19), at(30, 7)], percentage: true, value: 10 },
+  { showNet: true, positions: [at(70, 19), at(30, 7)], percentage: false, value: 9.99 },
+  ...[
+    { percentage: false, value: 10 },
+    { percentage: true, value: 3 },
+  ].map((discount) => ({
+    showNet: true,
+    positions: [at(33.33, 19), at(66.67, 7), at(0.01, 0)],
+    fallback: [at(33.33, 19), at(66.67, 7)],
+    ...discount,
+  })),
+  { showNet: true, positions: [at(26.92, 7), at(76.54, 19)], percentage: true, value: 3 },
+  { showNet: true, positions: [at(60.42, 19), at(142.47, 7)], percentage: false, value: 9.99 },
+  { showNet: true, positions: [at(119.46, 7), at(27.78, 19)], percentage: false, value: 9.99 },
+  { showNet: true, positions: [at(69.15, 19), at(107.01, 7)], percentage: true, value: 7 },
+  ...[
+    { positions: [at(101.75, 7), at(39.05, 19), at(80.66, 0)], value: 10 },
+    { positions: [at(76.24, 0), at(62.21, 7), at(32.45, 19)], value: 9.99 },
+    { positions: [at(25.79, 7), at(40.18, 19), at(28.8, 0)], value: 9.99 },
+    { positions: [at(95.72, 19), at(35.78, 7), at(34.47, 0)], value: 9.99 },
+    { positions: [at(32.47, 0), at(89.92, 7), at(102.48, 19)], value: 9.99 },
+  ].map((item) => ({
+    showNet: true,
+    percentage: false,
+    fallback: item.positions.filter((position) => position.taxRate !== 0),
+    ...item,
+  })),
+  { showNet: false, positions: [at(119, 19), at(107, 7)], percentage: false, value: 10 },
+  { showNet: false, positions: [at(119, 19), at(107, 7)], percentage: true, value: 10 },
+  { showNet: false, positions: [at(83.3, 19), at(32.1, 7)], percentage: false, value: 9.99 },
+  { showNet: true, positions: [at(100, 19)], percentage: false, value: 10, isNet: false },
+  { showNet: true, positions: [at(100, 19)], percentage: true, value: 10, surcharge: true },
+  { showNet: true, positions: [at(100, 19)], percentage: false, value: 10, surcharge: true },
+];
+
+/** `70.00 at 19 % + 30.00 at 7 %`, in the order sent. */
+function positionsLabel(positions: readonly PricedPosition[]): string {
+  return positions.map((item) => `${item.price.toFixed(2)} at ${item.taxRate} %`).join(" + ");
+}
+
+function unevenLabel(item: UnevenCase, positions: readonly PricedPosition[]): string {
+  const amount = item.percentage ? `${item.value} %` : `fixed ${item.value.toFixed(2)}`;
+  return (
+    `${item.showNet ? "net" : "gross"} ${positionsLabel(positions)}, ` +
+    `${item.surcharge === true ? "surcharge " : ""}${amount}` +
+    (item.isNet === undefined ? "" : `, isNet ${String(item.isNet)} sent`)
+  );
+}
+
+/** Every `sum…` header field besides {@link DISCOUNT_SUMS} (e.g. accounting or foreign sums). */
+function otherSums(row: Row | undefined): string {
+  return (
+    Object.keys(row ?? {})
+      .filter((key) => /^sum/i.test(key) && !DISCOUNT_SUMS.includes(key))
+      .sort()
+      .map((key) => `${key} ${str(row, key) || "-"}`)
+      .join(", ") || "none"
+  );
+}
+
+/** Saves the case's draft, with its fallback positions when the first save is refused. */
+async function unevenDraft(
+  ctx: ProbeContext,
+  own: OwnDocument[],
+  item: UnevenCase,
+): Promise<{ readonly id: number | undefined; readonly text: string }> {
+  const tag = data(ctx).tag;
+  const discount = {
+    ...discountRow(tag, {
+      percentage: item.percentage,
+      value: item.value,
+      ...(item.isNet === undefined ? {} : { isNet: item.isNet }),
+    }),
+    ...(item.surcharge === true ? { discount: false } : {}),
+  };
+  const refused: string[] = [];
+  for (const positions of [
+    item.positions,
+    ...(item.fallback === undefined ? [] : [item.fallback]),
+  ]) {
+    const draft = await discountedDraft(ctx, own, "Invoice", discount, {
+      showNet: item.showNet,
+      positions: positions.map((position) => ({ ...position })),
+    });
+    const label = unevenLabel(item, positions);
+    if (draft.id === undefined) {
+      refused.push(`${label}: ${outcomeOf(draft.result)}`);
+      continue;
+    }
+    const row = await ctx.read.byId("Invoice", draft.id);
+    const rows = await discountRows(ctx, "Invoice", draft.id);
+    const stored = await positionsOf(ctx, "Invoice", draft.id);
+    return {
+      id: draft.id,
+      text:
+        `${refused.length === 0 ? "" : `${refused.join("; ")}; instead `}${label} (invoice ${draft.id}, showNet stored ${str(row, "showNet") || "-"}): ` +
+        `${discountSums(row)}; other sums: ${otherSums(row)}; ${rows.text}; positions: ${positionSums(stored)}`,
+    };
+  }
+  return { id: undefined, text: refused.join("; ") };
+}
+
+async function discountMixedTaxUneven(
+  ctx: ProbeContext,
+  own: OwnDocument[],
+): Promise<ProbeOutcome> {
+  const lines: string[] = [];
+  let saved = 0;
+  for (const item of UNEVEN_CASES) {
+    const draft = await unevenDraft(ctx, own, item);
+    if (draft.id !== undefined) saved += 1;
+    lines.push(draft.text);
+  }
+  if (saved === 0) return inconclusive(`No discounted draft was saved. ${lines.join(". ")}.`);
+  return {
+    verdict: "observed",
+    finding: `${saved} of ${UNEVEN_CASES.length} cases saved. ${lines.join(". ")}.`,
+  };
+}
+
 /** Header keys that tell a foreign-currency document's own amounts. */
 const CURRENCY_KEY = /currency|ForeignCurrency/i;
 
@@ -2941,6 +3094,26 @@ export const GAPS_DOCUMENTS_PROBES: readonly ProbeDefinition[] = [
       const own: OwnDocument[] = [];
       return withCleanup(
         () => discountMixedTax(ctx, own),
+        () => deleteOwnDocuments(ctx, own),
+      );
+    },
+  },
+  {
+    id: "write-discount-mixed-tax-uneven",
+    title: "Rounding of a discount split unevenly over several tax rates",
+    mode: "write",
+    question:
+      "How does sevDesk round a document discount split over tax rates by their net shares (#155)? Invoice drafts with uneven splits: 70.00 at 19 % + " +
+      "30.00 at 7 % (net) with 10 % and with a fixed 9.99; 33.33 at 19 % + 66.67 at 7 % + 0.01 at 0 % with a fixed 10.00 and with 3 % (without the 0 % " +
+      "position if sevDesk refuses it); more two- and three-rate splits chosen so that the sums tell the candidate roundings apart; gross prices with two " +
+      "rates (119.00 at 19 % + 107.00 at 7 %, fixed 10.00 and 10 %; 83.30 + 32.10, fixed 9.99); net prices with a fixed 10.00 sent with isNet false; and " +
+      "a surcharge (discount false) of 10 % and of a fixed 10.00. For each: sumNet, sumTax, sumGross, sumDiscounts, sumDiscountNet, sumDiscountGross, every " +
+      "other sum field, the getDiscounts row and the sum fields of each position. Every draft is deleted at the end, also when a step fails.",
+    deviations: ["D-116"],
+    async run(ctx) {
+      const own: OwnDocument[] = [];
+      return withCleanup(
+        () => discountMixedTaxUneven(ctx, own),
         () => deleteOwnDocuments(ctx, own),
       );
     },
