@@ -204,7 +204,9 @@ server instance to a copy of the argument's schema, because the SDK's `completab
 for good and the catalog's schemas are shared by every account. Months, quarters and years come
 from the clock. Contact and account names (`completions.ts`) come from one list request per kind, plus a
 name search (limit 100) per typed name when the account has more contacts than one read returns,
-always read-only and with an explicit limit. They are read only when `sevdesk_contacts_search` or
+always read-only and with an explicit limit. A typed name that starts with one whose search came
+back complete is answered from that search without a request, because sevDesk's name search finds
+any part of the name (spec/deviations.md D-020). They are read only when `sevdesk_contacts_search` or
 `sevdesk_bank_accounts_list` is registered, and cached for a minute per account `Config` (over
 HTTP every request is a new instance). A failed read suggests nothing for a few seconds instead of
 being sent again on every keystroke, and a search is stopped when the HTTP request waiting for it
