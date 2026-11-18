@@ -19,8 +19,8 @@
  *
  * Orders need a number: `saveOrder` without `orderNumber` is refused (D-027). The probes save
  * orders with the number `getNextOrderNumber` peeks (`useNextNumber=false`, reserves nothing).
- * Only the opt-in probe `write-reserved-number-delete-draft` reserves numbers, as the draft tools
- * do (D-066). sevDesk handed a reserved number out again once its draft was deleted (recorded
+ * Only the opt-in probes `write-reserved-number-delete-draft` (AN, CN) and
+ * `write-reserved-number-ab-li` reserve numbers, as the draft tools do (D-066). sevDesk handed a reserved number out again once its draft was deleted (recorded
  * 2026-11-16, D-066); a run that stops between the reservation and the delete leaves a gap in
  * the trial's sequence.
  */
@@ -162,12 +162,111 @@ async function peekNumber(ctx: ProbeContext, range: NumberRange): Promise<string
 
 /**
  * Reserves the next number of a range (`useNextNumber=true`), as the draft tools do (D-066): a
- * side-effect GET with the write tier. Only the opt-in probe `write-reserved-number-delete-draft`
- * calls it: the number is given back only when the draft saved with it is deleted (D-066).
+ * side-effect GET with the write tier. Only the opt-in probes `write-reserved-number-delete-draft`
+ * and `write-reserved-number-ab-li` call it: the number is given back only when the draft saved
+ * with it is deleted (D-066).
  */
 async function reserveNumber(ctx: ProbeContext, range: NumberRange): Promise<string | undefined> {
   const { path, query } = rangeRequest(range);
   return numberOf(await ctx.http.get(path, { ...query, useNextNumber: "true" }, { tier: "write" }));
+}
+
+/**
+ * How far a range's next number moved, by the trailing digits of both numbers (compared here,
+ * never shown): `did not move`, `moved by one`, `moved by n`, or `not comparable`.
+ */
+export function numberStep(before: string | undefined, after: string | undefined): string {
+  const digits = (value: string | undefined) => /(\d+)\D*$/.exec(value ?? "")?.[1];
+  const from = digits(before);
+  const to = digits(after);
+  if (from === undefined || to === undefined) return "not comparable";
+  const step = Number(to) - Number(from);
+  return step === 0 ? "did not move" : step === 1 ? "moved by one" : `moved by ${step}`;
+}
+
+/** Whether the next number after a delete is the one given back, or a gap stays. */
+function givenBack(
+  number: string | undefined,
+  afterCreate: string | undefined,
+  afterDelete: string | undefined,
+): string {
+  if (afterDelete === undefined) return "the peek after the delete failed";
+  if (afterDelete === number) return "the number is handed out again";
+  if (afterDelete === afterCreate) return "the number stays used: a gap";
+  return "the next number is neither that number nor the one after it";
+}
+
+/**
+ * The body of `write-reserved-number-ab-li` (opt-in): reserves one AB and one LI number, saves and
+ * deletes a draft with each, then makes an AB and an LI from a tagged draft offer and deletes
+ * them. Every order created goes into `own` for the cleanup; findings show numbers scrubbed.
+ */
+async function reservedNumbersAbLi(ctx: ProbeContext, own: number[]): Promise<ProbeOutcome> {
+  const lines: string[] = [];
+  for (const range of ["AB", "LI"] as const) {
+    const { key } = rangeRequest(range);
+    const before = await peekNumber(ctx, range);
+    const reserved = await reserveNumber(ctx, range);
+    if (reserved === undefined) {
+      lines.push(`${range}: the reservation answered no number`);
+      continue;
+    }
+    const afterReserve = await peekNumber(ctx, range);
+    const draft = await orderDraft(ctx, range, {}, reserved);
+    if (draft.id === undefined) {
+      lines.push(
+        `${range}: reserved ${shown(ctx, key, reserved)} (${reserved === before ? "the peeked number" : "not the peeked number"}), next ${numberStep(before, afterReserve)}; the draft was refused (${outcomeOf(draft.result)})`,
+      );
+      continue;
+    }
+    own.push(draft.id);
+    const afterSave = await peekNumber(ctx, range);
+    const deleted = await deleteAndCheck(ctx, "Order", draft.id);
+    const afterDelete = await peekNumber(ctx, range);
+    lines.push(
+      `${range}: reserved ${shown(ctx, key, reserved)} (${reserved === before ? "the peeked number" : "not the peeked number"}); ` +
+        `${counterNote(ctx, range, before, afterReserve)} after reserving, ${numberStep(before, afterReserve)}; ` +
+        `draft ${draft.id} saved with it, ${counterNote(ctx, range, afterReserve, afterSave)} after saving; ${deleted.text}; ` +
+        `after deleting the next is ${shown(ctx, key, afterDelete)}: ${givenBack(reserved, afterReserve, afterDelete)}`,
+    );
+  }
+
+  const offer = await orderDraft(ctx, "AN");
+  if (offer.id === undefined) {
+    lines.push(`Derived drafts: the offer was refused (${outcomeOf(offer.result)})`);
+    return { verdict: "observed", finding: `${lines.join(". ")}.` };
+  }
+  own.push(offer.id);
+  for (const [factory, range] of [
+    ["createContractNoteFromOrder", "AB"],
+    ["createPackingListFromOrder", "LI"],
+  ] as const) {
+    const { key } = rangeRequest(range);
+    const before = await peekNumber(ctx, range);
+    const result = await ctx.http.write("POST", `/Order/Factory/${factory}`, {
+      // A confirmation accepts the source offer (D-107), so the client requires commit for it.
+      tier: factory === "createContractNoteFromOrder" ? "commit" : "write",
+      query: { "order[id]": offer.id, "order[objectName]": "Order" },
+      body: { id: offer.id, objectName: "Order" },
+    });
+    const id = createdId(result.objects, "order");
+    if (id === undefined || id === offer.id) {
+      lines.push(`${range} from the draft offer ${offer.id}: ${answerOf(result)}`);
+      continue;
+    }
+    own.push(id);
+    data(ctx).register("Order", id, `${range} from order ${offer.id} (draft? deletable)`);
+    const number = str(await ctx.read.byId("Order", id), "orderNumber");
+    const afterCreate = await peekNumber(ctx, range);
+    const deleted = await deleteAndCheck(ctx, "Order", id);
+    const afterDelete = await peekNumber(ctx, range);
+    lines.push(
+      `${range} ${id} from the draft offer ${offer.id}: number ${number === "" ? "none" : number === before ? "the peeked next one" : "not the peeked one"}; ` +
+        `${counterNote(ctx, range, before, afterCreate)} after creating, ${numberStep(before, afterCreate)}; ${deleted.text}; ` +
+        `after deleting the next is ${shown(ctx, key, afterDelete)}: ${givenBack(number === "" ? undefined : number, afterCreate, afterDelete)}`,
+    );
+  }
+  return { verdict: "observed", finding: `${lines.join(". ")}.` };
 }
 
 /** `next AB number X → Y (moved | did not move)`, scrubbed. */
@@ -2045,6 +2144,38 @@ export const GAPS_DOCUMENTS_PROBES: readonly ProbeDefinition[] = [
         );
       }
       return { verdict: "observed", finding: `${lines.join(". ")}.` };
+    },
+  },
+  {
+    id: "write-reserved-number-ab-li",
+    title: "Reserving AB and LI numbers, and deleting drafts with them (opt-in)",
+    mode: "write",
+    optIn: true,
+    question:
+      "OPT-IN, reserves one number of the trial's order confirmation (AB) and one of its delivery note (LI) sequence (a run that stops before the delete leaves a gap). " +
+      "D-066 recorded for offers and credit notes only that useNextNumber=true moves the counter and that deleting the draft saved with the reserved number gives it back; " +
+      "#134/#150 assume the same for AB and LI. Per range: peek the next number (useNextNumber=false), reserve with useNextNumber=true, peek again (moved by one?), " +
+      "save a draft with the reserved number, delete it and peek (the reserved number back?). Then from a tagged draft offer: does a draft made by " +
+      "createContractNoteFromOrder (AB) or createPackingListFromOrder (LI) take the peeked number and move the counter, and does deleting it give the number back? " +
+      "Every draft is deleted at the end, also when a step fails; the offer stays if the confirmation accepted it (D-107).",
+    deviations: ["D-066", "D-027", "D-107"],
+    async run(ctx) {
+      const own: number[] = [];
+      return withCleanup(
+        () => reservedNumbersAbLi(ctx, own),
+        async () => {
+          const notes: string[] = [];
+          for (const id of [...own].reverse()) {
+            const known = data(ctx).created.find(
+              (record) => record.objectName === "Order" && record.id === id,
+            );
+            if (known?.state === "deleted by the probe") continue;
+            const deleted = await deleteAndCheck(ctx, "Order", id);
+            notes.push(`order ${id} ${deleted.gone ? "deleted" : `stays (${deleted.text})`}`);
+          }
+          return notes;
+        },
+      );
     },
   },
   {

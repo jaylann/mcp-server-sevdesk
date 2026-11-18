@@ -2538,7 +2538,12 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   `test/integration/__snapshots__/write-previews-de.test.ts.snap` ("delete a numbered credit note
   draft"). Live: probe `write-next-order-number`, and the opt-in probe
   `write-reserved-number-delete-draft` (it consumes a number of each sequence; the catalog test in
-  `test/unit/scripts/probes.test.ts` allows `useNextNumber=true` only there).
+  `test/unit/scripts/probes.test.ts` allows `useNextNumber=true` only through its helper). Order
+  confirmations (AB) and delivery notes (LI): the opt-in probe `write-reserved-number-ab-li`
+  (reserving moves the counter by one? deleting the draft gives the number back? and the same for
+  drafts made by `createContractNoteFromOrder` and `createPackingListFromOrder`; #134, #136;
+  `test/unit/scripts/gaps-documents-probes.test.ts`, "reserves AB and LI numbers only when
+  named…").
 
 ### D-067: `GET /SevClient` tells the taxation regime, and sevDesk checks it only when finalizing
 

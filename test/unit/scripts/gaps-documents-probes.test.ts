@@ -4,6 +4,7 @@ import { ALL_PROBES } from "../../../scripts/lib/probes/catalog.js";
 import {
   allowanceFacts,
   GAPS_DOCUMENTS_PROBES,
+  numberStep,
 } from "../../../scripts/lib/probes/gaps-documents-probes.js";
 import { renderReport } from "../../../scripts/lib/probes/report.js";
 import { type RunOptions, runProbes } from "../../../scripts/lib/probes/runner.js";
@@ -133,6 +134,8 @@ interface AccountSettings {
   readonly refuseGrossDocuments?: boolean;
   /** Synthetic (not recorded): createInvoiceFromOrder is refused. */
   readonly refuseInvoiceFromOrder?: boolean;
+  /** Synthetic (not recorded): createContractNoteFromOrder and createPackingListFromOrder refuse. */
+  readonly refuseOrderCopies?: boolean;
 }
 
 const DOC_ID = "d4605b19248ad176443b7cb382679b1f";
@@ -407,6 +410,7 @@ function gapsAccount(settings: AccountSettings = {}) {
     const sourceId = String(call.query["order[id]"]);
     const source = docs.get(`Order/${sourceId}`);
     if (source === undefined) return refuse(400, "Order not found");
+    if (settings.refuseOrderCopies === true) refuse(422, "Order cannot be copied");
     if (type === "LI" && source["orderType"] === "AB" && source["status"] === "100") {
       refuse(422, "Order must not be a draft");
     }
@@ -700,7 +704,7 @@ function needsCommit(call: ScriptedCall): boolean {
 }
 
 describe("gaps-documents probe catalog", () => {
-  it("registers every probe once, with the two opt-in probes marked", () => {
+  it("registers every probe once, with the four opt-in probes marked", () => {
     for (const id of IDS) {
       expect(
         ALL_PROBES.filter((probe) => probe.id === id),
@@ -709,6 +713,7 @@ describe("gaps-documents probe catalog", () => {
     }
     expect(GAPS_DOCUMENTS_PROBES.filter((probe) => probe.optIn === true).map((p) => p.id)).toEqual([
       "write-reserved-number-delete-draft",
+      "write-reserved-number-ab-li",
       "write-recurring-template-due",
       "write-einvoice-discount",
     ]);
@@ -730,8 +735,14 @@ describe("gaps-documents probes on a simulated trial account", () => {
       expect(call.tier, `${call.method} ${call.path}`).toBe(needsCommit(call) ? "commit" : "write");
       expect(call.path).not.toMatch(/sendViaEmail|enshrine|bookAmount|cancelInvoice/);
     }
+    // AN and CN (write-reserved-number-delete-draft), AB and LI (write-reserved-number-ab-li).
     const reserving = client.calls.filter((call) => call.query["useNextNumber"] === "true");
-    expect(reserving).toHaveLength(2);
+    expect(reserving.map((call) => call.query["orderType"] ?? "CN")).toEqual([
+      "AN",
+      "CN",
+      "AB",
+      "LI",
+    ]);
     for (const call of reserving) expect(call).toMatchObject({ sideEffect: true, tier: "write" });
     expect(
       client.calls.filter((call) => /getNext\w+Number$/.test(call.path)).length,
@@ -739,7 +750,7 @@ describe("gaps-documents probes on a simulated trial account", () => {
     // Every order is saved with sevDesk's own number, never without one.
     for (const call of writes.filter((item) => item.path === "/Order/Factory/saveOrder")) {
       const order = (call.body as Rec)["order"] as Rec;
-      if (order["id"] === undefined) expect(order["orderNumber"]).toMatch(/^(AN|AB)-10\d\d$/);
+      if (order["id"] === undefined) expect(order["orderNumber"]).toMatch(/^(AN|AB|LI)-10\d\d$/);
     }
     expect(report.created.map((record) => record.objectName)).toEqual(
       expect.arrayContaining(["Contact", "Order", "CreditNote", "Invoice", "TextTemplate"]),
@@ -838,12 +849,70 @@ describe("gaps-documents probes on a simulated trial account", () => {
     );
   });
 
+  it("reserves AB and LI numbers only when named, follows the counters and deletes every draft (#134)", async () => {
+    const id = "write-reserved-number-ab-li";
+    const { client, counters } = gapsAccount();
+    const { finding, report } = await run(client, { only: [id] });
+    const text = finding(id);
+    expect(report.results.find((result) => result.id === id)?.status).toBe("observed");
+    for (const range of ["AB", "LI"]) {
+      expect(text).toMatch(
+        new RegExp(
+          `${range}: reserved ([^;\\s]+) \\(the peeked number\\); next ${range} number \\S+ → \\S+ \\(moved\\) after reserving, moved by one; ` +
+            `draft \\d+ saved with it, .*?DELETE ok.*?gone; after deleting the next is \\1: the number is handed out again`,
+        ),
+      );
+      // The copy made from the offer: the simulation numbers it without moving the counter.
+      expect(text).toMatch(
+        new RegExp(
+          `${range} \\d+ from the draft offer \\d+: number the peeked next one; next ${range} number \\S+ → \\S+ \\(did not move\\) after creating, did not move; DELETE ok`,
+        ),
+      );
+    }
+    // Both ranges end where they started; the offer is deleted by the cleanup, nothing stays.
+    expect(counters["AB"]).toBe(1000);
+    expect(counters["LI"]).toBe(1000);
+    expect(text).toMatch(/Cleanup: order \d+ deleted\.$/);
+    const orders = report.created.filter((record) => record.objectName === "Order");
+    expect(orders).toHaveLength(5);
+    for (const record of orders) expect(record.state).toBe("deleted by the probe");
+    const reserving = client.calls.filter((call) => call.query["useNextNumber"] === "true");
+    expect(reserving.map((call) => call.query["orderType"])).toEqual(["AB", "LI"]);
+    for (const call of reserving) expect(call).toMatchObject({ sideEffect: true, tier: "write" });
+  });
+
+  it("still deletes the offer and the drafts when the order copies are refused", async () => {
+    const id = "write-reserved-number-ab-li";
+    const { client } = gapsAccount({ refuseOrderCopies: true });
+    const { finding, report } = await run(client, { only: [id] });
+    const text = finding(id);
+    expect(text).toMatch(
+      /AB from the draft offer \d+: refused \(422: Order cannot be copied\)\. LI from the draft offer \d+: refused \(422: Order cannot be copied\)/,
+    );
+    expect(text).toMatch(/Cleanup: order \d+ deleted\.$/);
+    expect(
+      report.created
+        .filter((record) => record.objectName === "Order")
+        .map((record) => record.state),
+    ).toEqual(Array<string>(3).fill("deleted by the probe"));
+  });
+
+  it("tells how far a number range moved by its trailing digits", () => {
+    expect(numberStep("AB-1000", "AB-1001")).toBe("moved by one");
+    expect(numberStep("AB-1000", "AB-1000")).toBe("did not move");
+    expect(numberStep("LI-0007", "LI-0010")).toBe("moved by 3");
+    expect(numberStep("AB-2026-9", "AB-2026-10")).toBe("moved by one");
+    expect(numberStep(undefined, "AB-1")).toBe("not comparable");
+    expect(numberStep("AB-x", "AB-1")).toBe("not comparable");
+  });
+
   it("skips the opt-in probes unless they are selected by id", async () => {
     const { client } = gapsAccount();
     const report = await runProbes(options(client, { probes: GAPS_DOCUMENTS_PROBES }));
     const skipped = report.results.filter((result) => result.status === "skipped");
     expect(skipped.map((result) => result.id)).toEqual([
       "write-reserved-number-delete-draft",
+      "write-reserved-number-ab-li",
       "write-recurring-template-due",
       "write-einvoice-discount",
     ]);
