@@ -2,13 +2,16 @@ import { describe, expect, it } from "vitest";
 
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
 import { orderCreateDeliveryNoteTool as tool } from "../../../../src/tools/orders/create-delivery-note.js";
+import { ACCOUNT_ORDER_NUMBERS } from "../../../../src/tools/types.js";
 import type { FakeRoute } from "../../../helpers/fake-client.js";
 import { executeWrite, prepareWrite } from "../../../helpers/write-tools.js";
 import {
+  counterRoutes,
   derivedReadRoutes,
   derivedRow,
   discountRow,
   discountsOf,
+  NEXT_ORDER_NUMBER,
   positionsOf,
   sentOffer,
 } from "../../../write-cases/orders.js";
@@ -47,6 +50,8 @@ function staged(
       { method: "POST", path: CREATE, response: { body: { objects: readBack } } },
       ...derivedReadRoutes(readBack),
       documentRoute("order", source),
+      // The LI counter still offers the new number: it is moved on once (#134).
+      ...counterRoutes("LI", "LI-1001"),
       ...positionRoutes(),
     ],
   );
@@ -68,7 +73,7 @@ async function refusal(source: Row): Promise<string> {
 }
 
 describe("sevdesk_order_create_delivery_note (D-107)", () => {
-  it("is a write tool of the orders toolset that locks the source", () => {
+  it("is a write tool of the orders toolset that locks the LI number range and the source", () => {
     expect(tool.tier).toBe("write");
     expect(tool.toolset).toBe("orders");
     expect(tool.annotations).toEqual({
@@ -78,12 +83,24 @@ describe("sevdesk_order_create_delivery_note (D-107)", () => {
       openWorldHint: false,
     });
     expect(tool.locks?.(tool.input.parse({ orderId: 3002 }))).toEqual([
+      ACCOUNT_ORDER_NUMBERS.LI,
       { objectName: "Order", id: "3002" },
     ]);
   });
 
   it("previews the source with its positions, in English only", async () => {
-    const plan = await prepareWrite(tool, { orderId: 3002 }, staged());
+    const client = staged();
+    const plan = await prepareWrite(tool, { orderId: 3002 }, client);
+    // The preview only reads: the counter is neither peeked nor reserved before the call runs.
+    expect(client.calls.filter((call) => call.path === NEXT_ORDER_NUMBER)).toEqual([]);
+    expect(plan.preview.warnings[1]).toBe(
+      "sevDesk gives the delivery note the next number of the LI range without moving its " +
+        "counter, so the LI counter is moved past that number afterwards; otherwise the next " +
+        "delivery note could get the same number. That happens on every real create, also for a " +
+        "draft that is deleted later, which can leave a gap in the LI numbers. Calls that number " +
+        "delivery notes run one at a time per account. The result names other delivery notes " +
+        "with the same number.",
+    );
     expect(plan.preview.action).toBe(
       "Create a delivery note (Lieferschein, LI) draft from order 3002 (Auftragsbestätigung).",
     );
@@ -98,7 +115,7 @@ describe("sevdesk_order_create_delivery_note (D-107)", () => {
     expect(plan).not.toHaveProperty("previewDe");
   });
 
-  it("creates the delivery note with the source in query and body, and reads it back", async () => {
+  it("creates the delivery note with the source in query and body, reads it back and moves the LI counter on", async () => {
     const client = staged();
     const { output } = await executeWrite(tool, { orderId: 3002 }, client);
     expect(
@@ -111,6 +128,11 @@ describe("sevdesk_order_create_delivery_note (D-107)", () => {
         { "order[id]": 3002, "order[objectName]": "Order" },
         { id: 3002, objectName: "Order" },
       ],
+      ["GET", NEXT_ORDER_NUMBER, "write", { orderType: "LI", useNextNumber: "true" }, undefined],
+    ]);
+    expect(output.data.notes).toEqual([
+      "sevDesk's LI number counter was moved past LI-1001 (the new delivery note's number), so " +
+        "the next delivery note cannot get it again.",
     ]);
     expect(output.data.order).toMatchObject({
       id: 3201,
@@ -150,6 +172,7 @@ describe("sevdesk_order_create_delivery_note (D-107)", () => {
     );
     expect(client.writes().map((call) => call.query)).toEqual([
       { "order[id]": 3001, "order[objectName]": "Order" },
+      { orderType: "LI", useNextNumber: "true" },
     ]);
     expect(output.data.sourceOrderStatus).toMatchObject({ code: 500 });
   });

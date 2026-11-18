@@ -11,10 +11,25 @@
  *   (`{id, objectName}`), and answer the new order itself under `objects`: a draft (100) with
  *   `origin` = the source, the source's contact, texts, all positions and the same `sumNet`.
  * - The new order gets the number `getNextOrderNumber` peeks for its type, and the counter does
- *   not move (D-027): two made in a row carry the same number. So the new order is read back, and
- *   other orders of its type with the same number are looked up and named in a trusted note.
+ *   not move (D-027): two made in a row carry the same number.
  * - `createContractNoteFromOrder` sets the source offer to accepted (500), from sent, draft and
  *   rejected offers alike; `createPackingListFromOrder` leaves the source alone.
+ *
+ * So after the request the new order is read back and the counter of its range is moved past its
+ * number (#134), the way `sevdesk_credit_note_create_from_invoice` moves the credit note counter:
+ * when the peek (`useNextNumber=false`) still offers the new number, it is reserved once
+ * (`useNextNumber=true`, a write-tier side-effect GET). That the reservation advances the counter
+ * was recorded for the AN and credit note counters only (D-066); for AB and LI it is assumed, as
+ * the order draft tool already assumes for its AB and LI drafts. If sevDesk did not advance them,
+ * the same-number check of the next call would name the clash. Every real create advances the
+ * counter, also for a draft that is deleted later (a gap in the range unless sevDesk hands that
+ * number out again, which D-066 recorded only for a draft saved with the number reserved last).
+ * The tools hold the range's account-wide lock (`ACCOUNT_ORDER_NUMBERS`) from `prepare` to the
+ * end, so two of this server's calls cannot take the same number between the request and the
+ * reservation.
+ * Other orders of the type with the same number are still looked up and named in a trusted note:
+ * the counter can lag behind numbers in use (documents the factories made before #134 share their
+ * numbers), and the web app or another client may move it at any time.
  *
  * Neither request is retried. Before writing, orders already made from the same source are
  * looked up (`GET /Order` by contact and type, `origin` checked on every row since sevDesk ignores
@@ -22,7 +37,8 @@
  *
  * Once the request went through, the new order exists (and a confirmation's offer is accepted):
  * every later failure carries them as completed writes, so the error never reads as if nothing
- * happened.
+ * happened. A counter step or number check that fails becomes a trusted note instead (only a
+ * cancel or an unexpected error ends the call).
  */
 import { z } from "zod";
 
@@ -40,7 +56,12 @@ import {
   typeProblem,
   verifyDraft,
 } from "./derived-documents.js";
-import { quotableNumber } from "./drafts/numbering.js";
+import {
+  type NumberRange,
+  peekNextNumber,
+  quotableNumber,
+  reserveNextNumber,
+} from "./drafts/numbering.js";
 import { type LifecycleDocument, readLifecycleDocument, STATUS } from "./lifecycle/documents.js";
 import { getOrder, type OrderDetails } from "./orders.js";
 
@@ -196,7 +217,7 @@ export interface DerivedOrderResult {
   readonly affected: SevdeskObjectRef[];
   /** The source read again after the request; `undefined` when that read failed. */
   readonly source: LifecycleDocument<"order"> | undefined;
-  /** Trusted notes, e.g. about other orders with the same number. */
+  /** Trusted notes: what happened to the number counter, other orders with the same number. */
   readonly notes: string[];
 }
 
@@ -204,8 +225,10 @@ export interface DerivedOrderResult {
  * Sends the factory request (never retried) with the source in the query and the body, reads the
  * new order back and checks that it is a draft of the expected type that points to the source,
  * then reads the source again: it is listed in `affected` when sevDesk changed it (a confirmation
- * accepts the offer) or when it could not be read. Last, other orders of the new type with the
- * same number are looked up for the notes.
+ * accepts the offer) or when it could not be read. Last, the counter of the new order's range is
+ * moved past its number ({@link advanceOrderCounter}) and other orders of the type with the same
+ * number are looked up ({@link sameNumberNotes}), both for the notes. The caller holds the range's
+ * lock (`ACCOUNT_ORDER_NUMBERS`).
  *
  * A failure after the request names what exists by then: the new order once its id is known, and
  * for a confirmation the offer, which sevDesk accepted in the same request.
@@ -272,17 +295,16 @@ export async function createOrderFromOrder(
     ],
     affected,
   );
-  const notes = await sameNumberNotes(client, info, newId, order.number, affected, signal);
+  const notes = await numberNotes(client, info, newId, order.number, affected, signal);
   return { details, affected, source: after, notes };
 }
 
 /**
- * Trusted notes about the new order's number (D-107): sevDesk handed it out without moving the
- * counter, so other orders of the type may carry it already, and the next one may get it again.
- * A failed or cut lookup becomes a note too; it never fails the call (the order exists). Only a
- * cancel (or an unexpected error) ends the call here, and then with `affected` as completed writes.
+ * Trusted notes about the new order's number (D-107, #134): what moving the counter did, then
+ * other orders of the type that carry the same number. Neither step fails the call (the order
+ * exists); only a cancel or an unexpected error ends it, with `affected` as completed writes.
  */
-async function sameNumberNotes(
+async function numberNotes(
   client: SevdeskClient,
   info: FactoryInfo,
   newId: number,
@@ -291,20 +313,109 @@ async function sameNumberNotes(
   signal: AbortSignal | undefined,
 ): Promise<string[]> {
   if (number === undefined) {
-    return [`sevDesk gave the new ${info.noun} no number; set one before sending it.`];
+    return [
+      `sevDesk gave the new ${info.noun} no number, so its ${info.type} number counter was not ` +
+        "touched; set a number before sending it.",
+    ];
   }
   const label = quotableNumber(number) ?? "the new number";
-  const counter =
-    `sevDesk does not move its ${info.type} number counter for this request, so the next ` +
-    `${info.noun} may get ${label} again; check the number before sending either.`;
-  const same = (value: string | undefined): boolean =>
-    value?.trim().toLowerCase() === number.trim().toLowerCase();
+  const target = { info, number, label, affected, signal };
+  return [
+    ...(await advanceOrderCounter(client, target)),
+    ...(await sameNumberNotes(client, target, newId)),
+  ];
+}
+
+/** The new order's number and what a failure after the request has to name. */
+interface NumberTarget {
+  readonly info: FactoryInfo;
+  /** The number sevDesk gave the new order, as read back. */
+  readonly number: string;
+  /** {@link quotableNumber} of it, or a stand-in. */
+  readonly label: string;
+  readonly affected: readonly SevdeskObjectRef[];
+  readonly signal: AbortSignal | undefined;
+}
+
+function sameNumber(a: string, b: string): boolean {
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
+/**
+ * Moves the counter of the new order's range past its number (#134), like
+ * `advanceCreditNoteCounter` in `derived-documents.ts`: when the counter still offers that number
+ * (peek), it is reserved once (`useNextNumber=true`) so the next document of the range cannot get
+ * it. A counter that offers another number was moved on by someone else (the web app or another
+ * client: this server's calls on the range hold its lock) and is left alone. One trusted note
+ * says what happened; a failure becomes a note too, except a cancel.
+ */
+async function advanceOrderCounter(client: SevdeskClient, target: NumberTarget): Promise<string[]> {
+  const { info, number, label, affected, signal } = target;
+  const range: NumberRange = { kind: "order", orderType: info.type };
+  const counter = `sevDesk's ${info.type} number counter`;
+  try {
+    if (!sameNumber(await peekNextNumber(client, range, signal), number)) {
+      return [
+        `${counter} does not offer ${label} (the new ${info.noun}'s number) any more: someone ` +
+          "moved it on after sevDesk handed out that number, so it was left as it is.",
+      ];
+    }
+    const reserved = await reserveNextNumber(client, range, signal);
+    if (!sameNumber(reserved, number)) {
+      // The counter moved between the peek and the reservation (another client): the reserved
+      // number is lost, and whoever moved it may carry the new order's number as well.
+      const taken = quotableNumber(reserved) ?? "another number";
+      return [
+        `${counter} moved on while it was being moved past ${label}: the reservation took ` +
+          `${taken} instead, which is now skipped (a gap in the number range, Nummernkreis).`,
+      ];
+    }
+    return [
+      `${counter} was moved past ${label} (the new ${info.noun}'s number), so the next ` +
+        `${info.noun} cannot get it again.`,
+    ];
+  } catch (error) {
+    if (!(error instanceof SevdeskError)) {
+      throw new SevdeskError({
+        kind: "unexpected_response",
+        message:
+          `The ${info.noun} was created, but moving sevDesk's number counter past its number ` +
+          "failed unexpectedly.",
+        cause: error,
+        completedWrites: affected,
+      });
+    }
+    if (error.kind === "aborted") throw withCompletedWrites(error, affected);
+    return [
+      `${counter} could not be checked or moved past ${label}, so the next ${info.noun} may get ` +
+        "the same number; check the number before sending either.",
+    ];
+  }
+}
+
+/**
+ * Trusted notes about other orders of the type that carry the new order's number: the safety net
+ * behind {@link advanceOrderCounter}, since the counter can lag behind numbers in use (the
+ * factories made documents with shared numbers before #134) or be moved by someone else. Nothing
+ * when none does; a note when the lookup failed or was cut, since the number then cannot be called
+ * unique.
+ */
+async function sameNumberNotes(
+  client: SevdeskClient,
+  target: NumberTarget,
+  newId: number,
+): Promise<string[]> {
+  const { info, number, label, affected, signal } = target;
   let others: OrderScan;
   try {
     others = await scanOrders(
       client,
       { orderNumber: number, orderType: info.type },
-      (row) => row.id !== newId && typeOf(row) === info.type && same(row.orderNumber),
+      (row) =>
+        row.id !== newId &&
+        typeOf(row) === info.type &&
+        row.orderNumber !== undefined &&
+        sameNumber(row.orderNumber, number),
       signal,
     );
   } catch (error) {
@@ -320,7 +431,6 @@ async function sameNumberNotes(
     }
     if (error.kind === "aborted") throw withCompletedWrites(error, affected);
     return [
-      counter,
       `Whether another ${info.noun} carries ${label} already could not be checked; look it up ` +
         "with sevdesk_orders_list.",
     ];
@@ -329,16 +439,14 @@ async function sameNumberNotes(
   if (sameIds.length > 0) {
     return [
       `The new ${info.noun} has the same number (${label}) as ${idList("order", sameIds)}: ` +
-        "sevDesk hands out the next number of the range without moving its counter. Give one of " +
-        "them another number in the sevDesk web app before sending it.",
-      counter,
+        `sevDesk handed out a number of its ${info.type} range that is in use already. Give one ` +
+        "of them another number in the sevDesk web app before sending either.",
     ];
   }
   return others.truncated
     ? [
-        counter,
         `Not every ${info.noun} could be checked for the same number; look it up with ` +
           "sevdesk_orders_list.",
       ]
-    : [counter];
+    : [];
 }

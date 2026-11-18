@@ -6,6 +6,7 @@
  * request, which is the binding step `sevdesk_order_set_offer_status` asks a human for too. The
  * preview shows the offer with its stored texts and positions (what the confirmation takes over),
  * and the approval is bound to that stored content (`readDocumentContent`), like finalize.
+ * Afterwards the AB number counter is moved past the new number (`createOrderFromOrder`, #134).
  */
 import { z } from "zod";
 
@@ -25,6 +26,7 @@ import {
 } from "../../domain/preview-text.js";
 import { defineWriteTool } from "../define-tool.js";
 import { COMMIT_ANNOTATIONS, documentContent, documentObject } from "../lifecycle/shared.js";
+import { ACCOUNT_ORDER_NUMBERS } from "../types.js";
 import { dryRunInputShape } from "../write-input.js";
 import {
   allowDuplicateInput,
@@ -76,10 +78,18 @@ const DRAFT: Phrase = phrase(
 
 const NUMBER: Phrase = phrase(
   "sevDesk gives the confirmation the next number of the AB range without moving its counter, " +
-    "so another confirmation may carry the same number; the result names any it finds.",
+    "so the AB counter is moved past that number afterwards; otherwise the next confirmation " +
+    "could get the same number. That happens on every real create, also for a draft that is " +
+    "deleted later, which can leave a gap in the AB numbers. Calls that number order " +
+    "confirmations run one at a time per account. The result names other confirmations with " +
+    "the same number.",
   "sevDesk gibt der Auftragsbestätigung die nächste Nummer des AB-Nummernkreises, ohne den " +
-    "Zähler weiterzuschalten; eine andere Auftragsbestätigung kann daher dieselbe Nummer " +
-    "tragen. Das Ergebnis nennt solche, die es findet.",
+    "Zähler weiterzuschalten; danach wird der AB-Zähler über diese Nummer hinaus " +
+    "weitergeschaltet, sonst könnte die nächste Auftragsbestätigung dieselbe Nummer bekommen. " +
+    "Das geschieht bei jeder echten Erstellung, auch für einen Entwurf, der später gelöscht " +
+    "wird; dann kann eine Lücke in den AB-Nummern bleiben. Aufrufe, die Auftragsbestätigungen " +
+    "nummerieren, laufen je Konto nacheinander. Das Ergebnis nennt andere " +
+    "Auftragsbestätigungen mit derselben Nummer.",
 );
 
 const TRUNCATED: Phrase = phrase(
@@ -109,7 +119,9 @@ export const orderCreateConfirmationTool = defineWriteTool({
     "them first) and not rejected offers (reopen them first with " +
     "sevdesk_order_set_offer_status). Refuses when a confirmation from the offer exists " +
     "(allowDuplicate overrides). sevDesk gives it the next AB number without moving its " +
-    "counter; the result names other confirmations with the same number. Next: " +
+    "counter, so the AB counter is moved past it afterwards (every real create advances it, " +
+    "also for a draft deleted later: a gap); such calls run one at a time per account. The " +
+    "result names other confirmations with the same number. Next: " +
     "sevdesk_order_get, sevdesk_order_finalize, sevdesk_order_create_delivery_note, " +
     "sevdesk_invoice_create_from_order.",
   toolset: "orders",
@@ -121,9 +133,11 @@ export const orderCreateConfirmationTool = defineWriteTool({
     ...dryRunInputShape,
   }),
   output: derivedOrderOutput,
-  // The offer: its status and the "no confirmation from it yet" check are read, then the
-  // confirmation is created and the offer accepted.
-  locks: (args) => [documentObject("order", args.orderId)],
+  // The AB number range: sevDesk hands out the counter's current number without advancing it, and
+  // the counter is moved on only after the request (#134). The offer: its status and the "no
+  // confirmation from it yet" check are read, then the confirmation is created and the offer
+  // accepted.
+  locks: (args) => [ACCOUNT_ORDER_NUMBERS.AB, documentObject("order", args.orderId)],
   prepare: async (args, ctx) => {
     const doc = await readLifecycleDocument(ctx.client, "order", args.orderId, {
       signal: ctx.signal,

@@ -3,7 +3,8 @@
  * order confirmation with `POST /Order/Factory/createPackingListFromOrder` (spec/deviations.md
  * D-107). Write tier: sevDesk leaves the source as it is and the draft can be deleted again;
  * which sources are allowed is `assertDeliveryNoteSource`. Shaped like
- * `sevdesk_invoice_create_from_order`.
+ * `sevdesk_invoice_create_from_order`. Afterwards the LI number counter is moved past the new
+ * number (`createOrderFromOrder`, #134).
  */
 import { z } from "zod";
 
@@ -18,6 +19,7 @@ import {
 } from "../../domain/order-follow-ups.js";
 import { defineWriteTool } from "../define-tool.js";
 import { documentContent, documentObject } from "../lifecycle/shared.js";
+import { ACCOUNT_ORDER_NUMBERS } from "../types.js";
 import { dryRunInputShape } from "../write-input.js";
 import {
   allowDuplicateInput,
@@ -36,8 +38,10 @@ export const orderCreateDeliveryNoteTool = defineWriteTool({
     "from offer drafts (send them first), rejected offers or delivery notes. Refuses when a " +
     "delivery note draft from the order exists (allowDuplicate overrides, e.g. a second partial " +
     "delivery); finalized ones from the order are named in the preview. Tier write. sevDesk " +
-    "gives it the next LI number without moving its counter; the result names other delivery " +
-    "notes with the same number. Then check it with sevdesk_order_get and finalize it with " +
+    "gives it the next LI number without moving its counter, so the LI counter is moved past " +
+    "it afterwards (every real create advances it, also for a draft deleted later: a gap); " +
+    "such calls run one at a time per account. The result names other delivery notes with the " +
+    "same number. Then check it with sevdesk_order_get and finalize it with " +
     "sevdesk_order_finalize.",
   toolset: "orders",
   tier: "write",
@@ -53,9 +57,11 @@ export const orderCreateDeliveryNoteTool = defineWriteTool({
     ...dryRunInputShape,
   }),
   output: derivedOrderOutput,
-  // The source: its status and the "no delivery note draft from it yet" check are read, then
-  // the delivery note is created. The key is the one the order's other tools take.
-  locks: (args) => [documentObject("order", args.orderId)],
+  // The LI number range: sevDesk hands out the counter's current number without advancing it,
+  // and the counter is moved on only after the request (#134). The source: its status and the
+  // "no delivery note draft from it yet" check are read, then the delivery note is created. The
+  // key is the one the order's other tools take.
+  locks: (args) => [ACCOUNT_ORDER_NUMBERS.LI, documentObject("order", args.orderId)],
   prepare: async (args, ctx) => {
     const doc = await readLifecycleDocument(ctx.client, "order", args.orderId, {
       signal: ctx.signal,
@@ -77,8 +83,11 @@ export const orderCreateDeliveryNoteTool = defineWriteTool({
         "positions as listed here; sevDesk leaves the order itself unchanged. Check it with " +
         "sevdesk_order_get and finalize it with sevdesk_order_finalize.",
       "sevDesk gives the delivery note the next number of the LI range without moving its " +
-        "counter, so another delivery note may carry the same number; the result names any it " +
-        "finds.",
+        "counter, so the LI counter is moved past that number afterwards; otherwise the next " +
+        "delivery note could get the same number. That happens on every real create, also for a " +
+        "draft that is deleted later, which can leave a gap in the LI numbers. Calls that number " +
+        "delivery notes run one at a time per account. The result names other delivery notes " +
+        "with the same number.",
     ];
     if (content.discountCount > 0) {
       // Only createInvoiceFromOrder was recorded with a discount (it copies it, D-116).

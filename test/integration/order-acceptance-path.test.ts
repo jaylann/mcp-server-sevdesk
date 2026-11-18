@@ -80,10 +80,21 @@ class ScriptedAccount implements SevdeskClient {
   private derive(sourceId: string, type: "AB" | "LI"): Row {
     const id = String(this.nextOrder++);
     const counter = this.nextNumber[type] ?? 1;
-    // The counter does not move (D-107): the same number again next time.
+    // The factory does not move the counter (D-107); the tool reserves the number afterwards.
     const row = derivedRow(id, type, `${type}-${String(counter)}`, sourceId);
     this.orders.set(id, row);
     return row;
+  }
+
+  /** `getNextOrderNumber`: the counter's number; `useNextNumber=true` also advances it (D-066). */
+  private nextOrderNumber(request: SevdeskRequest): string {
+    const type = String(request.query?.["orderType"]);
+    const counter = this.nextNumber[type] ?? 1;
+    if (request.query?.["useNextNumber"] === "true") {
+      this.writes.push({ method: request.method, path: `${request.path}?orderType=${type}` });
+      this.nextNumber[type] = counter + 1;
+    }
+    return `${type}-${String(counter)}`;
   }
 
   private answer(request: SevdeskRequest): unknown {
@@ -91,6 +102,9 @@ class ScriptedAccount implements SevdeskClient {
     // The layout read of a draft's finalize approval (render without reload, D-113) is no write.
     if (isReadingPost(request)) return layoutObjects({}, "order");
     if (method !== "GET") this.writes.push({ method, path, body: request.body });
+    if (method === "GET" && path === "/Order/Factory/getNextOrderNumber") {
+      return this.nextOrderNumber(request);
+    }
     if (method === "GET") {
       const order = ORDER_PATH.exec(path)?.[1];
       if (order !== undefined) return [this.order(order)];
@@ -238,10 +252,15 @@ describe("issue #89: offer → accepted → confirmation → delivery note → i
     expect(account.writes.map(({ method, path }) => `${method} ${path}`)).toEqual([
       "PUT /Order/3001",
       "POST /Order/Factory/createContractNoteFromOrder",
+      // Each factory's counter is moved past the new number once (#134).
+      "GET /Order/Factory/getNextOrderNumber?orderType=AB",
       `PUT /Order/${String(confirmation.id)}/sendBy`,
       "POST /Order/Factory/createPackingListFromOrder",
+      "GET /Order/Factory/getNextOrderNumber?orderType=LI",
       "POST /Invoice/Factory/createInvoiceFromOrder",
     ]);
+    expect(confirmation.number).toBe("AB-1003");
+    expect(delivered.output.data.order.number).toBe("LI-1001");
     expect(account.writes[0]?.body).toEqual({ status: 500 });
     expect(account.orders.get("3001")?.["status"]).toBe("500");
   });

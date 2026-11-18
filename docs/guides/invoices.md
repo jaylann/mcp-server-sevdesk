@@ -169,9 +169,19 @@ draft, because a further delivery note can be a partial delivery; finalized ones
 preview. The new draft is finalized with
 [`sevdesk_order_finalize`](../tools.md#sevdesk_order_finalize). Both previews also list discounts
 or surcharges on the whole source document; whether sevDesk takes them over has not been checked,
-so compare the new draft's totals before finalizing it. sevDesk gives the new document the next
-number of its range without moving the counter, so it can carry a number another confirmation or
-delivery note already has; the result names any it finds. To find offers that are still open, ask
+so compare the new draft's totals before finalizing it.
+
+sevDesk gives the new document the next number of its range without moving the counter, so the
+tool moves the counter past that number right afterwards; otherwise the next confirmation or
+delivery note would get the same number. This happens on every real call (not on a dry run), also
+for a draft you delete later, which can leave a gap in the AB or LI numbers. Calls that number
+order confirmations, and calls that number delivery notes (these two tools, and
+[`sevdesk_order_create_draft`](../tools.md#sevdesk_order_create_draft) for such a draft), run one
+at a time per account, so two of them cannot take the same number. The result says what happened
+to the counter, and names other documents that carry the same number, for example ones created
+before this behaviour or in the web app.
+
+To find offers that are still open, ask
 for sent offers in a date range ([`sevdesk_orders_list`](../tools.md#sevdesk_orders_list)). The
 [`offer_follow_up`](../tools.md#offer_follow_up) prompt does that for offers older than a number
 of days (14 by default) and goes through each with you: accepted or rejected, the order

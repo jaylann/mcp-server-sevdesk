@@ -181,10 +181,20 @@ aus demselben Auftrag noch ein Entwurf ist, denn ein weiterer Lieferschein kann 
 sein; fertiggestellte nennt seine Vorschau. Fertiggestellt wird der neue Entwurf mit
 [`sevdesk_order_finalize`](../tools.md#sevdesk_order_finalize). Beide Vorschauen führen auch Rabatte
 und Aufschläge auf das ganze Dokument der Vorlage auf; ob sevDesk sie übernimmt, ist nicht geprüft,
-also vergleiche die Summen des neuen Entwurfs, bevor du ihn fertigstellst. sevDesk gibt dem neuen
-Dokument die nächste Nummer seines Nummernkreises, ohne den Zähler weiterzuschalten; es kann also
-eine Nummer tragen, die eine andere Auftragsbestätigung oder ein anderer Lieferschein schon hat. Das
-Ergebnis nennt solche, die es findet. Offene Angebote findest du mit einer Frage nach versendeten
+also vergleiche die Summen des neuen Entwurfs, bevor du ihn fertigstellst.
+
+sevDesk gibt dem neuen Dokument die nächste Nummer seines Nummernkreises, ohne den Zähler
+weiterzuschalten; deshalb schaltet das Werkzeug den Zähler gleich danach über diese Nummer hinaus,
+sonst bekäme die nächste Auftragsbestätigung oder der nächste Lieferschein dieselbe Nummer. Das
+geschieht bei jedem echten Aufruf (nicht bei einem Probelauf), auch für einen Entwurf, den du später
+löschst; dann kann eine Lücke in den AB- oder LI-Nummern bleiben. Aufrufe, die
+Auftragsbestätigungen nummerieren, und Aufrufe, die Lieferscheine nummerieren (diese beiden Werkzeuge
+und [`sevdesk_order_create_draft`](../tools.md#sevdesk_order_create_draft) für einen solchen
+Entwurf), laufen je Konto nacheinander, damit zwei davon nicht dieselbe Nummer bekommen. Das
+Ergebnis sagt, was mit dem Zähler geschah, und nennt andere Dokumente mit derselben Nummer, etwa
+solche, die vor diesem Verhalten oder in der Web-App entstanden sind.
+
+Offene Angebote findest du mit einer Frage nach versendeten
 Angeboten in einem Zeitraum ([`sevdesk_orders_list`](../tools.md#sevdesk_orders_list)). Der Prompt
 [`offer_follow_up`](../tools.md#offer_follow_up) macht das für Angebote, die älter als eine Zahl von
 Tagen sind (standardmäßig 14), und geht jedes mit dir durch: angenommen oder abgelehnt, die

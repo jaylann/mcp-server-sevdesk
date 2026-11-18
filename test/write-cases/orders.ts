@@ -48,6 +48,24 @@ export function derivedReadRoutes(row: Row): FakeRoute[] {
   ];
 }
 
+export const NEXT_ORDER_NUMBER = "/Order/Factory/getNextOrderNumber";
+
+/**
+ * `getNextOrderNumber` for `type`, peek (`useNextNumber=false`) and reservation (`true`) alike
+ * answering `number`: the counter still offers the new order's number, so it is moved on once
+ * (#134). A static route cannot advance; tests that need that keep state themselves.
+ */
+export function counterRoutes(type: "AB" | "LI", number: string): FakeRoute[] {
+  return ["false", "true"].map((useNextNumber) => ({
+    path: NEXT_ORDER_NUMBER,
+    query: { orderType: type, useNextNumber },
+    response: { body: { objects: number } },
+  }));
+}
+
+/** The reservation that moves the counter on, as `writes` lists it. */
+const COUNTER_WRITE = { method: "GET", path: NEXT_ORDER_NUMBER } as const;
+
 /**
  * `GET /Order/{orderId}/getDiscounts` answering `rows` with `total: null`, as recorded for an
  * order without discounts (D-116); none by default.
@@ -126,11 +144,12 @@ export const ORDERS_CASES: readonly WriteToolCase[] = [
         response: { body: { objects: confirmation } },
       },
       ...derivedReadRoutes(confirmation),
+      ...counterRoutes("AB", "AB-1003"),
       positionsOf("3001"),
       discountsOf("3001"),
       ...positionRoutes(),
     ],
-    writes: [{ method: "POST", path: "/Order/Factory/createContractNoteFromOrder" }],
+    writes: [{ method: "POST", path: "/Order/Factory/createContractNoteFromOrder" }, COUNTER_WRITE],
   },
   {
     label: "create a delivery note from an order confirmation",
@@ -144,10 +163,11 @@ export const ORDERS_CASES: readonly WriteToolCase[] = [
         response: { body: { objects: deliveryNote } },
       },
       ...derivedReadRoutes(deliveryNote),
+      ...counterRoutes("LI", "LI-1001"),
       discountsOf("3002"),
       ...positionRoutes(),
     ],
-    writes: [{ method: "POST", path: "/Order/Factory/createPackingListFromOrder" }],
+    writes: [{ method: "POST", path: "/Order/Factory/createPackingListFromOrder" }, COUNTER_WRITE],
   },
   {
     label: "create an order confirmation from an accepted offer with a document discount",
@@ -161,6 +181,7 @@ export const ORDERS_CASES: readonly WriteToolCase[] = [
         response: { body: { objects: discountedConfirmation } },
       },
       ...derivedReadRoutes(discountedConfirmation),
+      ...counterRoutes("AB", "AB-1004"),
       positionsOf("3003"),
       discountsOf("3003", [
         discountRow("3003"),
@@ -175,6 +196,6 @@ export const ORDERS_CASES: readonly WriteToolCase[] = [
       ]),
       ...positionRoutes(),
     ],
-    writes: [{ method: "POST", path: "/Order/Factory/createContractNoteFromOrder" }],
+    writes: [{ method: "POST", path: "/Order/Factory/createContractNoteFromOrder" }, COUNTER_WRITE],
   },
 ];
