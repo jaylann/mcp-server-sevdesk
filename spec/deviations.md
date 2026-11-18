@@ -4102,23 +4102,46 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   - The order of `GET /Voucher?embed=document` depends on the page size (recorded 2026-11-18, 57
     vouchers): pages of one (`limit=1`, offsets 0 to 4) did not give the rows of one page of 1000
     in the same order, from offset 0 on (the newest voucher came first with `limit=1000`, second
-    with `limit=1`). Whether pages of the same size are stable was not measured.
+    with `limit=1`).
+  - **Paging the voucher list skips and repeats vouchers** (recorded 2026-11-18, probe
+    `read-voucher-paging-order`): over the 56 vouchers (VOU) dated two years before the run to 31
+    days after it, with the filters the checks send (`voucherType=VOU`, `startDate`/`endDate`),
+    one page of 1000 is sorted by `voucherDate` descending, and every voucher shared its
+    `voucherDate` with another. Read again in pages of 5 from offset 0 to the end, the vouchers
+    came in another order: 12 of the 56 never appeared and 12 others appeared twice, with and
+    without `embed=document`. Two passes in pages of 5 gave the same ids in the same order, so the
+    order is fixed for a given page but differs between pages: ties on the date are broken
+    differently per request. `orderByVoucherNumber=ASC` (the order the spec documents for
+    vouchers) changed the order and still lost one voucher and repeated another;
+    `orderBy[0][field]=id` with `orderBy[0][arrangement]=asc` (not in the spec) was ignored (the
+    same order as without it, and the same 12 lost). The client sends no order parameter (only
+    the filters, `limit`, `offset` and `countAll`). Invoices and credit notes were not measured;
+    their lists are sorted by date the same way and are read the same way here (see Impact).
 - **Sources:** spec (`uploadTempFile`, `getVouchers`); recorded 2026-11-16, trial account, Update
   2.0 (probes `write-receipt-hash`, `read-document-hash`); recorded 2026-11-17, trial account,
   Update 2.0 (manual check (lead): `embed=document` on the voucher list and its later pages, two
   receipts made by `createVoucherFromFile`); recorded 2026-11-18, trial account, Update 2.0
   (probes `write-receipt-image-reencode`, `read-document-hash`: the three newest documents again
-  had `contentHash` null).
+  had `contentHash` null; `read-voucher-paging-order`: paging skips and repeats vouchers).
 - **Impact:** The receipt checks of #92 compare SHA-256 checksums with the `contentHash` sevDesk
-  lists with each voucher (`GET /Voucher?embed=document`, one request per 1,000 vouchers, no read
-  by id), not with `GET /Document` (which leaves receipts of drafts out). A null or missing hash
+  lists with each voucher (`GET /Voucher?embed=document`, no read by id), not with
+  `GET /Document` (which leaves receipts of drafts out). A null or missing hash
   means "unknown", never "no match": rendered invoices and receipts made by the recognition have
   none, so a result counts such receipts and words an unmatched file accordingly, and counts a
   list row without the embedded document apart. A file matches a receipt by hash only; the same
   `filesize` and `extension` are a hint, never a match. Since images are not re-encoded, a PNG or
-  JPEG uploaded through the API matches its local file like a PDF does. The checks read the list
-  in pages of 1,000; with more vouchers in the period, a list whose order changes between pages
-  could skip or repeat a voucher (not measured for one page size; #154).
+  JPEG uploaded through the API matches its local file like a PDF does. Because paging skips
+  vouchers, `listDocumentHeaders` (every report and check that lists invoices, credit notes or
+  vouchers by date) never reads past the first page of a query (#154): a period that fits one
+  page of 1,000 is one request as before; a longer one is halved by date, each half counted with
+  `limit=1`, until every window fits one page, and each window is read as a single page (at most
+  3 requests per split plus 2, bounded by the row cap; see `src/domain/reports/date-windows.ts`).
+  Only a single day with more than 1,000 documents of one kind is read page by page; the result
+  then names the day in a note, says its documents may be missing and counts as incomplete
+  (`coverage.truncated` of the reports and audit checks; the receipt folder check adds the note).
+  Every listing also keeps a document once by id, as a guard. Invoices and credit notes get the
+  same windows without a measurement of their own: they are sorted by date too, and the cost is
+  nil while a period fits one page.
 - **Test:** `test/unit/scripts/gaps-banking-probes.test.ts` ("compares receipt hashes without
   showing them": SHA-256 match, new token per upload, Document gone with the draft, null hashes
   of rendered documents); `test/unit/domain/voucher-receipt-hash.test.ts` (the embedded
@@ -4131,13 +4154,22 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   one list read with `embed=document`, a refusal naming the voucher, `allowDuplicate`, a receipt
   with `contentHash` null never matched but counted, a row without the embedded document, partial
   and failed reads); `test/regressions/recognition-same-file.test.ts` (the refusal before the
-  upload, and the same file recognised before not found). Handling: done,
+  upload, and the same file recognised before not found);
+  `test/unit/domain/reports/date-windows.test.ts` (windows of one page each, a busy day read page
+  by page and named, the cap, a list without a count);
+  `test/regressions/voucher-list-paging.test.ts` (a list whose order depends on the page: offset
+  paging loses vouchers, the listing the checks use sees 2,430 vouchers exactly once, a busy day
+  makes the checks say so). Handling: done,
   `sevdesk_receipt_folder_check` and the `duplicates` check of `sevdesk_records_audit` (#92), and
   the checksum check of `sevdesk_voucher_recognize_receipt` before its upload (#127, see D-103).
   Live: probes `write-receipt-hash`, `read-document-hash`, and `write-receipt-image-reencode`
   (whether a PNG and a JPEG come back as uploaded, and `embed=document` paged by one; #136,
   `test/unit/scripts/gaps-banking-probes.test.ts`; observed 2026-11-18: not re-encoded, pages of
-  one in another order).
+  one in another order), `read-voucher-paging-order` and `write-voucher-paging-seed` (whether
+  pages of five skip or repeat vouchers against one page of 1000, with the checks' date filter,
+  with and without `embed=document`; #154, `test/unit/scripts/gaps-documents-probes.test.ts`,
+  "voucher list paging probes (#154)"; observed 2026-11-18 with the read probe: 12 of 56 lost and
+  12 repeated, the seed probe was not needed).
 
 ### D-101: The ZIP exports answer files only with `download=true` and change no document
 

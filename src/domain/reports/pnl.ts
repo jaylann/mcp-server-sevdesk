@@ -74,6 +74,7 @@ import {
   headerKey,
   listDocumentHeaders,
   MAX_SCAN_DOCUMENTS,
+  pagedRangesNote,
   type PaidDocuments,
   type PaymentsInPeriod,
   percentOf,
@@ -359,6 +360,8 @@ export async function profitAndLoss(
   let listTruncated: boolean;
   let headers: DocumentHeader[];
   let paid: PaidDocuments | undefined;
+  // Accrual only: on the cash basis a paid document the listing missed is read by id.
+  let pagedNote: string | undefined;
 
   if (basis === "accrual") {
     const listed = await listDocumentHeaders(
@@ -369,6 +372,7 @@ export async function profitAndLoss(
     Object.assign(excluded, listed.excluded);
     rowsRead = listed.rowsRead;
     listTruncated = listed.truncated;
+    pagedNote = pagedRangesNote(listed);
     headers = [...listed.headers];
   } else {
     // Checked above; narrowed for the compiler.
@@ -421,7 +425,7 @@ export async function profitAndLoss(
     chartOfAccounts: params.chartOfAccounts,
   });
   const totals = aggregate(contributions, params.accounts, importVatAccounts);
-  // Three ways of not having read everything; each makes the report truncated.
+  // Ways of not having read everything; each makes the report truncated.
   const timedOut = scan.timedOut || paid?.timedOut === true;
   const capped =
     listTruncated ||
@@ -432,11 +436,13 @@ export async function profitAndLoss(
   const incomplete = scan.documents.filter((doc) => !doc.positionsComplete);
   // A tag with more uses than were read: its documents beyond them are not known here.
   const tagCut = filter.tag !== undefined && !filter.tag.complete;
-  const truncated = capped || timedOut || incomplete.length > 0 || tagCut;
+  const truncated =
+    capped || timedOut || incomplete.length > 0 || tagCut || pagedNote !== undefined;
   notes.push(...totals.notes);
   if (capped) {
     notes.push("Reading stopped at a cap: the figures are incomplete. Use a shorter period.");
   }
+  if (pagedNote !== undefined) notes.push(pagedNote);
   notes.push(...filterNotes(filter, tagCut));
   const breakdown =
     params.groupBy === undefined

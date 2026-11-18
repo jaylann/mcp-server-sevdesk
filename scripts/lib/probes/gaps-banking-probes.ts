@@ -1503,7 +1503,10 @@ async function receiptImages(ctx: ProbeContext, own: number[]): Promise<ProbeOut
 }
 
 /** Deletes the draft vouchers of `own`; their Documents go with them (D-100). */
-async function deleteDraftVouchers(ctx: ProbeContext, own: readonly number[]): Promise<string[]> {
+export async function deleteDraftVouchers(
+  ctx: ProbeContext,
+  own: readonly number[],
+): Promise<string[]> {
   const notes: string[] = [];
   for (const id of own) {
     const row = await ctx.read.byId("Voucher", id);

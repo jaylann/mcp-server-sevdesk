@@ -46,15 +46,15 @@
  * issued twice is corrected with a cancellation invoice (which a pair rule would have to match
  * up), and an invoice created twice through this server is already warned about when the draft is
  * created. Their drafts are checked for being stuck, since an unsent invoice is revenue not billed.
- * To find them, every invoice and credit note dated in the period is listed (one request per
- * 1,000) and the drafts are picked out here: `GET /Invoice` and `GET /CreditNote` declare a
- * `status` filter, but no recording shows that `status=100` returns only drafts, so it is not
- * sent.
+ * To find them, every invoice and credit note dated in the period is listed (date windows of at
+ * most 1,000 per request) and the drafts are picked out here: `GET /Invoice` and
+ * `GET /CreditNote` declare a `status` filter, but no recording shows that `status=100` returns
+ * only drafts, so it is not sent.
  */
 import { berlinDateOf } from "../../../sevdesk/dates.js";
 import { sameGross } from "../../drafts/duplicates.js";
 import { compare, isZero, negate } from "../../money.js";
-import { type DocumentHeader, listDocumentHeaders } from "../positions-scan.js";
+import { type DocumentHeader, listDocumentHeaders, pagedRangesNote } from "../positions-scan.js";
 import { daysBetween, plural, shiftDays } from "../shared.js";
 import {
   type AuditCheckContext,
@@ -454,7 +454,10 @@ async function runDuplicatesCheck(context: AuditCheckContext): Promise<AuditChec
 
   const inScope =
     all.filter((header) => inPeriod(context, header.date)).length + sales.drafts.length;
-  const truncated = vouchers.listed.truncated || sales.truncated;
+  const pagedNote = pagedRangesNote({
+    pagedRanges: [...vouchers.listed.pagedRanges, ...sales.pagedRanges],
+  });
+  const truncated = vouchers.listed.truncated || sales.truncated || pagedNote !== undefined;
   const notes: string[] = [
     `Vouchers are compared per supplier and direction: the same document number (with a digit) ` +
       `at most ${String(NUMBER_WINDOW_DAYS)} days apart, or the same gross amount at most ` +
@@ -511,12 +514,13 @@ async function runDuplicatesCheck(context: AuditCheckContext): Promise<AuditChec
         "supplier name) could be compared only in pairs with a draft, by number and gross amount.",
     );
   }
-  if (truncated) {
+  if (vouchers.listed.truncated || sales.truncated) {
     notes.push(
       "The scan was cut: listing documents stopped at the cap, so duplicates and drafts may be " +
         "missing. Use a shorter period.",
     );
   }
+  if (pagedNote !== undefined) notes.push(pagedNote);
 
   return {
     drafts,

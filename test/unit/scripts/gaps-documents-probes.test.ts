@@ -3,13 +3,17 @@ import { describe, expect, it } from "vitest";
 import { ALL_PROBES } from "../../../scripts/lib/probes/catalog.js";
 import {
   allowanceFacts,
+  comparePaging,
   GAPS_DOCUMENTS_PROBES,
   givenBack,
   numberStep,
+  PAGING_SEED_COUNT,
+  pagingText,
 } from "../../../scripts/lib/probes/gaps-documents-probes.js";
 import { renderReport } from "../../../scripts/lib/probes/report.js";
 import { type RunOptions, runProbes } from "../../../scripts/lib/probes/runner.js";
 import { assertNoSecrets, createScrubber } from "../../../scripts/lib/scrub.js";
+import { documentDateFilter } from "../../../src/domain/common.js";
 import { SevdeskError } from "../../../src/sevdesk/errors.js";
 import { type ScriptedCall, ScriptedClient } from "./scripted-client.js";
 
@@ -1620,5 +1624,254 @@ describe("gaps-documents probes for the open discount and template questions (#1
     expect(allowanceFacts("<rsm:CrossIndustryInvoice/>")).toBe(
       "0 allowance/charge element(s); AllowanceTotalAmount absent, TaxBasisTotalAmount absent",
     );
+  });
+});
+
+describe("voucher list paging probes (#154)", () => {
+  /**
+   * How the simulated `GET /Voucher` orders its rows (synthetic; the order is what the probes
+   * measure). Every mode lists newest id first for one page of 1000.
+   * - `stable`: every page size gives that order.
+   * - `byPageSize`: pages smaller than 1000 swap the first two rows (as recorded for `limit=1`,
+   *   D-100), the same on every read: every row once, in another order.
+   * - `skips`: pages from offset 5 on swap the rows at positions 4 and 5, so the paged read gets
+   *   one row twice and never the other.
+   */
+  type PagingMode = "stable" | "byPageSize" | "skips";
+
+  const swap = (ids: string[], a: number, b: number): void => {
+    const first = ids[a];
+    const second = ids[b];
+    if (first === undefined || second === undefined) return;
+    ids[a] = second;
+    ids[b] = first;
+  };
+
+  function voucherAccount(
+    count: number,
+    settings: {
+      readonly mode?: PagingMode;
+      readonly refuseSaveAt?: number;
+      readonly refuseList?: boolean;
+    } = {},
+  ) {
+    let nextId = 1000;
+    let saves = 0;
+    const vouchers = new Map<string, Rec>();
+    const add = (date: string, status: string): string => {
+      const id = String(nextId++);
+      vouchers.set(id, {
+        id,
+        objectName: "Voucher",
+        voucherType: "VOU",
+        status,
+        voucherDate: date,
+        create: date,
+        // The seeded drafts carry no receipt.
+        document: status === "50" ? null : ref("Document", 9000 + Number(id)),
+      });
+      return id;
+    };
+    for (let index = 0; index < count; index += 1) {
+      add(`2026-11-${String(1 + (index % 15)).padStart(2, "0")}T00:00:00+01:00`, "100");
+    }
+    const ordered = (query: Readonly<Record<string, unknown>>): string[] => {
+      const ids = [...vouchers.keys()].sort((a, b) => Number(b) - Number(a));
+      if (query["orderBy[0][field]"] === "id") return ids.reverse();
+      if (Number(query["limit"]) >= 1000) return ids;
+      if (settings.mode === "byPageSize") swap(ids, 0, 1);
+      if (settings.mode === "skips" && Number(query["offset"]) >= 5) swap(ids, 4, 5);
+      return ids;
+    };
+    const handler = (call: ScriptedCall): unknown => {
+      const { method, path, query } = call;
+      if (path === "/Tools/bookkeepingSystemVersion") return { objects: { version: "2.0" } };
+      if (path === "/ReceiptGuidance/forAllAccounts") {
+        return {
+          objects: [
+            {
+              accountDatevId: 4266,
+              accountNumber: "6815",
+              allowedTaxRules: [{ id: 9, taxRates: ["NINETEEN"] }],
+              allowedReceiptTypes: ["EXPENSE"],
+            },
+          ],
+        };
+      }
+      if (path === "/Voucher/Factory/saveVoucher") {
+        saves += 1;
+        if (saves === settings.refuseSaveAt) refuse(422, "Refused by the simulated account");
+        const id = add("2026-11-20T00:00:00+01:00", "50");
+        return { objects: { voucher: ref("Voucher", id), voucherPos: [] } };
+      }
+      const byId = /^\/Voucher\/(\d+)$/.exec(path);
+      if (byId !== null) {
+        const record = vouchers.get(byId[1] ?? "");
+        if (record === undefined) return refuse(404, "not found");
+        if (method === "DELETE") {
+          vouchers.delete(byId[1] ?? "");
+          return { objects: [null] };
+        }
+        return { objects: [record] };
+      }
+      if (/^\/Document\/\d+$/.test(path)) return refuse(404, "not found");
+      if (path === "/Voucher") {
+        if (settings.refuseList === true) refuse(500, "Internal error");
+        const offset = Number(query["offset"]);
+        const rows = ordered(query)
+          .map((id) => vouchers.get(id) ?? {})
+          .map((row) =>
+            query["embed"] === "document" && row["document"] !== null
+              ? { ...row, document: { ...(row["document"] as Rec), contentHash: null } }
+              : row,
+          );
+        return {
+          total: String(rows.length),
+          objects: rows.slice(offset, offset + Number(query["limit"])),
+        };
+      }
+      if (method !== "GET") refuse(422, "not simulated");
+      return { total: "0", objects: [] };
+    };
+    return { client: new ScriptedClient(handler), vouchers };
+  }
+
+  const listCalls = (client: ScriptedClient) =>
+    client.calls.filter((call) => call.method === "GET" && call.path === "/Voucher");
+
+  it("compares ids by position and as sets", () => {
+    expect(comparePaging(["3", "2", "1"], ["3", "2", "1"])).toMatchObject({
+      identical: true,
+      sameRows: true,
+      firstDifference: -1,
+    });
+    const reordered = comparePaging(["3", "2", "1"], ["2", "3", "1"]);
+    expect(reordered).toMatchObject({ identical: false, sameRows: true, firstDifference: 0 });
+    expect(pagingText(reordered)).toBe(
+      "every row of the one page exactly once, but in another order (from position 1 on)",
+    );
+    const broken = comparePaging(["3", "2", "1"], ["3", "3", "1", "9"]);
+    expect(broken).toMatchObject({ sameRows: false, missing: 1, repeated: 1, extra: 1 });
+    expect(pagingText(broken)).toBe(
+      "NOT the rows of the one page: 1 missing, 1 repeated, 1 not on the one page",
+    );
+    // A paged read that stops early is not the one page either.
+    expect(comparePaging(["2", "1"], ["2"])).toMatchObject({
+      identical: false,
+      missing: 1,
+      firstDifference: 1,
+    });
+  });
+
+  it("sends the checks' filters with an explicit limit and says plainly when paging is stable", async () => {
+    const { client } = voucherAccount(30);
+    const { report, finding } = await run(client, {
+      allowWrites: false,
+      only: ["read-voucher-paging-order"],
+    });
+    expect(report.results[0]?.status).toBe("observed");
+    expect(client.writes()).toEqual([]);
+    const text = finding("read-voucher-paging-order");
+    expect(text).toMatch(
+      /^Answer: pages of 5 gave the same vouchers in the same order as one page of 1000, in both passes, with and without embed=document; paging was stable here\. /,
+    );
+    expect(text).toContain("dated 2024-11-20 to 2026-12-21");
+    expect(text).toContain(
+      "Without embed: one page (limit 1000) 30 rows, id descending, voucherDate mixed",
+    );
+    expect(text).toContain("30 rows share their voucherDate with another");
+    expect(text).toContain(
+      "first pass 30 rows, the same rows in the same order as the one page; second pass 30 rows, the same rows in the same order as the one page; the two passes gave the same ids in the same order",
+    );
+    expect(text).toContain(
+      "orderByVoucherNumber=ASC (documented in the spec): one page 30 rows, id descending",
+    );
+    expect(text).toContain("the same order as without it (ignored?)");
+    expect(text).toMatch(
+      /orderBy\[0\]\[field\]=id.*: one page 30 rows, id ascending.*another order/,
+    );
+    // The filters listDocumentHeaders sends, and an explicit limit on every read.
+    const dates = documentDateFilter({ from: "2024-11-20", to: "2026-12-21" }).query;
+    const calls = listCalls(client);
+    for (const call of calls) {
+      expect(call.query).toMatchObject({ voucherType: "VOU", ...dates, countAll: true });
+      expect([5, 1000]).toContain(call.query["limit"]);
+    }
+    // Per variant one page and two passes of 7 pages (the 7th is short); one pass per order.
+    expect(calls.filter((call) => call.query["embed"] === undefined)).toHaveLength(15);
+    expect(calls.filter((call) => call.query["embed"] === "document")).toHaveLength(15 + 16);
+  });
+
+  it("tells a page-size order that keeps every row from paging that skips one", async () => {
+    const reordered = await run(voucherAccount(30, { mode: "byPageSize" }).client, {
+      allowWrites: false,
+      only: ["read-voucher-paging-order"],
+    });
+    expect(reordered.finding("read-voucher-paging-order")).toMatch(
+      /^Answer: pages of 5 gave every voucher exactly once, but not in the order of one page of 1000; no voucher was skipped or repeated here\. .*first pass 30 rows, every row of the one page exactly once, but in another order \(from position 1 on\)/,
+    );
+    const skips = await run(voucherAccount(30, { mode: "skips" }).client, {
+      allowWrites: false,
+      only: ["read-voucher-paging-order"],
+    });
+    expect(skips.report.results[0]?.status).toBe("observed");
+    expect(skips.finding("read-voucher-paging-order")).toMatch(
+      /^Answer: paging is NOT stable: pages of 5 skipped or repeated vouchers against one page of 1000, so a check that reads the list in pages can miss a voucher\. .*first pass 30 rows, NOT the rows of the one page: 1 missing, 1 repeated, 0 not on the one page/,
+    );
+  });
+
+  it("is inconclusive with too few vouchers or a refused list, and names the seed probe", async () => {
+    const few = voucherAccount(12);
+    const small = await run(few.client, {
+      allowWrites: false,
+      only: ["read-voucher-paging-order"],
+    });
+    expect(small.report.results[0]?.status).toBe("inconclusive");
+    expect(small.finding("read-voucher-paging-order")).toBe(
+      "12 vouchers (VOU) dated 2024-11-20 to 2026-12-21; the comparison needs at least 20. Run write-voucher-paging-seed: it creates 25 tagged draft vouchers, compares the same reads and deletes them again.",
+    );
+    expect(listCalls(few.client)).toHaveLength(1);
+    const refused = await run(voucherAccount(30, { refuseList: true }).client, {
+      allowWrites: false,
+      only: ["read-voucher-paging-order"],
+    });
+    expect(refused.report.results[0]?.status).toBe("inconclusive");
+    expect(refused.finding("read-voucher-paging-order")).toMatch(
+      /^No answer: a read was refused or stopped \(see below\)\. .*Without embed: one page \(limit 1000\) refused \(500: Internal error\)/,
+    );
+  });
+
+  it(`seeds ${PAGING_SEED_COUNT} tagged drafts, compares the same reads and deletes them all`, async () => {
+    const { client, vouchers } = voucherAccount(0, { mode: "skips" });
+    const { report, finding } = await run(client, { only: ["write-voucher-paging-seed"] });
+    expect(report.results[0]?.status).toBe("observed");
+    expect(finding("write-voucher-paging-seed")).toMatch(
+      /^Answer: paging is NOT stable: .*The probe created 25 tagged draft vouchers dated 2026-11-20\. Vouchers \(voucherType=VOU\) dated 2026-11-20, .*25 rows share their voucherDate with another/,
+    );
+    const saves = client.writes().filter((call) => call.path === "/Voucher/Factory/saveVoucher");
+    expect(saves).toHaveLength(PAGING_SEED_COUNT);
+    for (const call of saves) {
+      expect(call.tier).toBe("write");
+      expect((call.body as Rec)["voucher"]).toMatchObject({
+        status: 50,
+        description: expect.stringMatching(new RegExp(`^${TAG} Seite \\d\\d$`)) as unknown,
+      });
+    }
+    const dates = documentDateFilter({ from: "2026-11-20", to: "2026-11-20" }).query;
+    for (const call of listCalls(client)) expect(call.query).toMatchObject(dates);
+    expect(vouchers.size).toBe(0);
+    expect(report.created).toHaveLength(PAGING_SEED_COUNT);
+    expect(report.created.every((record) => record.state === "deleted by the probe")).toBe(true);
+  });
+
+  it("deletes the drafts it made when sevDesk refuses a later one", async () => {
+    const { client, vouchers } = voucherAccount(0, { refuseSaveAt: 3 });
+    const { report, finding } = await run(client, { only: ["write-voucher-paging-seed"] });
+    expect(report.results[0]?.status).toBe("inconclusive");
+    expect(finding("write-voucher-paging-seed")).toMatch(
+      /^Draft voucher 3 of 25: saveVoucher refused \(422: Refused by the simulated account\)\. Cleanup: voucher \d+ deleted; voucher \d+ deleted\.$/,
+    );
+    expect(vouchers.size).toBe(0);
+    expect(listCalls(client)).toEqual([]);
   });
 });

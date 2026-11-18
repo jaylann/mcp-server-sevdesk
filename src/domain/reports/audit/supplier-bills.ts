@@ -1,8 +1,9 @@
 /**
  * The vouchers (Belege) the `duplicates` and `recurring_gaps` checks read, and who sent them.
  *
- * Both checks work on voucher headers alone (`GET /Voucher` with `voucherType=VOU`, one request
- * per 1,000 rows, see `listDocumentHeaders`), drafts included, and read no positions. sevDesk's
+ * Both checks work on voucher headers alone (`GET /Voucher` with `voucherType=VOU`, read in date
+ * windows of at most 1,000 rows each, see `listDocumentHeaders`), drafts included, and read no
+ * positions. sevDesk's
  * recurring vouchers (type RV) are templates, not bills: the listing leaves them out and counts
  * them in `excluded.recurringTemplates`.
  *

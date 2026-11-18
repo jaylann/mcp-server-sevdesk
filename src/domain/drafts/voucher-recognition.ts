@@ -300,8 +300,10 @@ export const SAME_FILE_DAYS_BACK = 183;
 export const SAME_FILE_DAYS_AHEAD = 31;
 
 /**
- * Rows the check reads: one request of sevDesk's largest page, every row with its receipt
- * embedded (`embed=document`, D-100). Half a year of a small business's vouchers rarely comes near
+ * Rows the check reads, every row with its receipt embedded (`embed=document`, D-100): one
+ * request of sevDesk's largest page. A range with more vouchers keeps that page, sevDesk's newest
+ * dates first, rather than splitting it into date windows (`scanDateWindows`, #154: a cap of one
+ * page reads no more rows that way). Half a year of a small business's vouchers rarely comes near
  * it; past it the result says the check was partial instead of reading as "not found".
  */
 export const SAME_FILE_SCAN_LIMIT = 1_000;
@@ -347,7 +349,7 @@ export type SameFileScan =
 /**
  * Looks for vouchers whose receipt is the very same file: `sha256` (lower-case hex) against the
  * `contentHash` sevDesk lists with each receipt (`GET /Voucher?embed=document`, D-100; drafts
- * included, one request of at most {@link SAME_FILE_SCAN_LIMIT} rows, Belegdatum from
+ * included, at most {@link SAME_FILE_SCAN_LIMIT} rows, Belegdatum from
  * {@link SAME_FILE_DAYS_BACK} days before `today` to {@link SAME_FILE_DAYS_AHEAD} days after it).
  * Only equal checksums match; a receipt without one (rendered files, receipts made by
  * `createVoucherFromFile`) is counted, never matched. A failed read is the outcome `failed`, not
@@ -389,6 +391,8 @@ async function scanSameFile(
     .sort((a, b) => (a.date ?? "").localeCompare(b.date ?? "") || a.id - b.id)
     .map(sameFileVoucher);
   return {
+    // With a cap of one page no window is ever read page by page (`pagedRanges` stays empty):
+    // a day with more vouchers than the cap leaves the scan truncated, so partial covers it.
     outcome: listed.truncated ? "partial" : "complete",
     from,
     to,

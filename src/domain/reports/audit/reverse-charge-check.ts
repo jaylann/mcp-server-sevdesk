@@ -34,6 +34,7 @@ import { add, type Decimal, decimal } from "../../money.js";
 import {
   type DocumentHeader,
   listDocumentHeaders,
+  pagedRangesNote,
   percentOf,
   scanPositions,
 } from "../positions-scan.js";
@@ -340,6 +341,8 @@ async function runReverseChargeCheck(
       "Listing documents stopped at a cap: the sums are incomplete. Use a shorter period.",
     );
   }
+  const pagedNote = pagedRangesNote(listed);
+  if (pagedNote !== undefined) notes.push(pagedNote);
   notes.push(
     ...scanNotes({
       notRead: scan.notRead,
@@ -362,7 +365,7 @@ async function runReverseChargeCheck(
       documentsInScope: selected.length,
       documentsChecked: scan.documents.length,
       documentsLeftOut: leftOut,
-      truncated: listed.truncated || scan.notRead > 0 || incomplete > 0,
+      truncated: listed.truncated || pagedNote !== undefined || scan.notRead > 0 || incomplete > 0,
       ...(scan.timedOut ? { timeBudgetReached: true } : {}),
       excluded: excludedOf(listed.excluded),
     },

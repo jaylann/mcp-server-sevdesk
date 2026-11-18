@@ -63,6 +63,7 @@ import {
   listDocumentHeaders,
   loadContactVatIds,
   MAX_SCAN_DOCUMENTS,
+  pagedRangesNote,
   type PaidDocuments,
   type PaymentsInPeriod,
   percentOf,
@@ -599,7 +600,7 @@ export async function vatSummary(
     }),
     options.signal,
   );
-  // Three ways of not having read everything; each makes the report truncated (no Kz 83).
+  // Four ways of not having read everything; each makes the report truncated (no Kz 83).
   const timedOut = scan.timedOut || paid?.timedOut === true;
   const capped =
     listed.truncated ||
@@ -609,7 +610,9 @@ export async function vatSummary(
   // read: its amounts may sit in the wrong lines, so the lines are not complete either (review
   // 2026-11, round 3).
   const incomplete = scan.documents.filter((doc) => !doc.positionsComplete);
-  const truncated = capped || timedOut || incomplete.length > 0;
+  // A day with more documents than one page was read page by page and may miss some (D-100).
+  const pagedNote = pagedRangesNote(listed);
+  const truncated = capped || timedOut || incomplete.length > 0 || pagedNote !== undefined;
   // A Kleinunternehmer files no UStVA unless the period has amounts one has to declare (an earlier
   // regular period, § 13b tax owed as recipient): the regime is today's, the period may be older.
   const declarable = aggregate.boxes.filter((box) => box.kz !== "48").map((box) => `Kz ${box.kz}`);
@@ -641,6 +644,7 @@ export async function vatSummary(
       basisDefaulted: params.basis === undefined,
     }),
   );
+  if (pagedNote !== undefined) notes.push(pagedNote);
 
   return {
     ...base,

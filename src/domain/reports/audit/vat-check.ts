@@ -37,6 +37,7 @@ import { importVatAccountIds, isImportVat } from "../import-vat.js";
 import {
   type DocumentHeader,
   listDocumentHeaders,
+  pagedRangesNote,
   type PositionGroup,
   scanPositions,
 } from "../positions-scan.js";
@@ -636,8 +637,10 @@ async function runVatCheck(context: AuditCheckContext): Promise<AuditCheckResult
   const incomplete = scan?.documents.filter((document) => !document.positionsComplete).length ?? 0;
   const contacts = directory?.coverage;
   const leftOut = missingAmounts + notRead;
+  const pagedNote = pagedRangesNote(listed);
   const truncated =
     listed.truncated ||
+    pagedNote !== undefined ||
     (scan !== undefined && scan.notRead > 0) ||
     incomplete > 0 ||
     contacts?.truncated === true;
@@ -694,6 +697,7 @@ async function runVatCheck(context: AuditCheckContext): Promise<AuditCheckResult
         "period.",
     );
   }
+  if (pagedNote !== undefined) notes.push(pagedNote);
   notes.push(
     ...scanNotes({
       notRead: scan?.notRead ?? 0,

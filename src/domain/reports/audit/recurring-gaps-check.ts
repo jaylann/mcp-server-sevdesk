@@ -5,8 +5,9 @@
  *
  * What it reads: the expense vouchers (booked and drafts, `supplier-bills.ts`) dated from
  * {@link LOOKBACK_MONTHS} months before the period to {@link LOOKAHEAD_MONTHS} months after it, but
- * not after today. One list request per 1,000 vouchers, no positions. When the listing is cut by
- * its row cap no gap is reported at all, since a voucher not read would look like a gap.
+ * not after today. Date windows of at most 1,000 vouchers per list request, no positions. When
+ * the listing is cut by its row cap, or a day had to be read page by page (D-100), no gap is
+ * reported at all, since a voucher not read would look like a gap.
  *
  * The rhythm comes from the vouchers themselves, per supplier ({@link findGaps}); amounts are not
  * compared, so a price change does not matter. It is learned anew for each month of the period,
@@ -39,7 +40,7 @@
  * (`supplierKeysJoiningNames`), so one bill booked without the contact leaves no gap.
  */
 import { berlinDateOf } from "../../../sevdesk/dates.js";
-import type { DocumentHeader } from "../positions-scan.js";
+import { type DocumentHeader, pagedRangesNote } from "../positions-scan.js";
 import { monthOf, plural, shiftDays } from "../shared.js";
 import type { ReportPeriod } from "../vat.js";
 import {
@@ -369,7 +370,9 @@ async function runRecurringGapsCheck(context: AuditCheckContext): Promise<AuditC
     bySupplier.set(key, [...(bySupplier.get(key) ?? []), header]);
   }
 
-  const truncated = rows.listed.truncated;
+  // A day read page by page may miss vouchers (D-100): like a cut listing, it reports no gaps.
+  const pagedNote = pagedRangesNote(rows.listed);
+  const truncated = rows.listed.truncated || pagedNote !== undefined;
   const drafts: FindingDraft[] = [];
   const rhythms = new Map<GapCode, number>();
   for (const bills of bySupplier.values()) {
@@ -421,7 +424,12 @@ async function runRecurringGapsCheck(context: AuditCheckContext): Promise<AuditC
         "name) could not be checked.",
     );
   }
-  if (truncated) {
+  if (pagedNote !== undefined) {
+    notes.push(
+      `${pagedNote} A voucher not read would look like a missing bill, so no gaps are reported.`,
+    );
+  }
+  if (rows.listed.truncated) {
     notes.push(
       `The scan was cut: listing vouchers stopped at its cap of ` +
         `${rows.listed.rowsRead.toLocaleString("en-US")} rows, and a voucher not read would look ` +
