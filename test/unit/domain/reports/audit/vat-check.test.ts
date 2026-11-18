@@ -533,7 +533,8 @@ describe("check vat: incomplete reads", () => {
     expect(idsOf(result, "intra_eu_supply_without_eu_vat_id")).toEqual([3]);
     expect(result.coverage.notJudged).toBe(2);
     expect(result.notes.join(" ")).toContain(
-      "The address list stopped at its cap: any contact may have further addresses",
+      "The address list stopped at its cap or had to be read page by page: any contact may have " +
+        "further addresses",
     );
   });
 

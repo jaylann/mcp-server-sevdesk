@@ -76,10 +76,18 @@ export interface ListAllOptions {
 }
 
 export interface CollectedList<T = unknown> {
+  /** The rows read, each row with an `id` once (the first time it came). */
   readonly items: readonly T[];
   readonly total: number | undefined;
   /** True when `max` stopped paging before the end. */
   readonly truncated: boolean;
+  /**
+   * True when rows came from more than one page. sevDesk breaks ties of a list's sort key
+   * differently for each page size and offset, so a list read in pages can skip a row and give
+   * another twice (spec/deviations.md D-146): the repeats are dropped, the skipped rows are not
+   * known. Callers treat such a read as possibly incomplete.
+   */
+  readonly paged: boolean;
 }
 
 export interface SevdeskClient {

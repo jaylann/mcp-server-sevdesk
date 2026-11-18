@@ -11,7 +11,9 @@ import {
 import { formatBerlinInstant, instantOf, parseSince } from "../../../src/domain/reports/changes.js";
 import {
   daysBetween,
+  incompleteSuffix,
   monthOf,
+  pagedReadNote,
   plural,
   quarterOf,
   type ScanPage,
@@ -105,6 +107,46 @@ describe("scanPages", () => {
     expect(() => {
       throwIfAborted(undefined);
     }).not.toThrow();
+  });
+
+  it("says when it read more than one page, and keeps an item once by id (D-146)", async () => {
+    const one = await scanPages(source(900), { max: 10_000, noun: "rows" });
+    expect(one).toMatchObject({ paged: false, repeated: 0 });
+    // The second page starts with the last row of the first again, as a tie broken per page can.
+    const fetch = vi.fn((offset: number): Promise<ScanPage<number>> => {
+      const items = offset === 0 ? [1, 2, 3] : offset === 3 ? [3, 4] : [];
+      return Promise.resolve({
+        items,
+        received: items.length,
+        total: 5,
+        hasMore: offset === 0,
+        nextOffset: offset + items.length,
+      });
+    });
+    const paged = await scanPages(fetch, { max: 10_000, noun: "rows" }, (item) => item);
+    expect(paged).toMatchObject({ items: [1, 2, 3, 4], scanned: 5, paged: true, repeated: 1 });
+    // Without idOf every item is kept.
+    const kept = await scanPages(fetch, { max: 10_000, noun: "rows" });
+    expect(kept.items).toEqual([1, 2, 3, 3, 4]);
+  });
+});
+
+describe("incompleteSuffix", () => {
+  it("names the reason a tax report is incomplete", () => {
+    const base = { truncated: true, positionsIncomplete: 0 };
+    expect(incompleteSuffix({ ...base, truncated: false })).toBe("");
+    expect(incompleteSuffix(base)).toBe(" Incomplete: a cap stopped reading.");
+    expect(incompleteSuffix({ ...base, pagedRead: true })).toBe(
+      " Incomplete: a day's documents had to be read page by page, so some may be missing (see the notes).",
+    );
+    expect(incompleteSuffix({ ...base, timeBudgetReached: true, pagedRead: true })).toBe(
+      " Incomplete: the time budget stopped reading; use a shorter period.",
+    );
+    expect(pagedReadNote("open invoices")).toBe(
+      "sevDesk lists more than 1,000 open invoices, so they were read page by page; sevDesk's " +
+        "order is not stable between pages, so some may be missing here (each one read is " +
+        "counted once). A date range of fewer rows avoids this.",
+    );
   });
 });
 

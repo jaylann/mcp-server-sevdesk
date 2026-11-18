@@ -171,7 +171,7 @@ class ScriptedAccount implements SevdeskClient {
   ): Promise<CollectedList> {
     const items = this.rows(path, query ?? {});
     if (items === undefined) return this.fixed.listAll(path, query, options);
-    return Promise.resolve({ items, total: items.length, truncated: false });
+    return Promise.resolve({ items, total: items.length, truncated: false, paged: false });
   }
 
   download(): Promise<{ body: Uint8Array; contentType: string | undefined }> {

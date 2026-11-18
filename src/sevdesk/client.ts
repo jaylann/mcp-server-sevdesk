@@ -21,7 +21,7 @@
  */
 import type { Config } from "../config.js";
 import { isWriteTier, tierCovers, type WriteTier } from "../safety/tiers.js";
-import { type Envelope, expectArray, parseTotal, readEnvelope } from "./envelope.js";
+import { collectRows, type Envelope, expectArray, parseTotal, readEnvelope } from "./envelope.js";
 import {
   type ErrorContext,
   errorFromResponse,
@@ -530,24 +530,26 @@ export function createSevdeskClient(
       );
     }
 
-    const items: unknown[] = [];
+    const rows = collectRows();
+    const { items } = rows;
     let total: number | undefined;
     // A short page is not proof of the end (sevDesk can return fewer rows than asked for), so
     // paging stops only at an empty page. One row beyond `max` is requested to detect truncation.
+    // Offsets count every row sevDesk sent; a row it sent twice is kept once (D-146).
     for (;;) {
-      const limit = Math.min(pageSize, max - items.length + 1);
+      const limit = Math.min(pageSize, max - rows.received() + 1);
       const page = await list(path, query, {
         limit,
-        offset: items.length,
+        offset: rows.received(),
         ...(options.signal === undefined ? {} : { signal: options.signal }),
       });
       total = page.total ?? total;
-      if (page.items.length === 0) return { items, total, truncated: false };
-      items.push(...page.items);
-      if (items.length > max) {
-        items.length = max;
+      if (page.items.length === 0) return { items, total, truncated: false, paged: rows.paged() };
+      rows.add(page.items);
+      if (rows.received() > max) {
+        if (items.length > max) items.length = max;
         options.onProgress?.(items.length, total);
-        return { items, total, truncated: true };
+        return { items, total, truncated: true, paged: rows.paged() };
       }
       options.onProgress?.(items.length, total);
     }

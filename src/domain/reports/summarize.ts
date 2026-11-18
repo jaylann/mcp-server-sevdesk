@@ -69,11 +69,13 @@ import {
   tagNamesCutNote,
 } from "../tags.js";
 import { listVouchers, VOUCHER_KINDS, VOUCHER_STATUS_KEYS, type VoucherKind } from "../vouchers.js";
+import { scanDateWindows } from "./date-windows.js";
 import {
   coverageOutputShape,
   filterLimits,
   invalidReportRequest,
   monthOf,
+  pagedReadNote,
   plural,
   quarterOf,
   REPORT_SCAN_MAX,
@@ -388,13 +390,7 @@ export async function summarizeRecords(
   // Filters first: an unknown or ambiguous tag or cost centre is refused before any list read.
   const filters = await resolveFilters(client, params, signal);
   const context = await groupingContext(client, params.groupBy, signal);
-  const fetchPage = pageFetcher(client, params, filters, signal);
-  const scan = await scanPages(fetchPage, {
-    max: params.maxRecords ?? REPORT_SCAN_MAX,
-    noun: subject.noun,
-    signal,
-    onProgress: options.onProgress,
-  });
+  const scan = await readRecords(client, params, filters, options);
   const counted = scan.items.filter((record) => record.template === undefined);
   const templates = scan.items.filter((record) => record.template !== undefined);
 
@@ -428,7 +424,10 @@ export async function summarizeRecords(
   const breakdown = isDocumentGrouping(params.groupBy)
     ? {
         groupsOverlap: overlap,
-        groupsComplete: !scan.truncated && context.documentTags?.complete !== false,
+        groupsComplete:
+          !scan.truncated &&
+          scan.pagedNote === undefined &&
+          context.documentTags?.complete !== false,
       }
     : {};
 
@@ -454,7 +453,8 @@ export async function summarizeRecords(
     }),
     recordsScanned: scan.scanned,
     recordsCounted: counted.length,
-    truncated: scan.truncated,
+    truncated: scan.truncated || scan.pagedNote !== undefined,
+    ...(scan.pagedNote !== undefined && !scan.truncated ? { pagedRead: true } : {}),
     totals: { count: counted.length, lines: totalLines },
     groups: shown,
     ...(ordered.length > shown.length ? { groupsOmitted: ordered.length - shown.length } : {}),
@@ -463,10 +463,11 @@ export async function summarizeRecords(
     ...costCentreFilterOutput(filters.costCentre),
     notes: [
       ...summaryNotes(params, counted, templates, totalLines, {
-        leftOut: scan.scanned - scan.items.length,
+        leftOut: scan.scanned - scan.repeated - scan.items.length,
         truncated: scan.truncated,
         max: params.maxRecords ?? REPORT_SCAN_MAX,
       }),
+      ...(scan.pagedNote === undefined ? [] : [scan.pagedNote]),
       ...documentGroupingNotes(params, filters, context, overlap),
     ],
   };
@@ -486,9 +487,11 @@ export function summaryReportSentence(report: SummaryReport): string {
       ? ""
       : `, ${plural(report.groups.length + (report.groupsOmitted ?? 0), "group")} by ` +
         `${report.groupBy}${report.groupsOmitted === undefined ? "" : ` (${report.groups.length} shown)`}`;
-  const truncated = report.truncated
-    ? ` Stopped at the cap of ${report.recordsScanned} rows read: totals are incomplete.`
-    : "";
+  const truncated = !report.truncated
+    ? ""
+    : report.pagedRead === true
+      ? " Read page by page: some rows may be missing, totals may be incomplete (see notes)."
+      : ` Stopped at the cap of ${report.recordsScanned} rows read: totals are incomplete.`;
   const overlap =
     report.groupsOverlap === true
       ? " Groups overlap (a document with several tags counts in each): they do not add up to " +
@@ -591,18 +594,93 @@ async function groupingContext(
   return {};
 }
 
+/** What {@link readRecords} read. */
+interface RecordsRead {
+  readonly items: SummaryRecord[];
+  readonly scanned: number;
+  /** Rows sevDesk listed twice, dropped (counted in `scanned`). */
+  readonly repeated: number;
+  readonly truncated: boolean;
+  /** The note when a list was read page by page and may have missed rows (D-146). */
+  readonly pagedNote: string | undefined;
+}
+
+/**
+ * Reads the subject's records, each once. Documents over a whole range (`from` and `to`) are read
+ * in date windows (`scanDateWindows`) so that every request is the first page of its own window:
+ * sevDesk breaks ties of its sort key differently per page and can skip rows between pages
+ * (D-100, D-146). Without a whole range the list is read page by page, and a document list that
+ * needed more than one page says that rows may be missing. Transactions are always read page by
+ * page: their range is checked here by value date (sevDesk filters by entry date), and their list
+ * paged stably on every recording (D-145, D-146), so no note is added for them.
+ */
+async function readRecords(
+  client: SevdeskClient,
+  params: SummaryParams,
+  filters: ResolvedFilters,
+  options: ReportRunOptions,
+): Promise<RecordsRead> {
+  const fetch = pageFetcher(client, params, filters, options.signal);
+  const { noun } = SUBJECTS[params.subject];
+  const scanOptions = {
+    max: params.maxRecords ?? REPORT_SCAN_MAX,
+    noun,
+    signal: options.signal,
+    onProgress: options.onProgress,
+  };
+  const idOf = (record: SummaryRecord): number | undefined => record.id;
+  const { from, to } = params;
+  if (params.subject !== "transactions" && from !== undefined && to !== undefined) {
+    const scan = await scanDateWindows(fetch, { from, to }, idOf, scanOptions);
+    return {
+      items: scan.items,
+      scanned: scan.scanned,
+      repeated: 0,
+      truncated: scan.truncated,
+      pagedNote:
+        scan.pagedRanges.length === 0
+          ? undefined
+          : pagedReadNote(`${noun} on ${scan.pagedRanges.join(", ")}`),
+    };
+  }
+  const scan = await scanPages(
+    (offset, limit) => fetch({ from, to }, offset, limit),
+    scanOptions,
+    idOf,
+  );
+  return {
+    items: scan.items,
+    scanned: scan.scanned,
+    repeated: scan.repeated,
+    truncated: scan.truncated,
+    pagedNote: scan.paged && params.subject !== "transactions" ? pagedReadNote(noun) : undefined,
+  };
+}
+
+/** A date range of a read: the report's own, or one window of it (`scanDateWindows`). */
+interface ReadRange {
+  readonly from?: string | undefined;
+  readonly to?: string | undefined;
+}
+
+/** One page of the subject's list over `range`. */
+type SummaryFetch = (
+  range: ReadRange,
+  offset: number,
+  limit: number,
+) => Promise<ScanPage<SummaryRecord>>;
+
 function pageFetcher(
   client: SevdeskClient,
   params: SummaryParams,
   filters: ResolvedFilters,
   signal: AbortSignal | undefined,
-): (offset: number, limit: number) => Promise<ScanPage<SummaryRecord>> {
+): SummaryFetch {
   // The domain lists send the range to sevDesk and re-check every row's date themselves, and so
   // the tag and the cost centre where they have the filter.
-  const range = { from: params.from, to: params.to };
   switch (params.subject) {
     case "invoices":
-      return async (offset, limit) => {
+      return async (range, offset, limit) => {
         const page = await listInvoices(
           client,
           {
@@ -620,7 +698,7 @@ function pageFetcher(
         return { ...page, items: page.items.map((row) => invoiceRecord(row, params.invoiceType)) };
       };
     case "credit_notes":
-      return async (offset, limit) => {
+      return async (range, offset, limit) => {
         const page = await listCreditNotes(
           client,
           {
@@ -637,7 +715,7 @@ function pageFetcher(
         return { ...page, items: page.items.map(documentRecord) };
       };
     case "vouchers":
-      return async (offset, limit) => {
+      return async (range, offset, limit) => {
         const page = await listVouchers(
           client,
           {
@@ -680,7 +758,7 @@ function pageFetcher(
         };
       };
     case "transactions":
-      return async (offset, limit) => {
+      return async (range, offset, limit) => {
         const page = await listTransactions(
           client,
           {

@@ -41,6 +41,7 @@ import {
   coverageOutputShape,
   daysBetween,
   invalidReportRequest,
+  pagedReadNote,
   plural,
   REPORT_SCAN_MAX,
   REPORT_SOURCE,
@@ -100,6 +101,8 @@ export interface OpenItems {
   readonly credits: readonly CreditItem[];
   readonly scanned: number;
   readonly truncated: boolean;
+  /** Set when a status had more rows than one page: items may be missing (D-146). */
+  readonly pagedNote: string | undefined;
   /** Rows left out, by reason. */
   readonly excluded: {
     /** Cancellation invoices (SR): not receivables. */
@@ -136,10 +139,8 @@ export async function collectReceivables(
 ): Promise<OpenItems> {
   return collect(
     ["open", "partially_paid"] as const,
-    (status) => async (offset, limit) => {
-      const page = await listInvoices(client, { status, limit, offset }, options.signal);
-      return { ...page, items: page.items.map(classifyInvoice) };
-    },
+    (status) => (offset, limit) => listInvoices(client, { status, limit, offset }, options.signal),
+    classifyInvoice,
     "open invoices",
     options,
   );
@@ -163,13 +164,14 @@ export async function collectPayables(
         options.signal,
       );
       return {
-        items: page.items.map(classifyVoucher),
+        items: page.items,
         received: page.window.received,
         total: page.window.total,
         hasMore: page.state.hasMore,
         nextOffset: page.state.nextOffset,
       };
     },
+    classifyVoucher,
     "open vouchers",
     options,
     // The vouchers module drops rows of another voucher type: RV templates sevDesk returned.
@@ -177,9 +179,14 @@ export async function collectPayables(
   );
 }
 
-async function collect<S extends string>(
+/**
+ * Reads the rows of each status in turn (`scanPages`, each row once by id) and classifies them.
+ * A status read in more than one page may have missed rows (D-146): `pagedNote` says so.
+ */
+async function collect<S extends string, R extends { readonly id: number }>(
   statuses: readonly S[],
-  fetcher: (status: S) => (offset: number, limit: number) => Promise<ScanPage<Classified>>,
+  fetcher: (status: S) => (offset: number, limit: number) => Promise<ScanPage<R>>,
+  classify: (row: R) => Classified,
   noun: string,
   options: CollectOptions,
   /** What rows the list read but did not return are (its own re-check), if anything. */
@@ -199,17 +206,26 @@ async function collect<S extends string>(
   };
   let scanned = 0;
   let truncated = false;
+  let paged = false;
   for (const status of statuses) {
-    const scan = await scanPages(fetcher(status), {
-      max: max - scanned,
-      noun,
-      alreadyScanned: base + scanned,
-      signal: options.signal,
-      onProgress: options.onProgress,
-    });
+    const scan = await scanPages(
+      fetcher(status),
+      {
+        max: max - scanned,
+        noun,
+        alreadyScanned: base + scanned,
+        signal: options.signal,
+        onProgress: options.onProgress,
+      },
+      (row) => row.id,
+    );
     scanned += scan.scanned;
-    if (droppedAs !== undefined) excluded[droppedAs] += scan.scanned - scan.items.length;
-    for (const item of scan.items) {
+    paged ||= scan.paged;
+    if (droppedAs !== undefined) {
+      excluded[droppedAs] += scan.scanned - scan.repeated - scan.items.length;
+    }
+    for (const row of scan.items) {
+      const item = classify(row);
       if (typeof item === "string") excluded[counters[item]] += 1;
       else if ("credit" in item) credits.push(item);
       else items.push(item);
@@ -219,7 +235,14 @@ async function collect<S extends string>(
       break;
     }
   }
-  return { items, credits, scanned, truncated, excluded };
+  return {
+    items,
+    credits,
+    scanned,
+    truncated,
+    pagedNote: paged ? pagedReadNote(noun) : undefined,
+    excluded,
+  };
 }
 
 function classifyInvoice(row: InvoiceRow): Classified {
@@ -744,7 +767,7 @@ export async function receivablesAging(
     },
     source: REPORT_SOURCE,
     recordsScanned: open.scanned,
-    truncated: open.truncated,
+    ...completeness(open),
     notes: agingNotes("receivables", open, {
       max: params.maxRecords ?? REPORT_SCAN_MAX,
       asOf,
@@ -778,13 +801,19 @@ export async function payablesAging(
     },
     source: REPORT_SOURCE,
     recordsScanned: open.scanned,
-    truncated: open.truncated,
+    ...completeness(open),
     notes: agingNotes("payables", open, {
       max: params.maxRecords ?? REPORT_SCAN_MAX,
       asOf,
       today,
     }),
   };
+}
+
+/** `truncated` and `pagedRead` of a report over `open` (a cap, or a read page by page). */
+function completeness(open: OpenItems): { truncated: boolean; pagedRead?: true } {
+  if (open.truncated) return { truncated: true };
+  return open.pagedNote === undefined ? { truncated: false } : { truncated: true, pagedRead: true };
 }
 
 /** Trusted one-line summary of an aging report: counts only. */
@@ -795,11 +824,16 @@ export function agingSentence(
     readonly totals: z.output<typeof totalsSchema>;
     readonly recordsScanned: number;
     readonly truncated: boolean;
+    readonly pagedRead?: boolean | undefined;
   },
 ): string {
   const overdue = report.totals.overdue.reduce((sum, line) => sum + line.count, 0);
   const currencies = report.totals.lines.length;
-  const truncated = report.truncated ? " Stopped at the row cap: the aging is incomplete." : "";
+  const truncated = !report.truncated
+    ? ""
+    : report.pagedRead === true
+      ? " Read page by page: some open items may be missing (see notes)."
+      : " Stopped at the row cap: the aging is incomplete.";
   return (
     `${title} as of ${report.asOf}: ${plural(report.totals.count, "open item")} ` +
     `(${overdue} overdue) in ${plural(currencies, "currency", "currencies")}; ` +
@@ -819,6 +853,7 @@ function agingNotes(
       `Reading stopped at the cap of ${context.max} rows: the aging covers only the rows read.`,
     );
   }
+  if (open.pagedNote !== undefined) notes.push(open.pagedNote);
   if (context.asOf > context.today) {
     notes.push(
       `asOf ${context.asOf} is after today (${context.today}): the items are those open in ` +

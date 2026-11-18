@@ -1,8 +1,9 @@
 /**
- * Reading a dated sevDesk list without paging across page boundaries (#154).
+ * Reading a dated sevDesk list without paging across page boundaries (#154, #162).
  *
- * sevDesk sorts its document lists by document date and leaves documents of the same date in an
- * order that depends on the page size. On the trial account (2026-11-18, probe
+ * sevDesk sorts its lists by one field (vouchers by voucher date; invoices, credit notes and
+ * orders by creation time) and leaves rows that tie on it in an order that depends on the page
+ * size (spec/deviations.md D-146). On the trial account (2026-11-18, probe
  * `read-voucher-paging-order`, spec/deviations.md D-100), 56 vouchers read as one page of 1,000
  * and in pages of 5 came back in different orders, and the pages of 5 missed 12 vouchers and gave
  * 12 others twice, with and without `embed=document`. The documented `orderByVoucherNumber` still
@@ -82,7 +83,7 @@ function rangeLabel(range: DateRange): string {
 export async function scanDateWindows<T>(
   fetchPage: DateWindowFetch<T>,
   range: DateRange,
-  idOf: (item: T) => number,
+  idOf: (item: T) => number | undefined,
   options: ScanOptions,
 ): Promise<WindowedScan<T>> {
   const base = options.alreadyScanned ?? 0;
@@ -104,8 +105,10 @@ export async function scanDateWindows<T>(
     state.scanned += page.received;
     for (const item of page.items) {
       const id = idOf(item);
-      if (seen.has(id)) continue;
-      seen.add(id);
+      if (id !== undefined) {
+        if (seen.has(id)) continue;
+        seen.add(id);
+      }
       items.push(item);
     }
     await options.onProgress?.(

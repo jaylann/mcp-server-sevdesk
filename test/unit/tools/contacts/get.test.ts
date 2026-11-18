@@ -200,11 +200,12 @@ describe("sevdesk_contact_get (community: recorded shapes, fake data)", () => {
     ]);
   });
 
-  it("reads all rows when sevDesk's total exceeds the first page", async () => {
+  it("reads all rows when sevDesk's total exceeds the first page, and does not call them complete", async () => {
     const { client, result } = await get(1001, routes({ addresses: manyAddresses(1500) }));
     expect(result.data.addresses).toHaveLength(1500);
     expect(result.data.addresses.at(-1)?.id).toBe(101_499);
-    expect(result.data.addressesComplete).toBe(true);
+    // Read in two pages: sevDesk can skip a row between pages (D-146).
+    expect(result.data.addressesComplete).toBe(false);
     expect(client.methods().every((method) => method === "GET")).toBe(true);
   });
 

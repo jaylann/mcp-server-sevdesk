@@ -21,7 +21,8 @@
  * on the import VAT account, is input VAT and not an expense (`import-vat.ts`).
  *
  * `coverage.truncated` is set whenever something was not read: a cap, the time budget of an HTTP
- * deployment (`ReportDeadline`), or a document whose positions could not all be read.
+ * deployment (`ReportDeadline`), a document whose positions could not all be read, or a day with
+ * more documents than one page, read page by page (`coverage.pagedRead`, D-100, D-146).
  *
  * Tags and cost centres (spec/deviations.md D-088–D-092). `costCentre` and `tag` filter the
  * documents before their positions are read: both are resolved first (an unknown or ambiguous
@@ -265,7 +266,8 @@ export const profitAndLossSchema = z.object({
       .boolean()
       .describe(
         `True when the figures are incomplete: a cap (${MAX_SCAN_DOCUMENTS} documents) or the ` +
-          "time budget stopped reading, or a document's positions could not all be read.",
+          "time budget stopped reading, a document's positions could not all be read, or a " +
+          "day's documents had to be read page by page.",
       ),
     timeBudgetReached: z
       .boolean()
@@ -273,6 +275,13 @@ export const profitAndLossSchema = z.object({
       .describe(
         "True when this server stopped reading documents to answer within its time limit " +
           "(HTTP deployments): narrow the period.",
+      ),
+    pagedRead: z
+      .boolean()
+      .optional()
+      .describe(
+        "True when a day held more than 1,000 documents of one kind, so they were read page by " +
+          "page and some may be missing (see notes).",
       ),
     excluded: z.object({
       drafts: z.number().int(),
@@ -514,6 +523,7 @@ export async function profitAndLoss(
       documentsScanned: scan.documents.length,
       truncated,
       ...(timedOut ? { timeBudgetReached: true } : {}),
+      ...(pagedNote !== undefined && !capped ? { pagedRead: true } : {}),
       excluded: {
         drafts: excluded.draft,
         recurringTemplates: excluded.recurring_template,

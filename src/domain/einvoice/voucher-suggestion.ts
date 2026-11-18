@@ -944,7 +944,7 @@ const contactBankSchema = z.object({
 
 /**
  * Reads contacts for matching: up to {@link MAX_SCANNED_CONTACTS} (`GET /Contact?depth=1`), plus
- * a `name` search for the counterparty when the scan was cut off.
+ * a `name` search for the counterparty when the scan was cut off or read more than one page.
  */
 export async function loadContactIndex(
   client: SevdeskClient,
@@ -961,7 +961,9 @@ export async function loadContactIndex(
     },
   );
   const rows = scan.items.map(toMatchRow);
-  if (scan.truncated && counterparty.name !== "") {
+  // Cut off, or read past one page (which can skip a contact, D-146): search the name as well.
+  const incomplete = scan.truncated || scan.paged;
+  if (incomplete && counterparty.name !== "") {
     const page = await client.list(
       "/Contact",
       { depth: "1", name: counterparty.name },
@@ -973,7 +975,7 @@ export async function loadContactIndex(
       if (!known.has(row.contact.id)) rows.push(row);
     }
   }
-  return { rows, scanned: rows.length, complete: !scan.truncated };
+  return { rows, scanned: rows.length, complete: !incomplete };
 }
 
 function toMatchRow(raw: unknown): ContactMatchRow {

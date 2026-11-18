@@ -9,7 +9,9 @@
  * - a fixture without `total` is treated as the whole collection and paged by `limit`/`offset`
  *   with `total` = its length; a fixture with `total` is a recorded single page and returned as is
  *   (`total: null` simulates a page without a usable count: `Page.total` is then `undefined`);
- * - `listAll` pages until an empty page and asks for one row beyond `max` to detect truncation.
+ * - `listAll` pages until an empty page and asks for one row beyond `max` to detect truncation;
+ *   like the real client it keeps a row with an `id` once and says when rows came from more than
+ *   one page (`paged`, D-146).
  */
 import { readFileSync } from "node:fs";
 
@@ -17,7 +19,7 @@ import { z } from "zod";
 
 import { type Config, loadConfig } from "../../src/config.js";
 import { localFileAccess } from "../../src/safety/file-sources.js";
-import { parseTotal, readEnvelope } from "../../src/sevdesk/envelope.js";
+import { collectRows, parseTotal, readEnvelope } from "../../src/sevdesk/envelope.js";
 import { SevdeskError } from "../../src/sevdesk/errors.js";
 import { assertSafePath, resolveGetSafety } from "../../src/sevdesk/paths.js";
 import { isReadingPost } from "../../src/sevdesk/read-posts.js";
@@ -202,22 +204,23 @@ export class FakeSevdeskClient implements SevdeskClient {
     if (!Number.isSafeInteger(max) || max < 1) {
       throw localError("max must be a whole number of 1 or more.");
     }
-    const items: unknown[] = [];
+    const rows = collectRows();
+    const { items } = rows;
     let total: number | undefined;
     for (;;) {
-      const limit = Math.min(pageSize, max - items.length + 1);
+      const limit = Math.min(pageSize, max - rows.received() + 1);
       const page = await this.list(path, query, {
         limit,
-        offset: items.length,
+        offset: rows.received(),
         ...(options.signal === undefined ? {} : { signal: options.signal }),
       });
       total = page.total ?? total;
-      if (page.items.length === 0) return { items, total, truncated: false };
-      items.push(...page.items);
-      if (items.length > max) {
-        items.length = max;
+      if (page.items.length === 0) return { items, total, truncated: false, paged: rows.paged() };
+      rows.add(page.items);
+      if (rows.received() > max) {
+        if (items.length > max) items.length = max;
         options.onProgress?.(items.length, total);
-        return { items, total, truncated: true };
+        return { items, total, truncated: true, paged: rows.paged() };
       }
       options.onProgress?.(items.length, total);
     }

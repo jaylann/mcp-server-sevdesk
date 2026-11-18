@@ -1011,7 +1011,11 @@ async function findDerived(
     .map((raw) => parseUpstream(derivedRowSchema, raw, "documents"))
     .filter(matches)
     .map((row) => row.id);
-  return { ids: [...new Set(ids)].sort((a, b) => a - b), truncated: list.truncated };
+  // A read past one page may have missed a document (D-146): not known to be all of them.
+  return {
+    ids: [...new Set(ids)].sort((a, b) => a - b),
+    truncated: list.truncated || list.paged,
+  };
 }
 
 /** The documented `contact[id]` list parameter, or nothing without a contact. */

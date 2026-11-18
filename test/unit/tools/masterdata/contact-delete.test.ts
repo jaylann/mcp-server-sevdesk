@@ -369,7 +369,8 @@ describe("sevdesk_contact_delete", () => {
 
   it("lists no contact persons as none, and says when address lists were cut", async () => {
     // A page with a larger total, answered again for every offset: the read stops at its cap of
-    // 10,000 rows and reports the list as partial.
+    // 10,000 rows and reports the list as partial. The same 1,000 rows on every page are kept
+    // once each (D-146), so the preview counts 1,000 known addresses.
     const rows = Array.from({ length: 1000 }, (_, index) => ({
       id: String(5000 + index),
       contact: { id: "1001", objectName: "Contact" },
@@ -391,10 +392,10 @@ describe("sevdesk_contact_delete", () => {
     });
     expect(preview.facts).toContainEqual({
       label: "Addresses (deleted with it)",
-      value: "at least 10000",
+      value: "at least 1000",
     });
     expect(preview.warnings).toEqual([
-      "The contact, its at least 10000 addresses and its 3 communication ways are deleted from " +
+      "The contact, its at least 1000 addresses and its 3 communication ways are deleted from " +
         "sevDesk; this cannot be undone.",
       "Its custom field values (Kontaktfelder) are deleted with it.",
     ]);
@@ -405,7 +406,7 @@ describe("sevdesk_contact_delete", () => {
     });
     expect(previewDe.facts).toContainEqual({
       label: "Adressen (werden mitgelöscht)",
-      value: "mindestens 10000",
+      value: "mindestens 1000",
     });
   });
 

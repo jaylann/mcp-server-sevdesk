@@ -44,6 +44,49 @@ export function expectArray(payload: unknown, what = "objects"): unknown[] {
   });
 }
 
+/** The rows of a list read page by page; see {@link collectRows}. */
+export interface RowCollector {
+  /** The rows kept, in the order they came; a row with an `id` only the first time. */
+  readonly items: unknown[];
+  /** Rows sevDesk sent, repeats included: where the next page starts. */
+  received(): number;
+  /** Whether rows came from more than one page (D-146: rows may then be missing). */
+  paged(): boolean;
+  /** Adds the rows of one page. */
+  add(rows: readonly unknown[]): void;
+}
+
+/**
+ * Collects the pages of one list read: the next page starts after every row sevDesk sent, and a
+ * row whose `id` came before is dropped, since sevDesk can list a row on two pages when it breaks
+ * ties of its sort key differently per page (spec/deviations.md D-146). Rows without an id are
+ * all kept.
+ */
+export function collectRows(): RowCollector {
+  const items: unknown[] = [];
+  const seen = new Set<string>();
+  let received = 0;
+  let pages = 0;
+  return {
+    items,
+    received: () => received,
+    paged: () => pages > 1,
+    add(rows) {
+      if (rows.length > 0) pages += 1;
+      received += rows.length;
+      for (const row of rows) {
+        const id =
+          typeof row === "object" && row !== null ? (row as { id?: unknown }).id : undefined;
+        if (typeof id === "string" || typeof id === "number") {
+          if (seen.has(String(id))) continue;
+          seen.add(String(id));
+        }
+        items.push(row);
+      }
+    },
+  };
+}
+
 /**
  * Returns the single object of a GET-by-id or write response. An array of one yields its element,
  * an empty array (or `null`) is a `not_found` error, and a plain object passes through. Arrays

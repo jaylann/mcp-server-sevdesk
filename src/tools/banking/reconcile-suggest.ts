@@ -75,7 +75,10 @@ const output = z.object({
       scanned: z.number().int().describe("Document rows read."),
       truncated: z
         .boolean()
-        .describe(`True when the cap of ${OPEN_ITEMS_SCAN_MAX} rows stopped reading open items.`),
+        .describe(
+          `True when open items may be missing: the cap of ${OPEN_ITEMS_SCAN_MAX} rows stopped ` +
+            "reading, or a list of more than 1,000 was read page by page.",
+        ),
       excluded: z.object({
         notPayable: z.number().int().describe("Cancellations, reminders, recurring templates."),
         openUnknown: z
@@ -190,7 +193,7 @@ export const reconcileSuggestTool = defineTool({
           ? "No unassigned transactions found."
           : `${String(suggestions.length)} ${suggestions.length === 1 ? "transaction" : "transactions"}, ` +
             `${String(withMatches)} with suggestions` +
-            (result.openItems?.truncated === true ? "; open items were capped" : "") +
+            (result.openItems?.truncated === true ? "; open items may be incomplete" : "") +
             (result.hasMore ? `; more may follow (nextOffset ${String(result.nextOffset)}).` : "."),
     };
   },

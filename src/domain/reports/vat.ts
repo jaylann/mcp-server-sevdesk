@@ -27,9 +27,10 @@
  * (`import-vat.ts`).
  *
  * Completeness: the Kz 83 estimate is left out and `coverage.truncated` is set whenever something
- * was not read: a cap, the time budget of an HTTP deployment (`ReportDeadline`), or a document
+ * was not read: a cap, the time budget of an HTTP deployment (`ReportDeadline`), a document
  * whose positions could not all be read (its amounts were then split over the positions that
- * were read, so the lines may hold the wrong rates).
+ * were read, so the lines may hold the wrong rates), or a day with more documents than one page,
+ * read page by page (`coverage.pagedRead`, D-100, D-146).
  *
  * Kleinunternehmer accounts (§ 19 UStG) file no UStVA; the report says so and reads nothing else.
  * The result is an estimate for checking, never a filing.
@@ -356,7 +357,7 @@ export const vatSummarySchema = z.object({
     .optional()
     .describe(
       "Left out when no UStVA is required or reading was incomplete (coverage.truncated: a cap, " +
-        "the time budget, or documents with unread positions).",
+        "the time budget, documents with unread positions, or a day read page by page).",
     ),
   zm: z.object({
     entries: z.array(zmEntrySchema).describe("Zusammenfassende Meldung, per VAT id and kind."),
@@ -398,7 +399,8 @@ export const vatSummarySchema = z.object({
       .boolean()
       .describe(
         `True when the figures are incomplete: a cap (${MAX_SCAN_DOCUMENTS} documents) or the ` +
-          "time budget stopped reading, or a document's positions could not all be read.",
+          "time budget stopped reading, a document's positions could not all be read, or a " +
+          "day's documents had to be read page by page.",
       ),
     timeBudgetReached: z
       .boolean()
@@ -406,6 +408,13 @@ export const vatSummarySchema = z.object({
       .describe(
         "True when this server stopped reading documents to answer within its time limit " +
           "(HTTP deployments): narrow the period.",
+      ),
+    pagedRead: z
+      .boolean()
+      .optional()
+      .describe(
+        "True when a day held more than 1,000 documents of one kind, so they were read page by " +
+          "page and some may be missing (see notes).",
       ),
     excluded: z.object({
       drafts: z.number().int(),
@@ -661,6 +670,7 @@ export async function vatSummary(
       documentsScanned: scan.documents.length,
       truncated,
       ...(timedOut ? { timeBudgetReached: true } : {}),
+      ...(pagedNote !== undefined && !capped ? { pagedRead: true } : {}),
       excluded: {
         drafts: listed.excluded.draft,
         recurringTemplates: listed.excluded.recurring_template,

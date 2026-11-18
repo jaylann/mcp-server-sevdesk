@@ -915,7 +915,7 @@ export const LIST_PAGING_PROBES: readonly ProbeDefinition[] = [
       "orderByCustomerNumber) and orderBy[0][field]=id are tried too. " +
       `Lists with fewer than ${LIST_PAGING_MIN_ROWS} rows are too few to tell; a paged pass reads at most the first ${LIST_PAGING_PREFIX} rows. ` +
       `Opt-in because it sends up to ${LIST_PAGING_BUDGET} GETs. Counts, positions and directions only.`,
-    deviations: ["D-100", "D-145", "D-088", "D-099"],
+    deviations: ["D-146", "D-100", "D-145", "D-088", "D-099"],
     run: listPagingOrder,
   },
   {
@@ -928,7 +928,7 @@ export const LIST_PAGING_PROBES: readonly ProbeDefinition[] = [
       `${LIST_PAGING_SEED_COUNT} draft credit notes the probe creates, all dated the run's day (ties a date order cannot settle): the contacts found by the ` +
       "run tag (depth=1&name), the documents by the run's day with embed=contact. " +
       `Opt-in: it creates ${3 * LIST_PAGING_SEED_COUNT} records and deletes every one at the end, also when a step fails.`,
-    deviations: ["D-100"],
+    deviations: ["D-146", "D-100"],
     async run(ctx) {
       const own: OwnRecord[] = [];
       return withCleanup(

@@ -167,6 +167,7 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
 | [D-143](#d-143-an-archived-account-cannot-be-restored-and-archiving-clears-its-iban)               | An archived account cannot be restored, and archiving clears its IBAN                  | Open                  |
 | [D-144](#d-144-put-checkaccount-refuses-a-booking-account-in-use-with-400-not-422)                 | `PUT /CheckAccount` refuses a booking account in use with 400, not 422                 | Open                  |
 | [D-145](#d-145-transaction-lists-run-newest-first-by-valuedate)                                    | Transaction lists run newest first by `valueDate`                                      | Open                  |
+| [D-146](#d-146-list-order-ties-are-broken-per-page-so-offset-paging-skips-and-repeats-rows)        | List order ties are broken per page, so offset paging skips and repeats rows           | Open                  |
 
 ## Entries
 
@@ -4115,8 +4116,9 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
     vouchers) changed the order and still lost one voucher and repeated another;
     `orderBy[0][field]=id` with `orderBy[0][arrangement]=asc` (not in the spec) was ignored (the
     same order as without it, and the same 12 lost). The client sends no order parameter (only
-    the filters, `limit`, `offset` and `countAll`). Invoices and credit notes were not measured;
-    their lists are sorted by date the same way and are read the same way here (see Impact).
+    the filters, `limit`, `offset` and `countAll`). The other lists were measured later the same
+    way (#162, D-146): invoices, credit notes and orders sort by `create`, and ties are broken per
+    page there too; they are read the same way here (see Impact).
 - **Sources:** spec (`uploadTempFile`, `getVouchers`); recorded 2026-11-16, trial account, Update
   2.0 (probes `write-receipt-hash`, `read-document-hash`); recorded 2026-11-17, trial account,
   Update 2.0 (manual check (lead): `embed=document` on the voucher list and its later pages, two
@@ -5465,3 +5467,76 @@ transaction>], "objectToDelete": <the account>}, "responseCode": 200, "exception
   `test/unit/tools/banking/private-rules.test.ts` (the estimate's "newest" wording).
   Live: probe `write-transaction-list-order` (#136; `test/unit/scripts/gaps-banking-probes.test.ts`,
   "asks the #136 list-order, account, entryDate and image questions…").
+
+### D-146: List order ties are broken per page, so offset paging skips and repeats rows
+
+- **Status:** Open. **Evidence:** recorded.
+- **Spec says:** The list endpoints document `limit` and `offset` and no default order. The
+  filter tables document `orderByInvoiceNumber`, `orderByCreditNoteNumber`, `orderByOrderNumber`,
+  `orderByVoucherNumber` (each `ASC`/`DESC`), `orderByCustomerNumber` and some `orderBy…=true`
+  switches; nothing says the order is the same for every page.
+- **Actual behavior:** Each list is sorted by one field, and rows that tie on it come in an order
+  that depends on `limit` and `offset`. Two passes with the same page size always gave the same
+  ids in the same order, so paging is repeatable but can be lossy. Recorded 2026-11-18, one page
+  of 1000 against two passes in pages of 5 from offset 0, with the filters each reader sends:
+  - Rows lost and repeated: `GET /Voucher` (sorted by `voucherDate` descending; all 56 tie; 12
+    lost, 12 twice; D-100); `GET /OrderPos` (by `positionNumber` ascending, all 49 tie; 1 lost,
+    1 twice); 25 draft credit notes the seed probe created on one day (`GET /CreditNote` with
+    `embed=contact` and that day's `startDate`/`endDate`; by `create` descending, all 25 tie; 2
+    lost, 2 twice).
+  - Every row once, in another order: `GET /CreditNote` (43 rows, by `create` descending, 6
+    tie), `GET /Order` (36 rows, by `create` descending, 4 tie) and the seed probe's 26 draft
+    invoices of one day (by `create` descending, 18 tie). A longer list ordered this way loses
+    rows as soon as a tie straddles a page boundary differently.
+  - The same rows in the same order: `GET /Invoice` (136 rows with `embed=contact`, also with
+    `status=200` (38) and a date range; by `create` descending, 2 tie), `showAll=true` with
+    `updateAfter` (164), `GET /CheckAccountTransaction` (58 rows, by `valueDate` descending, 54
+    tie; also `status=100`, 16 rows, 14 tie), `GET /Contact?depth=1` (54 rows, by
+    `customerNumber` descending, 6 tie, also with `updateAfter`; the seed probe's 26 contacts,
+    no tie), `GET /CheckAccountTransactionLog` (34, by `bookingDate` ascending, 29 tie),
+    `GET /InvoicePos` (151, by `positionNumber`, all tie), `GET /CreditNotePos` (44, by
+    `positionNumber`, all tie), `GET /VoucherPos` (56, by id ascending), `GET /AccountDatev`
+    (100, by `number` ascending, 3 tie) and `GET /TagRelation` (17). With ties on the key, stable
+    here does not prove stable on a larger list.
+  - Too few rows to tell (fewer than 12): `GET /Part`, `GET /Tag`, `GET /ContactAddress`,
+    `GET /CommunicationWay?type=EMAIL`, `GET /PrivateTransactionRule` (none), open and partially
+    paid invoices, open credit notes, open expense vouchers, `GET /Order?orderType=AB`.
+  - Order parameters: `orderByOrderNumber=ASC` made the 36 orders page exactly like one page.
+    `orderByInvoiceNumber=ASC` (seeded drafts: 4 lost), `orderByCreditNoteNumber=ASC` (5 of 43
+    lost; seeded drafts: 10 of 25) and `orderByVoucherNumber=ASC` (1 of 56) made paging worse or
+    no better: drafts carry no number, so they tie again. `orderBy[0][field]=id` with
+    `orderBy[0][arrangement]=asc` was ignored on every list (the same order as without it).
+- **Sources:** recorded 2026-11-18, trial account, Update 2.0 (probes `read-list-paging-order`,
+  497 GETs, and `write-list-paging-seed`, 25 contacts, invoices and credit notes created and
+  deleted again; earlier `read-voucher-paging-order`, D-100).
+- **Impact (fix in this PR, #162):** Every read that goes past one page is either avoided or
+  marked as possibly incomplete; a row that comes twice is kept once.
+  - `listAll` (`src/sevdesk/client.ts`) keeps a row with an id once and reports `paged` when rows
+    came from more than one page; `scanPages` (`src/domain/reports/shared.ts`) does the same
+    (`paged`, `idOf`). Their callers treat a paged read like a capped one: `listChildRows`
+    (positions, a contact's addresses) answers `complete: false`; the credit note number check,
+    the derived-document and order follow-up checks, the duplicate check of a new contact and the
+    e-invoice contact index (which then also searches by name) say that not everything was
+    checked; the aging and cash reports, open items of `sevdesk_reconcile_suggest` and the
+    contact directory of the VAT check set `truncated`, and the reports `pagedRead` and a note.
+  - `sevdesk_records_summarize` over a whole date range reads invoices, credit notes and vouchers
+    in date windows of one page each (`scanDateWindows`, as the tax reports and audits do since
+    #154), so a long list is no longer paged; without a range it pages and says so.
+  - The order follow-up scan sends `orderByOrderNumber=ASC` (every order has a number, D-027):
+    one sample paged stably with it; it is still marked when it reads more than one page.
+  - Lists the user pages (`sevdesk_invoices_list`, `sevdesk_credit_notes_list`,
+    `sevdesk_orders_list`, `sevdesk_vouchers_list`, `sevdesk_changed_since`) say in their
+    description that pages can skip or repeat a row and how to narrow the range instead.
+  - Not marked: transactions (`listTransactions`, the payments of a period,
+    `sevdesk_reconcile_suggest`'s transaction pages), the booking log, tags and tag relations,
+    booking accounts and private-transaction rules paged stably in every recording (D-145, D-088,
+    D-099 and above) and are read in pages of 1,000; where their rows are collected, a row is
+    kept once. Contacts sort by `customerNumber`, which is nearly unique (6 of 54 rows tied);
+    no order parameter is sent for them, and the guard above covers the scans that page them.
+- **Test:** `test/regressions/list-paging-ties.test.ts` (a list whose ties are broken per page:
+  `listAll` keeps rows once and says it paged, a credit note summary over a range sees 2,500
+  credit notes once each from first pages only, without a range it says rows may be missing, the
+  credit note number check and an order with 1,200 positions are not called complete);
+  `test/unit/domain/document-positions.test.ts`, `test/unit/tools/contacts/get.test.ts` (rows read
+  in two pages are not complete). Live: probes `read-list-paging-order` and
+  `write-list-paging-seed` (`test/unit/scripts/list-paging-probes.test.ts`).

@@ -129,7 +129,7 @@ const orderRowSchema = z.object({
 
 type OrderScanRow = z.output<typeof orderRowSchema>;
 
-/** Orders that match, and whether the scan stopped at its cap. */
+/** Orders that match, and whether the scan may have missed some (its cap, or several pages). */
 interface OrderScan {
   readonly rows: readonly OrderScanRow[];
   readonly truncated: boolean;
@@ -141,15 +141,22 @@ async function scanOrders(
   matches: (row: OrderScanRow) => boolean,
   signal: AbortSignal | undefined,
 ): Promise<OrderScan> {
-  const list = await client.listAll("/Order", query, {
-    max: SCAN_MAX,
-    pageSize: SCAN_PAGE_SIZE,
-    ...(signal === undefined ? {} : { signal }),
-  });
+  // sevDesk lists orders by creation time and breaks ties differently per page; ordered by
+  // number (which every order has, D-027), the recorded pages matched one page (D-146). Still,
+  // a read past one page counts as possibly incomplete.
+  const list = await client.listAll(
+    "/Order",
+    { ...query, orderByOrderNumber: "ASC" },
+    {
+      max: SCAN_MAX,
+      pageSize: SCAN_PAGE_SIZE,
+      ...(signal === undefined ? {} : { signal }),
+    },
+  );
   const rows = list.items
     .map((raw) => parseUpstream(orderRowSchema, raw, "orders"))
     .filter(matches);
-  return { rows, truncated: list.truncated };
+  return { rows, truncated: list.truncated || list.paged };
 }
 
 /** Distinct ids, ascending. */
@@ -169,7 +176,7 @@ export interface OrdersFrom {
   readonly drafts: readonly number[];
   /** Those of them that are not drafts (finalized, sent, …). */
   readonly others: readonly number[];
-  /** The scan stopped at its cap: there may be more. */
+  /** The scan stopped at its cap or read more than one page: there may be more. */
   readonly truncated: boolean;
 }
 

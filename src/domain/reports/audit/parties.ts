@@ -172,11 +172,14 @@ export interface PartyDirectory {
   readonly coverage: {
     readonly read: number;
     readonly addressesRead: number;
-    /** A cap stopped one of the two lists (see the two below). */
+    /** One of the two lists may be incomplete (see the two below). */
     readonly truncated: boolean;
-    /** The contact list stopped at its cap: contacts beyond it are not in `parties`. */
+    /**
+     * The contact list stopped at its cap, or was read in more than one page and may have missed
+     * rows (D-146): contacts may be missing from `parties`.
+     */
     readonly contactsTruncated: boolean;
-    /** The address list stopped at its cap: any contact in `parties` may lack addresses. */
+    /** The same for the address list: any contact in `parties` may lack addresses. */
     readonly addressesTruncated: boolean;
   };
   /** True when addresses or documents had countries but the country table could not be read. */
@@ -255,9 +258,10 @@ export async function loadPartyDirectory(
     coverage: {
       read: contacts.scanned,
       addressesRead: addresses.scanned,
-      truncated: contacts.truncated || addresses.truncated,
-      contactsTruncated: contacts.truncated,
-      addressesTruncated: addresses.truncated,
+      truncated: contacts.truncated || addresses.truncated || contacts.paged || addresses.paged,
+      // A list read in more than one page may have missed rows (D-146): as good as capped.
+      contactsTruncated: contacts.truncated || contacts.paged,
+      addressesTruncated: addresses.truncated || addresses.paged,
     },
     countriesUnread: withCountry && countryCodes.size === 0,
   };

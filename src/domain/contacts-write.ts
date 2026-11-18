@@ -1151,7 +1151,10 @@ function sameValue(type: CommunicationType, current: string, next: string): bool
 interface ScanResult {
   /** Matching contact ids, ascending, de-duplicated. */
   readonly ids: readonly number[];
-  /** True when the scan stopped at its cap before the end. */
+  /**
+   * True when the scan stopped at its cap before the end, or read more than one page, which can
+   * skip a row (D-146).
+   */
   readonly truncated: boolean;
 }
 
@@ -1198,7 +1201,10 @@ async function findContactsByName(
           same(record.surename, input.firstName) &&
           same(record.familyname, input.lastName),
     );
-  return { ids: uniqueIds(matches.map((record) => record.id)), truncated: list.truncated };
+  return {
+    ids: uniqueIds(matches.map((record) => record.id)),
+    truncated: list.truncated || list.paged,
+  };
 }
 
 const emailRowSchema = z.object({ id: zId, contact: zOptionalRef, type: zText, value: zText });
@@ -1227,7 +1233,7 @@ async function findContactsByEmail(
         row.contact !== undefined,
     )
     .map((row) => row.contact?.id ?? 0);
-  return { ids: uniqueIds(ids), truncated: list.truncated };
+  return { ids: uniqueIds(ids), truncated: list.truncated || list.paged };
 }
 
 /**

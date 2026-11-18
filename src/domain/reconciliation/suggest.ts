@@ -45,7 +45,10 @@ export interface OpenItemsRead {
   readonly candidates: readonly OpenItemCandidate[];
   /** Document rows read. */
   readonly scanned: number;
-  /** True when {@link OPEN_ITEMS_SCAN_MAX} stopped reading. */
+  /**
+   * True when {@link OPEN_ITEMS_SCAN_MAX} stopped reading, or when a list had more open items
+   * than one page and was read page by page, which can skip an item (D-146).
+   */
   readonly truncated: boolean;
   /** Rows left out, by reason. */
   readonly excluded: {
@@ -155,6 +158,8 @@ export async function loadOpenItems(
       truncated = true;
       break;
     }
+    // Read in more than one page, the list may have skipped an open item (D-146).
+    if (scan.paged) truncated = true;
   }
   return { candidates, scanned, truncated, excluded };
 }
