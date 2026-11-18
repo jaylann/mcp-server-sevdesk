@@ -15,7 +15,7 @@ import {
   ibanInput,
   planBankAccountUpdate,
 } from "../../domain/bank-account-update.js";
-import { bankAccountDtoSchema } from "../../domain/banking.js";
+import { bankAccountDtoSchema, maskIban } from "../../domain/banking.js";
 import { defineWriteTool } from "../define-tool.js";
 import { ACCOUNT_BOOKINGS, ACCOUNT_CHECK_ACCOUNTS, type SevdeskObjectRef } from "../types.js";
 import { dryRunInputShape } from "../write-input.js";
@@ -94,6 +94,8 @@ export const bankAccountUpdateTool = defineWriteTool({
     ...(args.accountingNumber === undefined ? [] : [ACCOUNT_BOOKINGS]),
     accountRef(args.id),
   ],
+  // The audit log keeps the IBAN masked like the previews: last four characters only.
+  auditArgs: (args) => (args.iban === undefined ? args : { ...args, iban: maskIban(args.iban) }),
   prepare: (args, ctx) =>
     planBankAccountUpdate(
       ctx.client,

@@ -64,11 +64,15 @@ export interface AuditEvent {
   readonly grant?: string;
   readonly tool: string;
   readonly tier: WriteTier;
-  /** `argumentsHash` of the call (tool + arguments without `dryRun`). */
+  /**
+   * `argumentsHash` of the call (tool + arguments without `dryRun`). For a tool that logs masked
+   * arguments (`WriteToolDefinition.auditArgs`), the hash of the masked ones, as `args` shows them.
+   */
   readonly argsHash: string;
   /**
-   * The validated arguments; redacted, hidden characters escaped (`\\u{…}`), long strings capped
-   * with a marker. Left out on `approval_decided` (the request line with the same call id has them).
+   * The validated arguments (masked where the tool's `auditArgs` says so); redacted, hidden
+   * characters escaped (`\\u{…}`), long strings capped with a marker. Left out on
+   * `approval_decided` (the request line with the same call id has them).
    */
   readonly args?: unknown;
   /** `previewHash` of what was shown or approved (`dry_run`, `confirmation_requested`, `executing`). */

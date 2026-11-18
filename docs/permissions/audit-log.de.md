@@ -1,4 +1,4 @@
-<!-- translated-from: docs/permissions/audit-log.md sha256:730376b5ebad -->
+<!-- translated-from: docs/permissions/audit-log.md sha256:c264228730f7 -->
 
 # Audit-Log
 
@@ -41,8 +41,8 @@ Ereignis ab:
 | `callId`             | Schreibereignisse                                                              | Gemeinsam für alle Zeilen einer Aktion, von der Anfrage bis zum Ergebnis.                                                                                                                                                                                                     |
 | `tool`               | Schreibereignisse                                                              | Der Name des Werkzeugs.                                                                                                                                                                                                                                                       |
 | `tier`               | Schreibereignisse                                                              | `write`, `commit` oder `external`.                                                                                                                                                                                                                                            |
-| `argsHash`           | Schreibereignisse                                                              | Ein Hash des Werkzeugs und seiner Argumente (ohne `dryRun`).                                                                                                                                                                                                                  |
-| `args`               | Schreibereignisse außer `approval_decided`                                     | Die Argumente: Token und Upload-IDs geschwärzt, versteckte Zeichen als sichtbare `\u{…}`-Escapes geschrieben, Zeichenketten bis 20.000 Zeichen.                                                                                                                               |
+| `argsHash`           | Schreibereignisse                                                              | Ein Hash des Werkzeugs und seiner Argumente, wie `args` sie zeigt (ohne `dryRun`).                                                                                                                                                                                            |
+| `args`               | Schreibereignisse außer `approval_decided`                                     | Die Argumente: Token und Upload-IDs geschwärzt, eine IBAN maskiert, versteckte Zeichen als sichtbare `\u{…}`-Escapes geschrieben, Zeichenketten bis 20.000 Zeichen.                                                                                                           |
 | `previewHash`        | `dry_run`, `confirmation_requested`, `approval_decided`, `executing`           | Ein Hash der Vorschau, die gezeigt und freigegeben wurde; bei Werkzeugen der Stufen `commit` und `external` umfasst er den englischen und den deutschen Text.                                                                                                                 |
 | `preview`            | `dry_run`, `confirmation_requested`                                            | Die Vorschau, wie sie gezeigt wurde: `action` (ein Satz), `facts` (`label`, `value`), `warnings` und `irreversible`.                                                                                                                                                          |
 | `approval`           | `executing`                                                                    | Wie die Aktion freigegeben wurde: `elicit`, `browser`, `confirmation_off` oder `not_required`.                                                                                                                                                                                |
@@ -58,6 +58,12 @@ Ereignis ab:
 
 Eine längere Zeichenkette in `args` wird dort abgeschnitten und endet mit einem Hinweis, wie viele
 Zeichen nicht protokolliert wurden.
+
+Von einer IBAN in `args` bleiben nur die letzten vier Zeichen (`****3000`), wie in den Vorschauen;
+bisher nimmt nur `sevdesk_bank_account_update` unter den Schreibwerkzeugen eine IBAN an. `argsHash`
+ist dann der Hash der maskierten Argumente, sodass niemand die volle IBAN finden kann, indem er
+Kandidaten hasht. Die Freigabe selbst bleibt an die echten Argumente gebunden: Eine Freigabe für
+eine IBAN gilt nie für eine andere.
 
 Zum Beispiel (gekürzt):
 

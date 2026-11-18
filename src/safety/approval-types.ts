@@ -22,6 +22,12 @@ export interface ApprovalBinding {
   readonly toolTitle: string;
   readonly tier: WriteTier;
   readonly argsHash: string;
+  /**
+   * The `argsHash` the call's audit lines carry, when it differs from `argsHash` (a tool that
+   * logs masked arguments, `WriteToolDefinition.auditArgs`): the decision's audit line uses it,
+   * so no line holds the hash of the full arguments.
+   */
+  readonly auditArgsHash?: string;
   readonly previewHash: string;
   /** Already sanitized with `displayPreview`. */
   readonly preview: ConfirmationPreview;
