@@ -1,35 +1,58 @@
 /**
- * The building blocks the pages share. Each returns {@link Html}; text passed in is escaped by
- * the `markup` tag, so callers hand over plain strings (also untrusted ones) and markup they
- * built with `markup` themselves.
+ * The building blocks the pages share, after the Lanfermann system's components (`Badge`,
+ * `Alert`, the dot of its marks). Each returns {@link Html}; text passed in is escaped by the
+ * `markup` tag, so callers hand over plain strings (also untrusted ones) and markup they built
+ * with `markup` themselves.
  */
 import { type Html, type HtmlValue, markup, trusted } from "./html.js";
 import { icon, type IconName } from "./icons.js";
 
-type BadgeTone = "plain" | "approve" | "ok" | "info" | "danger";
+/** The tones of a badge or an alert: neutral, or one of the system's status colours. */
+export type Tone = "neutral" | "info" | "success" | "warning" | "danger";
 
-/** A pill: a status or a permission tier. */
-export function badge(content: HtmlValue, tone: BadgeTone = "plain"): Html {
-  return markup`<span class="badge${tone === "plain" ? "" : ` badge-${tone}`}">${content}</span>`;
+/** One or two words in a small label: a status or a permission tier. */
+export function badge(content: HtmlValue, tone: Tone = "neutral"): Html {
+  return markup`<span class="badge${tone === "neutral" ? "" : ` badge-${tone}`}">${content}</span>`;
 }
 
 /**
- * A note the reader must not miss. Monochrome with an ink bar by default (as the website's
- * callouts); `danger` is for what cannot be undone or was refused, `note` for an aside. With
- * `alert`, assistive technology announces it when the page loads (a failed form).
+ * The system's mark, from ring to disc, in the states the pages need: a ring is open (rejected,
+ * not yet), a faint ring is still ahead, a disc in the text colour is done by the machine, an
+ * accent ring waits for a person and an accent disc is a person's decision. Decoration: the
+ * words next to it say the same.
+ */
+export function dot(state: "open" | "faint" | "done" | "waits" | "chosen"): Html {
+  return trusted(
+    `<span class="dot${state === "open" ? "" : ` dot-${state}`}" aria-hidden="true"></span>`,
+  );
+}
+
+const TONE_ICON: Readonly<Record<Tone, IconName>> = {
+  neutral: "info",
+  info: "info",
+  success: "done",
+  warning: "alert",
+  danger: "danger",
+};
+
+/**
+ * A message the reader must not miss: words with an icon on a soft wash of the tone (the system's
+ * `Alert`). `danger` is for what cannot be undone or was refused, `warning` for a consequence to
+ * weigh. With `alert`, assistive technology announces it when the page loads (a failed form).
  */
 export function callout(
   content: HtmlValue,
   options: {
-    readonly tone?: "danger" | "note";
+    readonly tone?: Tone;
     readonly icon?: IconName;
     readonly alert?: boolean;
   } = {},
 ): Html {
-  const tone = options.tone === undefined ? "" : ` callout-${options.tone}`;
+  const tone = options.tone ?? "neutral";
+  const kind = tone === "neutral" ? "" : ` alert-${tone}`;
   const role = options.alert === true ? trusted(' role="alert"') : "";
-  const sign = icon(options.icon ?? "info");
-  return markup`<div class="callout${tone}"${role}>${sign}<div>${content}</div></div>`;
+  const sign = icon(options.icon ?? TONE_ICON[tone]);
+  return markup`<div class="alert${kind}"${role}>${sign}<div>${content}</div></div>`;
 }
 
 /**
@@ -50,41 +73,26 @@ export function pageTime(iso: string): Html {
 }
 
 /**
- * A rubber stamp, the pages' one loud element: it stands for the thing a model can never do by
- * itself, a human's decision. The same drawing as on the website (`components/system/stamp.tsx`):
- * a double frame around the word, printed through an SVG filter that speckles and slightly warps
- * the ink. The filter is referenced inside the same SVG, so nothing is fetched.
- *
- * Decoration: the heading next to it says the same, so the stamp is hidden from assistive
- * technology. `tone` is `approve` (stamp ink) for an approval, `plain` (ink) otherwise.
+ * The checkpoint at the top of the page after a decision, as on the website: a hairline with the
+ * mark in its middle, an accent disc when the person approved, an open ring when they rejected.
+ * Decoration: the heading below says the same.
  */
-export function stamp(word: string, tone: "approve" | "plain"): Html {
-  const text = word.toUpperCase();
-  const width = Math.max(180, Array.from(text).length * 21 + 56);
-  const height = 74;
-  return markup`<div class="stamp stamp-${tone}" aria-hidden="true"><svg viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">
-<defs><filter id="stamp-ink" x="-5%" y="-5%" width="110%" height="110%">
-<feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" seed="4" result="grain"/>
-<feColorMatrix in="grain" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -5.5 4.55" result="holes"/>
-<feComposite in="SourceGraphic" in2="holes" operator="in" result="inked"/>
-<feTurbulence type="turbulence" baseFrequency="0.035" numOctaves="2" seed="9" result="warp"/>
-<feDisplacementMap in="inked" in2="warp" scale="2.6" xChannelSelector="R" yChannelSelector="G"/>
-</filter></defs>
-<g filter="url(#stamp-ink)" fill="currentColor" stroke="currentColor">
-<rect x="3" y="3" width="${width - 6}" height="${height - 6}" rx="9" fill="none" stroke-width="4.5"/>
-<rect x="10.5" y="10.5" width="${width - 21}" height="${height - 21}" rx="4" fill="none" stroke-width="1.5"/>
-<text class="stamp-word" x="${width / 2}" y="49" text-anchor="middle" textLength="${width - 52}" lengthAdjust="spacingAndGlyphs" stroke="none" font-size="31">${text}</text>
-</g></svg></div>`;
+export function checkpoint(approved: boolean): Html {
+  return markup`<div class="checkpoint" aria-hidden="true">${dot(approved ? "chosen" : "open")}</div>`;
 }
 
-/** Values longer than this, or with a line break, get the full width of the sheet. */
+/** Values longer than this, or with a line break, are set as a block under their label. */
 const LONG_VALUE = 72;
+/** Values longer than this get a row of their own instead of half of one. */
+const WIDE_VALUE = 32;
 
 /**
- * Label and value rows, like the lines of a ledger. Values keep their line breaks
- * (`white-space: pre-wrap` in the stylesheet) and are never cut or scrolled: what the reader
- * decides on is shown in full. Nothing but the value goes between `<dd>` and `</dd>`: any
- * whitespace there would show.
+ * Label and value pairs. On a wide screen two short pairs share a row; a longer value gets the
+ * row to itself (`fact-wide`), and a value with a line break or longer still is set as a block
+ * under its label (`fact-long`). `long: false` keeps a long value beside its label. Values keep
+ * their line breaks (`white-space: pre-wrap` in the stylesheet) and are never cut or scrolled:
+ * what the reader decides on is shown in full, in the order given. Nothing but the value goes
+ * between `<dd>` and `</dd>`: any whitespace there would show.
  */
 export function facts(
   rows: readonly { readonly label: string; readonly value: HtmlValue; readonly long?: boolean }[],
@@ -92,12 +100,12 @@ export function facts(
 ): Html {
   if (rows.length === 0) return trusted("");
   const cells = rows.map((row) => {
+    const text = typeof row.value === "string" ? row.value : undefined;
     const long =
-      row.long ??
-      (typeof row.value === "string" &&
-        (row.value.includes("\n") || row.value.length > LONG_VALUE));
-    const wide = long ? trusted(' class="long"') : "";
-    return markup`<dt${wide}>${row.label}</dt><dd>${row.value}</dd>`;
+      row.long ?? (text !== undefined && (text.includes("\n") || text.length > LONG_VALUE));
+    const wide = !long && (row.long === false || (text?.length ?? 0) > WIDE_VALUE);
+    const kind = long ? " fact-long" : wide ? " fact-wide" : "";
+    return markup`<div class="fact${kind}"><dt>${row.label}</dt><dd>${row.value}</dd></div>`;
   });
   return markup`<dl class="facts${options.plain === true ? " facts-plain" : ""}">${cells}</dl>`;
 }

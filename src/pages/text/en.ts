@@ -43,7 +43,6 @@ export const en = {
   /** The approval page: the preview of one action, with Approve and Reject. */
   approval: {
     title: "Approve sevDesk action",
-    eyebrow: "sevDesk MCP asks for your approval",
     heading: "Approve this action?",
     lead: "Your AI assistant wants to make this change in sevDesk. Read it through, then decide.",
     /** What a tool of each tier does, in plain words. */

@@ -582,8 +582,8 @@ describe("licenses", () => {
   it("ships the license of every embedded font, each with its copyright line", () => {
     const dir = new URL("../../../licenses/fonts/", import.meta.url);
     for (const [file, holder] of [
-      ["Archivo-OFL.txt", "The Archivo Project Authors"],
-      ["MartianMono-OFL.txt", "The Martian Mono Project Authors"],
+      ["SofiaSans-OFL.txt", "The Sofia Sans Project Authors"],
+      ["JetBrainsMono-OFL.txt", "The JetBrains Mono Project Authors"],
     ] as const) {
       const license = readFileSync(new URL(file, dir), "utf8");
       expect(license).toContain(holder);

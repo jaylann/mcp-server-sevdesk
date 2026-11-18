@@ -1,0 +1,1036 @@
+/*
+ * The stylesheet of the server's pages: the Lanfermann system (`@lanfermann/ui`, the website's
+ * design system) compiled with Tailwind, and the few parts the pages are made of, built from the
+ * system's tokens and utilities. `pnpm pages:css` (scripts/page-css.ts) compiles this file into
+ * `styles.generated.ts`, which the frame inlines in its one nonce'd style block; a test fails
+ * when the two drift apart. A new release of the system arrives with a version bump and
+ * `pnpm pages:css`.
+ *
+ * Rules of the system that hold here (its DESIGN.md):
+ * - Indigo (`--lf-accent`) is the ask: the one Approve button, focus, links, checked boxes and
+ *   the mark of a person's decision. Never an icon or a heading. The key (`--lf-key`) is the
+ *   committed action of every other form. Status colours come with words and an icon.
+ * - Depth comes only from the system's utilities: `depth-raised` fittings (buttons),
+ *   `depth-field` and `depth-socket` (fields, checkboxes), `depth-trough` (the countdown),
+ *   `depth-card` (the sheet the content rests on). Flat panels: alerts, badges, facts.
+ * - Motion is the system's springs (`spring-*`), and nothing animates on page load.
+ *
+ * The pages add one thing the system leaves to the app: the Ink ground follows the browser's
+ * colour scheme (copied under `prefers-color-scheme: dark` by the build, from the system's own
+ * Ink blocks). And one deviation: fields and checkboxes are outlined in `--lf-line` (3:1) instead
+ * of the system's fainter edges, so a field is found without its label.
+ *
+ * Nothing here may need a `style=""` attribute or a script (the pages' CSP allows neither), and
+ * nothing is loaded from outside `/assets/` (the fonts are declared at run time, `theme.ts`).
+ */
+
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/preflight.css" layer(base);
+@import "tailwindcss/utilities.css" layer(utilities) source(none);
+@import "@lanfermann/ui/styles.css";
+
+/* The pages use no utility classes in their markup: only what this file applies is generated,
+   not the classes of the system's React components. */
+@source not "../../node_modules/.pnpm/*/node_modules/@lanfermann/ui/dist";
+
+body {
+  background: var(--lf-ground);
+  color: var(--lf-text-body);
+  @apply font-sans text-base;
+}
+:focus-visible {
+  outline: 2px solid var(--lf-accent);
+  outline-offset: 2px;
+}
+h1,
+h2 {
+  color: var(--lf-text);
+  text-wrap: balance;
+}
+h1 {
+  @apply text-2xl font-medium;
+}
+h2 {
+  @apply text-lg font-semibold;
+}
+p {
+  text-wrap: pretty;
+}
+strong {
+  @apply font-semibold;
+  color: var(--lf-text);
+}
+a {
+  @apply font-medium;
+  color: var(--lf-accent);
+  text-decoration: underline 1px;
+  text-underline-offset: 0.25em;
+  &:hover {
+    color: var(--lf-accent-hover);
+  }
+}
+code {
+  @apply font-mono;
+  font-size: 0.84em;
+  padding: 0 0.3em;
+  border-radius: 5px;
+  background: var(--lf-well);
+  box-shadow: inset 0 0 0 1px var(--lf-hairline);
+  color: var(--lf-text);
+  font-variant-ligatures: none;
+  overflow-wrap: anywhere;
+  box-decoration-break: clone;
+}
+svg {
+  flex: none;
+}
+.ink {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* The frame: the wordmark, one column, the footer. */
+.page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  max-width: 48rem;
+  margin: 0 auto;
+  padding: 1.5rem 1.25rem 2rem;
+}
+.wide .page {
+  max-width: 56rem;
+}
+.top {
+  margin-bottom: clamp(1.75rem, 5vw, 2.75rem);
+}
+.wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+  @apply font-semibold;
+  font-size: 1.125rem;
+  line-height: 1;
+  color: var(--lf-text);
+  white-space: nowrap;
+}
+.logo {
+  width: 0.854em;
+  height: 1em;
+  fill: currentColor;
+}
+.logo-foot {
+  fill: var(--lf-accent);
+}
+main {
+  flex: 1;
+}
+.foot {
+  margin-top: 3rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--lf-hairline);
+  @apply text-sm;
+  color: var(--lf-text-muted);
+}
+
+.lead {
+  margin-top: 0.75rem;
+  font-size: 1.125rem;
+  line-height: 1.45;
+}
+.small {
+  font-size: 0.9375rem;
+  line-height: 1.5;
+}
+.fine {
+  @apply text-sm;
+  color: var(--lf-text-muted);
+}
+.after {
+  margin-top: 1.5rem;
+}
+.nb {
+  white-space: nowrap;
+}
+
+/* The card: the system's resting sheet, with a recessed footer for the actions. */
+.card {
+  margin-top: 2rem;
+  padding: 1.5rem;
+  @apply rounded-xl depth-card;
+  background: var(--lf-surface);
+  main > &:first-child {
+    margin-top: 0;
+  }
+  & h1 {
+    @apply text-xl font-semibold;
+  }
+}
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+.card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1.25rem;
+  flex-wrap: wrap;
+  margin: 1.5rem -1.5rem -1.5rem;
+  padding: 0.875rem 1.5rem;
+  border-top: 1px solid var(--lf-hairline);
+  border-radius: 0 0 var(--radius-xl) var(--radius-xl);
+  background: var(--lf-well);
+  & > p {
+    flex: 1 1 12rem;
+    font-size: 0.9375rem;
+    color: var(--lf-text-muted);
+  }
+  & .actions {
+    margin-left: auto;
+  }
+}
+.meta {
+  margin-top: 0.25rem;
+  font-size: 0.9375rem;
+  color: var(--lf-text-muted);
+}
+
+/* Badge: one or two words, tinted by their tone. */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  height: 1.375rem;
+  padding: 0 0.5rem;
+  @apply rounded-sm text-sm font-medium;
+  line-height: 1;
+  white-space: nowrap;
+  background: var(--lf-surface-quiet);
+  color: var(--lf-text-body);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, currentColor 15%, transparent);
+  & svg {
+    width: 0.875rem;
+    height: 0.875rem;
+  }
+  & strong {
+    font-weight: inherit;
+    color: inherit;
+  }
+}
+.badge-info {
+  background: var(--lf-info-soft);
+  color: var(--lf-info);
+}
+.badge-success {
+  background: var(--lf-success-soft);
+  color: var(--lf-success);
+}
+.badge-warning {
+  background: var(--lf-warning-soft);
+  color: var(--lf-warning);
+}
+.badge-danger {
+  background: var(--lf-danger-soft);
+  color: var(--lf-danger);
+}
+
+/* The dot: the system's mark, ring to disc. */
+.dot {
+  display: inline-block;
+  @apply mark;
+}
+.dot-faint {
+  box-shadow: inset 0 0 0 1px var(--lf-hairline);
+}
+.dot-done {
+  box-shadow: inset 0 0 0 0.25rem var(--lf-text);
+}
+.dot-waits {
+  box-shadow: inset 0 0 0 2px var(--lf-accent);
+}
+.dot-chosen {
+  @apply mark-on;
+}
+@media (forced-colors: active) {
+  .dot {
+    outline: 1px solid CanvasText;
+    outline-offset: -1px;
+  }
+  .dot-done,
+  .dot-chosen {
+    background-color: CanvasText;
+  }
+}
+
+.ref {
+  @apply font-mono text-sm font-medium;
+  letter-spacing: 0.06em;
+  color: var(--lf-text);
+  white-space: nowrap;
+  & strong {
+    font-weight: inherit;
+  }
+}
+.ref-line {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+/* Alert: words and an icon on a soft wash of their tone (the system's Alert). */
+.alert {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 0.75rem;
+  align-items: start;
+  margin-top: 0.75rem;
+  padding: 0.75rem 1rem;
+  @apply rounded-lg;
+  background: var(--lf-surface-quiet);
+  box-shadow: inset 0 0 0 1px var(--lf-hairline);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  & > svg {
+    width: 1.125rem;
+    height: 1.125rem;
+    margin-top: 0.125rem;
+    color: var(--lf-text-muted);
+  }
+  & h2 {
+    font-size: 1rem;
+    line-height: 1.5;
+  }
+}
+.alert-info {
+  background: var(--lf-info-soft);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--lf-info) 20%, transparent);
+  & > svg {
+    color: var(--lf-text);
+  }
+}
+.alert-success {
+  background: var(--lf-success-soft);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--lf-success) 25%, transparent);
+  & > svg {
+    color: var(--lf-success);
+  }
+}
+.alert-warning {
+  background: var(--lf-warning-soft);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--lf-warning) 30%, transparent);
+  & > svg {
+    color: var(--lf-warning);
+  }
+}
+.alert-danger {
+  background: var(--lf-danger-soft);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--lf-danger) 25%, transparent);
+  & > svg {
+    color: var(--lf-danger);
+  }
+}
+.alerts {
+  margin-top: 1rem;
+  & li + li {
+    margin-top: 0.5rem;
+  }
+  & .alert {
+    margin-top: 0;
+  }
+}
+.notice {
+  margin-top: 1.5rem;
+  & .alert {
+    margin-top: 0;
+  }
+}
+.card > .alert:first-child {
+  margin: 0 0 1.25rem;
+}
+
+/* Facts: two short pairs to a row, longer values across it. Values are never cut or scrolled. */
+.facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 2rem;
+  margin-top: 1.25rem;
+  & dt {
+    @apply text-sm;
+    color: var(--lf-text-muted);
+  }
+  & dd {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+    margin-top: 0.125rem;
+    color: var(--lf-text);
+    font-variant-numeric: tabular-nums lining-nums;
+  }
+}
+.fact {
+  min-width: 0;
+  padding: 0.625rem 0;
+  border-top: 1px solid var(--lf-hairline);
+}
+.fact-wide,
+.fact-long {
+  grid-column: 1 / -1;
+}
+.fact-long {
+  padding-bottom: 0.75rem;
+  & dd {
+    margin-top: 0.375rem;
+    padding: 0.75rem 0.875rem;
+    @apply rounded-md;
+    background: var(--lf-well);
+    box-shadow: inset 0 0 0 1px var(--lf-hairline);
+    font-size: 0.9375rem;
+    line-height: 1.55;
+    color: var(--lf-text-body);
+  }
+}
+.facts-plain {
+  margin-top: 0;
+}
+.card h2 + .facts {
+  margin-top: 1rem;
+}
+.next h2 + ul {
+  margin-top: 0.75rem;
+}
+
+/* Buttons: the system's fittings. Raised at rest, a little higher under the pointer, pressed
+   in on press. */
+.btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  height: var(--control-lg);
+  padding: 0 var(--control-pad-lg);
+  @apply rounded-lg font-medium depth-raised spring-snap;
+  background-color: var(--lf-raised);
+  color: var(--lf-text);
+  font-size: var(--control-text);
+  line-height: 1.4;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition-property: box-shadow, background-color, color, scale;
+  &:hover {
+    @apply depth-raised-hover;
+    color: var(--lf-text);
+  }
+  &:active {
+    @apply depth-pressed;
+    scale: var(--motion-press-scale);
+    background-color: var(--lf-raised-pressed);
+  }
+  & svg {
+    width: 1.125rem;
+    height: 1.125rem;
+  }
+  @media (pointer: coarse) {
+    min-height: 2.75rem;
+  }
+}
+.btn-primary {
+  @apply depth-tone-key;
+  background-color: var(--lf-key);
+  color: var(--lf-on-key);
+  &:hover {
+    background-color: var(--lf-key-hover);
+    color: var(--lf-on-key);
+  }
+  &:active {
+    background-color: var(--lf-key-pressed);
+  }
+}
+.btn-ask {
+  @apply depth-tone-accent;
+  background-color: var(--lf-accent);
+  color: var(--lf-on-accent);
+  &:hover {
+    background-color: var(--lf-accent-hover);
+    color: var(--lf-on-accent);
+  }
+  &:active {
+    background-color: var(--lf-accent-pressed);
+  }
+}
+.btn-quiet,
+.btn-quiet:hover,
+.btn-quiet:active {
+  @apply depth-none;
+  background: transparent;
+}
+.btn-quiet:hover,
+.btn-quiet:active {
+  background-color: var(--lf-hover);
+}
+.btn-sm {
+  height: var(--control-md);
+  padding: 0 var(--control-pad-md);
+  @apply rounded-md;
+  & svg {
+    width: 1rem;
+    height: 1rem;
+  }
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Fields: let into the card, outlined so they are found without their label. */
+.field,
+form.login label {
+  display: block;
+  margin-bottom: 0.375rem;
+  @apply font-medium;
+  font-size: var(--control-text);
+  line-height: 1.4;
+  color: var(--lf-text);
+}
+input[type="password"] {
+  display: block;
+  width: 100%;
+  height: var(--control-lg);
+  padding: 0 var(--field-pad-lg);
+  @apply rounded-lg depth-field spring-snap;
+  --depth-field-edge: var(--lf-line);
+  background: var(--lf-surface);
+  color: var(--lf-text);
+  font-size: var(--control-text);
+  transition-property: box-shadow;
+  &:focus {
+    @apply depth-field-focus;
+    outline: 2px solid transparent;
+  }
+  &[aria-invalid="true"] {
+    @apply depth-field-invalid;
+  }
+  @media (pointer: coarse) {
+    font-size: 1rem;
+  }
+}
+.hint {
+  margin-top: 0.375rem;
+  @apply text-sm;
+  color: var(--lf-text-muted);
+}
+
+/* The countdown: the time left drains out of the system's trough, and when it is up, the buttons
+   go and the page says the request has expired, all without script (`--ttl` comes with the
+   response). The expiry is not motion, so it stays on under reduced motion. */
+.card-foot .late {
+  flex: 0 0 0;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  color: var(--lf-text);
+  @apply font-medium;
+  animation: arrive 1ms linear var(--ttl) forwards;
+}
+.live {
+  animation: expire 1ms linear var(--ttl) forwards;
+}
+@keyframes arrive {
+  to {
+    flex: 1 1 100%;
+    height: auto;
+    overflow: visible;
+    visibility: visible;
+  }
+}
+@keyframes expire {
+  to {
+    flex: 0 0 0;
+    height: 0;
+    min-height: 0;
+    overflow: hidden;
+    visibility: hidden;
+  }
+}
+.expiry {
+  margin-top: 1.5rem;
+}
+.meter {
+  position: relative;
+  height: 0.375rem;
+  margin-bottom: 0.75rem;
+  border-radius: 999px;
+  background: var(--lf-trough);
+  overflow: hidden;
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    @apply depth-trough;
+  }
+  & i {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--lf-text);
+    transform: translateX(calc((var(--part) - 1) * 100%));
+    animation:
+      drain var(--ttl) linear forwards,
+      low 1ms linear calc(var(--ttl) - 60s) forwards;
+    @media (prefers-reduced-motion: reduce) {
+      animation: none;
+    }
+    @media (forced-colors: active) {
+      background: Highlight;
+    }
+  }
+}
+@keyframes drain {
+  to {
+    transform: translateX(-100%);
+  }
+}
+@keyframes low {
+  to {
+    background: var(--lf-warning-solid);
+  }
+}
+.clock-line {
+  display: none;
+}
+@property --t {
+  syntax: "<integer>";
+  inherits: true;
+  initial-value: 0;
+}
+@supports (width: calc(1px * round(down, 1.5, 1))) and (color: rgb(from red r g b)) {
+  .clock-line {
+    display: inline;
+  }
+  .clock {
+    @apply font-medium;
+    font-variant-numeric: tabular-nums;
+    color: var(--lf-text);
+    counter-reset: m calc(round(down, var(--t) / 60, 1)) s calc(mod(var(--t), 60));
+    animation: tick var(--ttl) linear forwards;
+    &::after {
+      content: counter(m) ":" counter(s, decimal-leading-zero);
+    }
+  }
+  @keyframes tick {
+    from {
+      --t: var(--secs);
+    }
+    to {
+      --t: 0;
+    }
+  }
+}
+
+/* The checkpoint after a decision, as on the website: a hairline with the mark in its middle. */
+.checkpoint {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  &::before,
+  &::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: var(--lf-hairline);
+  }
+  & .dot {
+    width: 1.25rem;
+    height: 1.25rem;
+    box-shadow: inset 0 0 0 2px var(--lf-line);
+  }
+  & .dot-chosen {
+    box-shadow: inset 0 0 0 0.625rem var(--lf-accent);
+  }
+}
+
+/* Lists: the inbox, the files of an upload. */
+.title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  flex-wrap: wrap;
+}
+.row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1.25rem;
+  flex-wrap: wrap;
+  padding: 1rem 0;
+  border-top: 1px solid var(--lf-hairline);
+  &:first-child {
+    border-top: 0;
+    padding-top: 0.25rem;
+  }
+  &:last-child {
+    padding-bottom: 0;
+  }
+  &:hover .row-title a {
+    text-decoration: underline 1px;
+    text-underline-offset: 0.25em;
+  }
+  & .btn {
+    pointer-events: none;
+  }
+}
+.row-main {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+.row-title {
+  @apply font-medium;
+  line-height: 1.4;
+  color: var(--lf-text);
+  overflow-wrap: anywhere;
+  & a {
+    color: inherit;
+    font-weight: inherit;
+    text-decoration: none;
+    &::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+    }
+    &:focus-visible {
+      outline: 0;
+    }
+    &:focus-visible::after {
+      outline: 2px solid var(--lf-accent);
+      outline-offset: 2px;
+    }
+  }
+}
+.row-meta {
+  margin-top: 0.25rem;
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: var(--lf-text-muted);
+  & .ref {
+    margin-left: 0.25rem;
+  }
+  & code {
+    padding: 0;
+    background: none;
+    box-shadow: none;
+    color: inherit;
+  }
+}
+.row-status {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem 0.75rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}
+.empty {
+  display: grid;
+  justify-items: center;
+  gap: 0.5rem;
+  padding: 1.5rem 0 1rem;
+  text-align: center;
+  & > svg {
+    width: 2.5rem;
+    height: 2.5rem;
+    margin-bottom: 0.5rem;
+    color: var(--lf-text-muted);
+  }
+  & p {
+    max-width: 26rem;
+    font-size: 0.9375rem;
+    color: var(--lf-text-muted);
+  }
+  & .btn {
+    margin-top: 0.75rem;
+  }
+}
+
+/* Sign-in. */
+.address {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: fit-content;
+  max-width: 100%;
+  margin-bottom: 0.75rem;
+  padding: 0.375rem 0.75rem;
+  @apply rounded-md font-mono text-sm;
+  background: var(--lf-well);
+  box-shadow: inset 0 0 0 1px var(--lf-hairline);
+  color: var(--lf-text);
+  overflow-wrap: anywhere;
+  & svg {
+    width: 1rem;
+    height: 1rem;
+    color: var(--lf-text-muted);
+  }
+}
+form.login {
+  margin-top: 1.5rem;
+  & .btn {
+    width: 100%;
+    margin-top: 1.5rem;
+  }
+}
+
+/* Consent: the steps, and the tiers as checkboxes (the system's sockets, Indigo when ticked). */
+.steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  margin-bottom: 1.25rem;
+  @apply text-sm;
+  color: var(--lf-text-muted);
+}
+.step {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.step-now {
+  @apply font-medium;
+  color: var(--lf-text);
+}
+.app {
+  & p + p {
+    margin-top: 0.375rem;
+  }
+  & strong {
+    overflow-wrap: anywhere;
+  }
+}
+.tiers {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+  min-width: 0;
+  & .hint {
+    grid-column: 1 / -1;
+    margin: 0.25rem 0 1.5rem;
+  }
+}
+.tiers legend,
+.may {
+  margin-bottom: 0.75rem;
+  @apply text-base font-semibold;
+  color: var(--lf-text);
+}
+.tier {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.75rem;
+  align-items: start;
+  padding: 0.875rem 1rem;
+  @apply rounded-lg spring-snap;
+  background: var(--lf-surface);
+  box-shadow: inset 0 0 0 1px var(--lf-hairline);
+  cursor: pointer;
+  transition-property: background-color, box-shadow;
+  &:hover {
+    background: var(--lf-hover);
+  }
+  &:has(input:checked) {
+    background: var(--lf-tint);
+    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--lf-accent) 30%, transparent);
+  }
+  &:has(input:disabled) {
+    cursor: default;
+    background: var(--lf-surface);
+    box-shadow: inset 0 0 0 1px var(--lf-hairline);
+  }
+  &:has(input:focus-visible) {
+    outline: 2px solid var(--lf-accent);
+    outline-offset: 2px;
+  }
+  & input {
+    appearance: none;
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: var(--check-size);
+    height: var(--check-size);
+    margin-top: 0.1875rem;
+    @apply rounded-xs depth-socket spring-seat;
+    --depth-socket-rim: var(--lf-line);
+    background: var(--lf-surface);
+    cursor: inherit;
+    transition-property: background-color, box-shadow, scale;
+    &:active {
+      scale: 0.92;
+    }
+    &::after {
+      content: "";
+      width: 0.3125rem;
+      height: 0.5625rem;
+      margin-top: -0.125rem;
+      border: solid var(--lf-on-accent);
+      border-width: 0 2px 2px 0;
+      rotate: 45deg;
+      scale: 0;
+      @apply spring-seat;
+      transition-property: scale;
+    }
+    &:checked {
+      @apply depth-plug depth-tone-accent;
+      background-color: var(--lf-accent);
+      &::after {
+        scale: 1;
+      }
+    }
+    &:disabled:checked {
+      @apply depth-flat;
+      background-color: var(--lf-text-muted);
+      &::after {
+        border-color: var(--lf-surface);
+      }
+    }
+    &:focus-visible {
+      outline: 0;
+    }
+  }
+}
+.tier-words {
+  display: grid;
+  gap: 0.375rem;
+  justify-items: start;
+}
+.granted {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem 2rem;
+}
+.may {
+  margin-top: 1.5rem;
+}
+.form-actions {
+  margin-top: 1.5rem;
+  & .btn-primary {
+    flex: 1 1 auto;
+  }
+}
+form.card > .alert {
+  margin-top: 1rem;
+}
+
+/* Upload: the native file control is the drop zone. */
+form.upload {
+  margin-top: 1.5rem;
+  & .btn {
+    width: 100%;
+    margin-top: 1.5rem;
+  }
+}
+input[type="file"] {
+  display: block;
+  width: 100%;
+  padding: 1.25rem 1rem;
+  border: 1.5px dashed var(--lf-line);
+  @apply rounded-lg spring-snap;
+  background: var(--lf-surface);
+  color: var(--lf-text-muted);
+  font-size: 0.9375rem;
+  cursor: pointer;
+  transition-property: border-color, background-color;
+  &:hover {
+    border-color: var(--lf-text-muted);
+    background: var(--lf-hover);
+  }
+  &::file-selector-button {
+    height: var(--control-md);
+    margin-right: 0.875rem;
+    padding: 0 var(--control-pad-md);
+    @apply rounded-md font-medium depth-plug;
+    background-color: var(--lf-raised);
+    color: var(--lf-text);
+    font-size: var(--control-text);
+    cursor: pointer;
+  }
+}
+
+/* The page that says one thing. */
+.result-icon {
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  margin-bottom: 1.25rem;
+  border-radius: 999px;
+  background: var(--lf-surface-quiet);
+  color: var(--lf-text-muted);
+  & svg {
+    width: 1.375rem;
+    height: 1.375rem;
+  }
+}
+.result-ok {
+  background: var(--lf-success-soft);
+  color: var(--lf-success);
+}
+.result-wait {
+  background: var(--lf-warning-soft);
+  color: var(--lf-warning);
+}
+.result-danger {
+  background: var(--lf-danger-soft);
+  color: var(--lf-danger);
+}
+.message {
+  margin-top: 0.75rem;
+}
+.next {
+  margin-top: 1.5rem;
+}
+
+/* Narrower than two columns of facts: one column. A phone: stacked actions, full width. */
+@media (max-width: 40rem) {
+  h1 {
+    @apply text-xl;
+    font-size: 1.75rem;
+  }
+  .facts,
+  .tiers,
+  .granted {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 30rem) {
+  .page {
+    padding-top: 1.25rem;
+  }
+  .card {
+    padding: 1.25rem;
+  }
+  .card-foot {
+    margin: 1.25rem -1.25rem -1.25rem;
+    padding: 1rem 1.25rem 1.25rem;
+    & .actions {
+      flex: 1 1 100%;
+      flex-direction: column-reverse;
+    }
+    & .btn {
+      width: 100%;
+    }
+  }
+}

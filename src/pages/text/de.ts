@@ -31,7 +31,6 @@ export const de: Texts = {
 
   approval: {
     title: "sevDesk-Aktion freigeben",
-    eyebrow: "sevDesk MCP bittet um deine Freigabe",
     heading: "Diese Aktion freigeben?",
     lead:
       "Dein KI-Assistent möchte diese Änderung in sevDesk vornehmen. Lies alles durch und " +

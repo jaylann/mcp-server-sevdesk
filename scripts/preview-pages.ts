@@ -24,7 +24,7 @@ import { markup } from "../src/pages/html.js";
 import { type Locale, LOCALES } from "../src/pages/locale.js";
 import { renderMessagePage } from "../src/pages/message.js";
 import { pageTexts } from "../src/pages/text/index.js";
-import { DARK_SCHEME, LIGHT_SCHEME, NARROW } from "../src/pages/theme.js";
+import { NARROW } from "../src/pages/theme.js";
 import { htmlResponse, styleNonce } from "../src/safety/web.js";
 import { GALLERY } from "../test/helpers/page-gallery.js";
 import { flattenTexts } from "../test/helpers/page-texts.js";
@@ -32,7 +32,8 @@ import { flattenTexts } from "../test/helpers/page-texts.js";
 const HOST = "127.0.0.1";
 const PORT = Number(process.env["PORT"] ?? "4173");
 
-const SCHEMES = { light: LIGHT_SCHEME, dark: DARK_SCHEME } as const;
+/** The system's ground for each scheme. */
+const SCHEMES = { light: "paper", dark: "ink" } as const;
 export type Scheme = keyof typeof SCHEMES;
 export const SCHEME_NAMES = Object.keys(SCHEMES) as Scheme[];
 
@@ -40,9 +41,12 @@ function context(locale: Locale, origin: string): RenderContext {
   return { ...pageContext(locale, origin), nonce: styleNonce() };
 }
 
-/** Applies one colour scheme whatever the desktop prefers: its tokens, after the stylesheet. */
+/**
+ * Applies one colour scheme whatever the desktop prefers: the system's ground on the root
+ * (`data-theme`), which the stylesheet's scheme rule leaves alone.
+ */
 function forceScheme(page: string, scheme: Scheme): string {
-  return page.replace("</style>", `:root{color-scheme:${scheme};${SCHEMES[scheme]}}</style>`);
+  return page.replace("<html ", `<html data-theme="${SCHEMES[scheme]}" `);
 }
 
 /**
@@ -63,15 +67,15 @@ function send(response: ServerResponse, status: number, page: string, ctx: Rende
 
 const INDEX_CSS = `
 .gallery li{display:flex;align-items:baseline;justify-content:space-between;gap:.5rem 1.5rem;
-  flex-wrap:wrap;padding:.75rem 0;border-top:1px solid var(--line-2)}
+  flex-wrap:wrap;padding:.75rem 0;border-top:1px solid var(--lf-hairline)}
 .gallery li:first-child{border-top:0}
 .gallery span{display:flex;gap:.875rem;font-size:.9375rem}
 .texts{width:100%;border-collapse:collapse;font-size:.875rem;line-height:1.5}
-.texts th,.texts td{padding:.5rem .75rem .5rem 0;border-top:1px solid var(--line-2);text-align:left;
+.texts th,.texts td{padding:.5rem .75rem .5rem 0;border-top:1px solid var(--lf-hairline);text-align:left;
   vertical-align:top;overflow-wrap:anywhere}
-.texts th{font-weight:500;color:var(--text-3)}
-.texts td:first-child{width:22%;font-family:var(--mono);font-stretch:87.5%;font-size:.75rem;
-  color:var(--text-3)}
+.texts th{font-weight:500;color:var(--lf-text-muted)}
+.texts td:first-child{width:22%;font-family:"JetBrains Mono",monospace;font-size:.75rem;
+  color:var(--lf-text-muted)}
 `;
 
 function index(ctx: RenderContext): string {
@@ -87,7 +91,7 @@ function index(ctx: RenderContext): string {
   });
   const body = markup`<h1>Pages of the server</h1>
 <p class="lead">Every state with made-up content, under the real page headers. <a href="/texts">All texts in English and German</a>.</p>
-<section class="sheet"><ul class="gallery">${rows}</ul></section>`;
+<section class="card"><ul class="gallery">${rows}</ul></section>`;
   return renderFrame({ title: "Page preview", body, wide: true, css: INDEX_CSS }, ctx);
 }
 
@@ -100,7 +104,7 @@ function texts(ctx: RenderContext): string {
   });
   const body = markup`<h1>Page texts</h1>
 <p class="lead">${String(english.size)} texts. <a href="/">Back to the pages</a>.</p>
-<section class="sheet"><table class="texts">
+<section class="card"><table class="texts">
 <thead><tr><th>Text</th><th>English</th><th>Deutsch</th></tr></thead>
 <tbody>${rows}</tbody>
 </table></section>`;

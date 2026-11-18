@@ -1,5 +1,5 @@
 /**
- * The static assets of the server's own pages: two fonts (Archivo, Martian Mono) and the icon.
+ * The static assets of the server's own pages: two fonts (Sofia Sans, JetBrains Mono) and the icon.
  * They are embedded in the bundle (`assets.generated.ts`) and served under `/assets/<name>` by
  * both servers that show pages: the HTTP server (`src/http/asset-route.ts`) and the local approval
  * page (`src/safety/approval-local.ts`).

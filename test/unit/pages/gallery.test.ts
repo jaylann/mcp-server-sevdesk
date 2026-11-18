@@ -102,12 +102,12 @@ describe.each(CASES)("page %s (%s)", (_name, locale, page) => {
       }
     }
     expect(html).not.toMatch(/https?:\/\//);
-    // Fonts and the icon come from /assets/; the stamp's filter is in the page itself.
+    // Fonts and the icon come from /assets/.
     const loaded = [...html.matchAll(/url\(([^)]*)\)/g)].map((match) => match[1] ?? "");
-    for (const url of loaded) expect(url).toMatch(/^(?:\/assets\/[\w.-]+|#[\w-]+)$/);
+    for (const url of loaded) expect(url).toMatch(/^\/assets\/[\w.-]+$/);
     expect(attributes(html.slice(0, html.indexOf("<style")), "href")).toEqual([
       expect.stringMatching(/^\/assets\/icon\.[0-9a-f]{12}\.svg$/) as string,
-      expect.stringMatching(/^\/assets\/archivo-latin\.[0-9a-f]{12}\.woff2$/) as string,
+      expect.stringMatching(/^\/assets\/sofia-sans-latin\.[0-9a-f]{12}\.woff2$/) as string,
     ]);
   });
 
@@ -162,8 +162,7 @@ describe.each(CASES)("page %s (%s)", (_name, locale, page) => {
       expect(button).toContain('type="submit"');
     }
     // Icons repeat what the text next to them says.
-    const withoutStamp = body.replace(/<div class="stamp[\s\S]*?<\/svg><\/div>/, "");
-    for (const [svg] of withoutStamp.matchAll(/<svg\b[^>]*>/g)) {
+    for (const [svg] of body.matchAll(/<svg\b[^>]*>/g)) {
       expect(svg).toContain('aria-hidden="true"');
     }
   });

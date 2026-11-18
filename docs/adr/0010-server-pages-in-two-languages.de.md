@@ -155,3 +155,34 @@ Die Seiten übernehmen das Zeichen (die Wortmarke im Rahmen, `assets/icon.svg` a
 behalten Palette und Schriften wie oben beschrieben, bis auch sie auf das neue System umziehen.
 Der Fuß des Zeichens steht in Stempelviolett, wie zuvor der Haken des alten Zeichens; sonst bleibt
 die Farbe dem Freigeben vorbehalten.
+
+## Nachtrag 2026-11-18: das Lanfermann-System
+
+Die Seiten sind auf das Designsystem der Website umgezogen, `@lanfermann/ui`, und nutzen es so, wie
+es veröffentlicht wird: als Entwicklungsabhängigkeit, mit Tailwind (`pnpm pages:css`) aus
+`src/pages/pages.css` nach `src/pages/styles.generated.ts` kompiliert. Tokens, Gründe, Tiefe,
+Federn und die Basisschicht kommen aus dem Paket; `pages.css` setzt nur die Teile der Seiten aus
+seinen Utilities zusammen. Der Build durchsucht kein Markup und lässt weg, was keine Seite treffen
+kann (die React-Komponenten des Systems), so bleibt der Style-Block bei etwa 44 kB. Der Server
+bekommt keine Laufzeitabhängigkeit: Das Ergebnis ist eine Zeichenkette, und ein Test scheitert,
+wenn sie von ihren Quellen abweicht; ein neues Release kommt mit einem Versionssprung und
+`pnpm pages:css`.
+
+Das System wechselt Gründe nur über `data-theme`. Die Seiten folgen weiter dem Browser: Der Build
+kopiert die Ink-Deklarationen des Systems unter `prefers-color-scheme: dark`. Sofia Sans und
+JetBrains Mono kommen aus `/assets/` (das Paket liefert keine Schriften), die Icons sind die
+Hugeicons des Systems, wie bisher eingebettet. Die Tiefe folgt seinen vier Materialien: flache
+Hinweise und Badges, erhabene Schaltflächen, eingelassene Felder und Kästchen, die Karte als
+ruhendes Blatt.
+
+Indigo tritt an die Stelle des Stempelvioletts und behält dessen Regel: Es ist die eine
+Schaltfläche zum Freigeben (das `ask` des Systems), der Fokus, Links, angehakte Kästchen und das
+Zeichen der Entscheidung einer Person, nie ein Icon oder eine Überschrift. Der Stempel entfällt:
+Die Seite nach einer Entscheidung beginnt mit dem Checkpoint der Website, einer Haarlinie mit dem
+Punkt des Systems in der Mitte, eine Indigo-Scheibe, wenn die Person freigegeben hat, ein offener
+Ring, wenn sie abgelehnt hat. Statusfarben (Gefahr, Warnung, Erfolg, Info) stehen immer mit
+Worten und einem Icon, wie das System es verlangt.
+
+Eine Abweichung: Das System zeichnet die Kanten von Feldern und Kästchen mit 14 bis 24 Prozent
+Tinte, unter 3:1. Die Seiten zeichnen sie stattdessen in der Linienfarbe, damit ein Feld auch ohne
+seine Beschriftung zu finden ist; ein Test hält sie bei 3:1.

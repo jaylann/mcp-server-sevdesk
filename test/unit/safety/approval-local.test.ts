@@ -470,7 +470,7 @@ describe("local approval page", () => {
     const { approvals, url } = harness();
     const origin = new URL(url(await approvals.create(STDIO, binding()))).origin;
 
-    const font = await send(`${origin}${assetPath("archivoLatin")}`);
+    const font = await send(`${origin}${assetPath("sofiaSansLatin")}`);
     expect(font.status).toBe(200);
     expect(font.headers["content-type"]).toBe("font/woff2");
     expect(font.headers["cache-control"]).toBe("public, max-age=31536000, immutable");

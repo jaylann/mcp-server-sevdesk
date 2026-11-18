@@ -138,3 +138,31 @@ from four bars whose foot is in the accent. The pages took the mark (the wordmar
 `assets/icon.svg` as their icon) and keep the palette and the type described above until they
 move to the new system as well. The foot of the mark is in stamp ink, as the tick of the old mark
 was; otherwise the colour stays reserved for approving.
+
+## Update 2026-11-18: the Lanfermann system
+
+The pages moved to the website's design system, `@lanfermann/ui`, and use it as it is released: a
+development dependency, compiled with Tailwind (`pnpm pages:css`) from `src/pages/pages.css` into
+`src/pages/styles.generated.ts`. Tokens, grounds, depth, springs and the base layer come from the
+package; `pages.css` only composes the pages' parts from its utilities. The build scans no
+markup and drops what no page can match (the system's React components), so the inline style
+block stays at about 44 kB. The server gains no run-time dependency: the result is a string, and a
+test fails when it drifts from its sources, so a new release arrives with a version bump and
+`pnpm pages:css`.
+
+The system switches grounds with `data-theme` only. The pages keep following the browser: the
+build copies the system's own Ink declarations under `prefers-color-scheme: dark`. Sofia Sans and
+JetBrains Mono come from `/assets/` (the package ships no fonts), and the icons are the Hugeicons
+the system uses, inlined as before. Depth follows its four matters: flat alerts and badges, raised
+buttons, let-in fields and checkboxes, the card as a resting sheet.
+
+Indigo takes the place of stamp violet and keeps its rule: it is the one Approve button (the
+system's `ask`), focus, links, checked boxes and the mark of a person's decision, never an icon
+or a heading. The stamp is gone: the page after a decision opens with the website's checkpoint,
+a hairline with the system's dot in its middle, an Indigo disc when the person approved and an
+open ring when they rejected. Status colours (danger, warning, success, info) come with words and
+an icon, as the system asks.
+
+One deviation: the system draws the edges of fields and checkboxes at 14 to 24 percent ink,
+below 3:1. The pages draw them in the line colour instead, so a field is still found without its
+label; a test keeps them at 3:1.

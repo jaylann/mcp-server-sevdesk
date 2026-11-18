@@ -204,7 +204,7 @@ describe("the confirmation prompt", () => {
       const { page } = await openApproval(lastApprovalUrl());
 
       expect(page.body).toContain(`<dd>${text}</dd>`);
-      expect(page.body).toContain("white-space: pre-wrap");
+      expect(page.body).toMatch(/\.facts dd\{[^}]*white-space:pre-wrap/);
       expect(page.body).not.toContain("more characters not shown");
     });
 

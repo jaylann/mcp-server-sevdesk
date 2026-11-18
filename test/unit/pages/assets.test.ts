@@ -31,9 +31,9 @@ describe("embedded page assets", () => {
 
   it("are three WOFF2 fonts and an SVG icon without script or external references", () => {
     const fonts = [
-      EMBEDDED_ASSETS.archivoLatin,
-      EMBEDDED_ASSETS.archivoLatinExt,
-      EMBEDDED_ASSETS.martianMonoLatin,
+      EMBEDDED_ASSETS.sofiaSansLatin,
+      EMBEDDED_ASSETS.sofiaSansLatinExt,
+      EMBEDDED_ASSETS.jetbrainsMonoLatin,
     ];
     for (const font of fonts) {
       expect(font.type).toBe("font/woff2");
@@ -79,7 +79,7 @@ describe("pageAsset", () => {
 
 describe("asset headers and source", () => {
   it("lets browsers cache an asset forever, for this origin only", () => {
-    const asset = pageAsset(assetPath("archivoLatin"));
+    const asset = pageAsset(assetPath("sofiaSansLatin"));
     if (asset === undefined) throw new Error("no font");
     expect(assetHeaders(asset)).toEqual({
       "Content-Type": "font/woff2",

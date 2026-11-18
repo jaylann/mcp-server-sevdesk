@@ -11,7 +11,7 @@
  * The consent form is the first form of the page, and its controls keep their names (`consent`,
  * `csrf`, `tier`, `sevdesk_token`, `step`): the browser posts them back to `/authorize`.
  */
-import { badge, callout, facts } from "../../pages/components.js";
+import { badge, callout, dot, facts } from "../../pages/components.js";
 import type { RenderContext } from "../../pages/context.js";
 import { renderFrame } from "../../pages/frame.js";
 import { type Html, markup, trusted } from "../../pages/html.js";
@@ -59,17 +59,28 @@ export interface ConfirmStepModel {
   readonly unconfirmed: boolean;
 }
 
-/** The badge colour of each tier, as on the website. */
-const TIER_TONE = { read: "ok", write: "info", commit: "approve", external: "danger" } as const;
+/**
+ * The badge tone of each tier: neutral, but `external` (it reaches people outside sevDesk) as a
+ * warning. The badge's words name the tier; the tone only repeats it.
+ */
+const TIER_TONE = {
+  read: "neutral",
+  write: "neutral",
+  commit: "neutral",
+  external: "warning",
+} as const;
 
-/** Where the reader is in the two steps. */
+/**
+ * Where the reader is in the two steps, in the marks of the website: a disc for a step that is
+ * done, an accent ring for the one that waits for the reader, a faint ring for the next.
+ */
 function steps(current: 1 | 2, ctx: RenderContext): Html {
   const t = ctx.t.connect.steps;
   const step = (number: 1 | 2, label: string): Html => {
     const state = number === current ? "now" : number < current ? "done" : "next";
-    const mark = state === "done" ? icon("check", 2.25) : String(number);
+    const mark = dot(state === "done" ? "done" : state === "now" ? "waits" : "faint");
     const here = state === "now" ? trusted(' aria-current="step"') : "";
-    return markup`<li class="step step-${state}"${here}><span class="step-mark">${mark}</span>${label}</li>`;
+    return markup`<li class="step step-${state}"${here}>${mark}${label}</li>`;
   };
   return markup`<ol class="steps">${step(1, t.token)}${step(2, t.confirm)}</ol>`;
 }
@@ -81,9 +92,9 @@ function clientSection(client: ConsentClientView, ctx: RenderContext): Html {
   const name =
     client.name === undefined ? "" : markup`<p class="small">${t.selfDeclared(client.name)}</p>\n`;
   const back = client.loopbackOnly
-    ? callout(t.loopback(redirect), { icon: "alert" })
+    ? callout(t.loopback(redirect), { tone: "warning" })
     : markup`<p class="small">${t.returns(redirect)}</p>`;
-  return markup`<section class="sheet app">
+  return markup`<section class="card app">
 <p>${t.wants(markup`<strong>${client.host}</strong>`)}</p>
 ${name}${back}
 </section>`;
@@ -95,8 +106,9 @@ function hidden(consent: string, csrf: string): Html {
 }
 
 /**
- * A tier as a badge with its name, and what it allows in plain words. With `unconfirmed` the
- * confirmed tiers lose their lock and say they run without asking: the page must not promise an
+ * A tier as a badge with its name, and what it allows in plain words. A tier that waits for a
+ * person carries a lock, one that runs by itself a disc. With `unconfirmed` the confirmed tiers
+ * lose their lock and say they run without asking: the page must not promise an
  * approval the server will not ask for (security review 2026-11, wave 2).
  */
 function tierLine(tier: Tier, ctx: RenderContext, unconfirmed: boolean): Html {
@@ -105,7 +117,7 @@ function tierLine(tier: Tier, ctx: RenderContext, unconfirmed: boolean): Html {
     unconfirmed && (tier === "commit" || tier === "external")
       ? ctx.t.tiersUnconfirmed[tier]
       : ctx.t.tiers[tier];
-  const mark = asks ? icon("lock") : markup`<span class="tier-dot"></span>`;
+  const mark = asks ? icon("lock") : dot("done");
   const name = badge(markup`${mark}<strong>${words.label}</strong>`, TIER_TONE[tier]);
   return markup`<span class="tier-words">${name}<span class="small">${words.text}</span></span>`;
 }
@@ -125,11 +137,11 @@ export function renderTokenStep(model: TokenStepModel, ctx: RenderContext): stri
   const error =
     model.error === undefined
       ? ""
-      : markup`${callout(model.error, { tone: "danger", icon: "alert", alert: true })}\n`;
+      : markup`${callout(model.error, { tone: "danger", alert: true })}\n`;
   const body = markup`${steps(1, ctx)}
 <h1>${t.heading}</h1>
 ${clientSection(model.client, ctx)}
-<form method="post" action="/authorize" class="sheet">
+<form method="post" action="/authorize" class="card">
 ${hidden(model.consent, model.csrf)}
 <fieldset class="tiers">
 <legend>${t.legend}</legend>
@@ -139,8 +151,8 @@ ${tiers}<p class="hint">${model.unconfirmed ? t.tiersHintUnconfirmed : t.tiersHi
 <input id="sevdesk-token" type="password" name="sevdesk_token" autocomplete="off" spellcheck="false" required minlength="32" maxlength="32">
 <p class="hint">${t.tokenHint}</p>
 ${error}<div class="actions form-actions">
-<button type="submit" name="step" value="check" class="btn btn-ink">${t.check}</button>
-<button type="submit" name="step" value="deny" class="btn btn-ghost" formnovalidate>${t.cancel}</button>
+<button type="submit" name="step" value="check" class="btn btn-primary">${t.check}</button>
+<button type="submit" name="step" value="deny" class="btn btn-quiet" formnovalidate>${t.cancel}</button>
 </div>
 </form>`;
   return renderFrame({ title: t.title, body }, ctx);
@@ -164,15 +176,15 @@ export function renderConfirmStep(model: ConfirmStepModel, ctx: RenderContext): 
   const body = markup`${steps(2, ctx)}
 <h1>${t.confirmHeading(model.accountId)}</h1>
 ${clientSection(model.client, ctx)}
-<form method="post" action="/authorize" class="sheet">
+<form method="post" action="/authorize" class="card">
 ${hidden(model.consent, model.csrf)}
 ${account}
 <p class="field may">${t.mayLabel}</p>
 <ul class="granted">
 ${granted}</ul>
 <div class="actions form-actions">
-<button type="submit" name="step" value="connect" class="btn btn-ink">${t.submit}</button>
-<button type="submit" name="step" value="deny" class="btn btn-ghost">${t.cancel}</button>
+<button type="submit" name="step" value="connect" class="btn btn-primary">${t.submit}</button>
+<button type="submit" name="step" value="deny" class="btn btn-quiet">${t.cancel}</button>
 </div>
 </form>
 <p class="fine after">${t.fine(markup`<code>mcp-server-sevdesk grants revoke</code>`)}</p>`;

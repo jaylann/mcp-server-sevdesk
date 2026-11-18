@@ -32,16 +32,16 @@ export function toneForStatus(status: number): MessageTone {
 }
 
 const TONE_ICON: Readonly<Record<MessageTone, IconName>> = {
-  ok: "check",
+  ok: "done",
   info: "info",
   wait: "clock",
-  danger: "alert",
+  danger: "danger",
 };
 
 const TONE_CLASS: Readonly<Record<MessageTone, string>> = {
   ok: " result-ok",
   info: "",
-  wait: "",
+  wait: " result-wait",
   danger: " result-danger",
 };
 
@@ -57,8 +57,8 @@ export function renderMessagePage(
     link === undefined
       ? ""
       : markup`\n<p class="after"><a href="${link.href}">${link.label}</a></p>`;
-  const body = markup`<section class="sheet">
-<div class="result-icon${TONE_CLASS[tone]}">${icon(TONE_ICON[tone], 2)}</div>
+  const body = markup`<section class="card">
+<div class="result-icon${TONE_CLASS[tone]}">${icon(TONE_ICON[tone])}</div>
 <h1>${text.title}</h1>
 <p class="message">${text.message}</p>${after}
 </section>`;

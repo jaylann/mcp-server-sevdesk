@@ -5,10 +5,11 @@ import { renderUploadPage } from "../../../src/http/transfer-pages.js";
 import {
   badge,
   callout,
+  checkpoint,
+  dot,
   facts,
   pageTime,
   reference,
-  stamp,
 } from "../../../src/pages/components.js";
 import { pageContext, type RenderContext } from "../../../src/pages/context.js";
 import { icon, MARK } from "../../../src/pages/icons.js";
@@ -55,86 +56,85 @@ function approval(overrides: Partial<ApprovalPageModel> = {}): ApprovalPageModel
 }
 
 describe("components", () => {
-  it("lays facts out as label and value, long values across the sheet", () => {
+  it("lays facts out as label and value, two short ones to a row, long values across it", () => {
     const list = facts([
       { label: "Customer", value: "Muster <b> GmbH" },
       { label: "Text", value: "one\ntwo" },
       { label: "Note", value: "x".repeat(73) },
       { label: "Short", value: "x".repeat(72) },
+      { label: "Brief", value: "x".repeat(32) },
       { label: "Forced", value: "x".repeat(200), long: false },
       { label: "Code", value: reference("K7Q2M4") },
     ]).toString();
-    expect(list).toContain("<dt>Customer</dt><dd>Muster &lt;b&gt; GmbH</dd>");
-    // Nothing but the value between the tags: the stylesheet shows whitespace as written.
-    expect(list).toContain('<dt class="long">Text</dt><dd>one\ntwo</dd>');
-    expect(list).toContain(`<dt class="long">Note</dt><dd>${"x".repeat(73)}</dd>`);
-    expect(list).toContain(`<dt>Short</dt><dd>${"x".repeat(72)}</dd>`);
-    expect(list).toContain("<dt>Forced</dt>");
     expect(list).toContain(
-      '<dt>Code</dt><dd><span class="ref"><strong>K7Q2M4</strong></span></dd>',
+      '<div class="fact"><dt>Customer</dt><dd>Muster &lt;b&gt; GmbH</dd></div>',
+    );
+    // Nothing but the value between the tags: the stylesheet shows whitespace as written.
+    expect(list).toContain('<div class="fact fact-long"><dt>Text</dt><dd>one\ntwo</dd></div>');
+    expect(list).toContain(`<div class="fact fact-long"><dt>Note</dt><dd>${"x".repeat(73)}</dd>`);
+    expect(list).toContain(`<div class="fact fact-wide"><dt>Short</dt><dd>${"x".repeat(72)}</dd>`);
+    expect(list).toContain(`<div class="fact"><dt>Brief</dt><dd>${"x".repeat(32)}</dd>`);
+    expect(list).toContain('<div class="fact fact-wide"><dt>Forced</dt>');
+    expect(list).toContain(
+      '<div class="fact"><dt>Code</dt><dd><span class="ref"><strong>K7Q2M4</strong></span></dd></div>',
     );
     expect(facts([]).toString()).toBe("");
     expect(facts([{ label: "a", value: "b" }], { plain: true }).toString()).toBe(
-      '<dl class="facts facts-plain"><dt>a</dt><dd>b</dd></dl>',
+      '<dl class="facts facts-plain"><div class="fact"><dt>a</dt><dd>b</dd></div></dl>',
     );
   });
 
   it("builds badges, callouts and times from escaped text", () => {
     expect(badge("a<b").toString()).toBe('<span class="badge">a&lt;b</span>');
-    expect(badge("x", "approve").toString()).toBe('<span class="badge badge-approve">x</span>');
-    const note = callout("careful <now>", { tone: "danger", icon: "alert", alert: true });
+    expect(badge("x", "warning").toString()).toBe('<span class="badge badge-warning">x</span>');
+    const note = callout("careful <now>", { tone: "danger", alert: true });
     expect(note.toString()).toMatch(
-      /^<div class="callout callout-danger" role="alert"><svg class="ink"[^>]*aria-hidden="true">.*<\/svg><div>careful &lt;now&gt;<\/div><\/div>$/,
+      /^<div class="alert alert-danger" role="alert"><svg class="ink"[^>]*aria-hidden="true">.*<\/svg><div>careful &lt;now&gt;<\/div><\/div>$/,
     );
     expect(callout("plain").toString()).not.toContain("role=");
+    expect(callout("plain").toString()).toMatch(/^<div class="alert"><svg/);
+    // An alert names its tone in an icon too, not in colour alone.
+    expect(callout("x", { tone: "warning" }).toString()).toContain(icon("alert").toString());
+    expect(callout("x", { tone: "info", icon: "refresh" }).toString()).toContain(
+      icon("refresh").toString(),
+    );
     expect(pageTime(EXPIRES).toString()).toBe(
       '<time class="nb" datetime="2026-11-09T12:15:00.000Z">2026-11-09 12:15 UTC</time>',
     );
   });
 
-  it("draws the stamp wide enough for its word, in capitals, hidden from screen readers", () => {
-    const short = stamp("Approved", "approve").toString();
-    expect(short).toContain('<div class="stamp stamp-approve" aria-hidden="true">');
-    expect(short).toContain(">APPROVED</text>");
-    expect(short).toContain('viewBox="0 0 224 74"');
-    expect(short).toContain('filter="url(#stamp-ink)"');
-    expect(short).toContain('<filter id="stamp-ink"');
-    const long = stamp("Freigegeben", "plain").toString();
-    expect(long).toContain('class="stamp stamp-plain"');
-    expect(long).toContain('viewBox="0 0 287 74"');
-    expect(long).toContain('textLength="235"');
-    expect(stamp("ok", "plain").toString()).toContain('viewBox="0 0 180 74"');
-    expect(stamp("<x>", "plain").toString()).toContain(">&lt;X&gt;</text>");
+  it("marks a decision with the system's dot, hidden from screen readers", () => {
+    expect(dot("open").toString()).toBe('<span class="dot" aria-hidden="true"></span>');
+    expect(dot("chosen").toString()).toBe(
+      '<span class="dot dot-chosen" aria-hidden="true"></span>',
+    );
+    expect(checkpoint(true).toString()).toBe(
+      '<div class="checkpoint" aria-hidden="true"><span class="dot dot-chosen" aria-hidden="true"></span></div>',
+    );
+    expect(checkpoint(false).toString()).toContain('<span class="dot" aria-hidden="true">');
   });
 
-  it("draws icons in ink, with stamp ink only where marked", () => {
+  it("draws icons as 1.5 strokes in the text colour", () => {
     expect(icon("check").toString()).toBe(
-      '<svg class="ink" viewBox="0 0 24 24" stroke-width="1.75" aria-hidden="true">' +
-        '<path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+      '<svg class="ink" viewBox="0 0 24 24" stroke-width="1.5" aria-hidden="true">' +
+        '<path d="M5 14L8.5 17.5L19 6.5"/></svg>',
     );
-    expect(icon("stamp", 2).toString()).toContain('stroke-width="2"');
-    expect(
-      icon("stamp")
-        .toString()
-        .match(/class="ink-accent"/g),
-    ).toHaveLength(2);
-    expect(icon("lock").toString()).toContain('<circle class="dot" cx="12" cy="15.5" r="1"/>');
-    // The mark is filled, not inked: the sum in text colour, its foot in stamp ink.
+    // The mark is filled, not inked: the sum in text colour, its foot in the accent.
     expect(MARK.toString()).toMatch(
-      /^<svg class="mark" viewBox="0 0 20\.5 24" aria-hidden="true">/,
+      /^<svg class="logo" viewBox="0 0 20\.5 24" aria-hidden="true">/,
     );
     expect(MARK.toString().match(/<path /g)).toHaveLength(2);
-    expect(MARK.toString()).toContain('<path class="mark-foot" ');
+    expect(MARK.toString()).toContain('<path class="logo-foot" ');
     for (const name of [
-      "envelope",
-      "key",
-      "cross",
+      "lock",
+      "inbox",
       "clock",
       "alert",
+      "danger",
       "info",
+      "done",
       "refresh",
       "upload",
-      "file",
     ] as const) {
       expect(icon(name).toString()).toMatch(/^<svg class="ink"[^>]*aria-hidden="true">.+<\/svg>$/);
     }
@@ -170,7 +170,7 @@ describe("approval page", () => {
     const html = renderApprovalPage(approval(), ctx());
     const order = [
       "<h1>Approve this action?</h1>",
-      '<section class="sheet">',
+      '<section class="card">',
       "<h2>Finalize invoice RE-1042.</h2>",
       "The invoice becomes legally binding.",
       "<strong>This cannot be undone.</strong>",
@@ -181,21 +181,24 @@ describe("approval page", () => {
     ].map((part) => html.indexOf(part));
     expect(order.every((at) => at >= 0)).toBe(true);
     expect(order).toEqual([...order].sort((a, b) => a - b));
-    expect(html).toContain('<dt class="long">Text</dt><dd>line one\n  line two</dd>');
+    expect(html).toContain(
+      '<div class="fact fact-long"><dt>Text</dt><dd>line one\n  line two</dd>',
+    );
     expect(html).toContain("Finalize a sevDesk invoice <code>sevdesk_invoice_finalize</code>");
     expect(html).toContain('<span class="ref"><strong>K7Q2M4</strong></span>');
-    expect(html).toContain('class="btn btn-approve"');
+    expect(html).toContain('class="btn btn-ask">Approve</button>');
+    expect(html).toContain('class="btn btn-quiet">Reject</button>');
     expect(html).not.toContain('class="notice"');
   });
 
-  it("names the tier in plain words, coloured as on the website", () => {
+  it("names the tier in plain words, a tier that reaches outside as a warning", () => {
     expect(renderApprovalPage(approval(), ctx())).toMatch(
-      /<span class="badge badge-approve"><svg[^>]*>.*?<\/svg>Legally binding bookkeeping<\/span>/,
+      /<span class="badge"><svg[^>]*>.*?<\/svg>Legally binding bookkeeping<\/span>/,
     );
     expect(renderApprovalPage(approval({ tier: "external" }), ctx())).toContain(
       "</svg>Reaches people outside sevDesk</span>",
     );
-    expect(renderApprovalPage(approval({ tier: "external" }), ctx())).toContain("badge-danger");
+    expect(renderApprovalPage(approval({ tier: "external" }), ctx())).toContain("badge-warning");
     expect(renderApprovalPage(approval({ tier: "write" }), ctx())).toContain(
       "</svg>Changes reversible records</span>",
     );
@@ -203,7 +206,7 @@ describe("approval page", () => {
 
   it("says when the record changed, and nothing about consequences when there are none", () => {
     const changed = renderApprovalPage(approval({ recordChanged: true }), ctx());
-    expect(changed).toContain('<div class="notice"><div class="callout">');
+    expect(changed).toContain('<div class="notice"><div class="alert alert-info">');
     expect(changed).toContain("The record changed after you were asked");
     const plain = renderApprovalPage(
       approval({
@@ -211,7 +214,7 @@ describe("approval page", () => {
       }),
       ctx(),
     );
-    expect(plain).not.toContain('class="callouts"');
+    expect(plain).not.toContain('class="alerts"');
     expect(plain).not.toContain("<dl");
     expect(plain).not.toContain("This cannot be undone.");
   });
@@ -245,12 +248,11 @@ describe("approval page", () => {
     const html = renderApprovalPage(approval({ inboxHref: "/approvals" }), ctx("de-DE"));
     expect(html).toContain('<html lang="de">');
     expect(html).toContain("<title>sevDesk-Aktion freigeben</title>");
-    expect(html).toContain("sevDesk MCP bittet um deine Freigabe");
     expect(html).toContain("<h1>Diese Aktion freigeben?</h1>");
     expect(html).toContain("</svg>Rechtlich bindende Buchhaltung</span>");
     expect(html).toContain("<strong>Das lässt sich nicht rückgängig machen.</strong>");
     expect(html).toContain(">Ablehnen</button>");
-    expect(html).toContain("</svg>Freigeben</button>");
+    expect(html).toContain('class="btn btn-ask">Freigeben</button>');
     expect(html).toContain("Ohne deine Freigabe passiert nichts.");
     expect(html).toContain('<a href="/approvals">Zurück zum Freigabe-Postfach</a>');
     expect(html).toContain("<h2>Finalize invoice RE-1042.</h2>");
@@ -261,14 +263,13 @@ describe("approval page", () => {
 });
 
 describe("decision page", () => {
-  it("stamps the decision and says what it was about", () => {
+  it("marks the decision at the checkpoint and says what it was about", () => {
     const html = renderDecisionPage(
       { decision: "approved", reference: "K7Q2M4", action: "Finalize <invoice> RE-1042." },
       ctx(),
     );
-    expect(html).toContain('<section class="sheet struck">');
-    expect(html).toContain('<div class="stamp stamp-approve" aria-hidden="true">');
-    expect(html).toContain(">APPROVED</text>");
+    expect(html).toContain('<section class="card">\n<div class="checkpoint" aria-hidden="true">');
+    expect(html).toContain('<span class="dot dot-chosen" aria-hidden="true">');
     expect(html).toContain("<h1>Approved</h1>");
     expect(html).toContain("You approved this action.");
     expect(html).toContain('<dd><span class="ref"><strong>K7Q2M4</strong></span></dd>');
@@ -276,13 +277,15 @@ describe("decision page", () => {
     expect(html).not.toContain("<a ");
   });
 
-  it("stamps a rejection in plain ink, in German capitals for a German browser", () => {
+  it("marks a rejection with an open ring, in German for a German browser", () => {
     const html = renderDecisionPage(
       { decision: "rejected", reference: "9FTW3C", action: "x", inboxHref: "/approvals" },
       ctx("de"),
     );
-    expect(html).toContain('<div class="stamp stamp-plain" aria-hidden="true">');
-    expect(html).toContain(">ABGELEHNT</text>");
+    expect(html).toContain(
+      '<div class="checkpoint" aria-hidden="true"><span class="dot" aria-hidden="true">',
+    );
+    expect(html.slice(html.indexOf("<body"))).not.toContain("dot-chosen");
     expect(html).toContain("<h1>Abgelehnt</h1>");
     expect(html).toContain("<dt>Aktion</dt><dd>x</dd>");
     expect(html).toContain(
@@ -321,7 +324,10 @@ describe("inbox page", () => {
     expect(rows[1]?.[0]).toContain("your assistant can run it until <time");
     expect(rows[1]?.[0]).not.toContain("Review");
     expect(rows[2]?.[0]).not.toContain("<time");
-    expect(html).toContain('<span class="badge badge-approve">1 waiting</span>');
+    expect(html).toContain(
+      '<span class="badge"><span class="dot dot-waits" aria-hidden="true"></span>1 waiting</span>',
+    );
+    expect(rows[1]?.[0]).toContain('<span class="dot dot-chosen" aria-hidden="true">');
     expect(html).toContain("sevDesk account <strong>1001</strong>");
     expect(html).toContain('<body class="wide">');
     expect(html).toContain('<form method="post" action="/approvals/logout">');
@@ -334,7 +340,9 @@ describe("inbox page", () => {
     expect(none).not.toContain('<ul class="rows">');
     expect(none).toContain("</svg>Aktualisieren</a>");
     const decided = renderInboxPage({ ...model, items: [item("approved", "BBBBBB")] }, ctx("de"));
-    expect(decided).toContain('<span class="badge">Nichts wartet</span>');
+    expect(decided).toContain(
+      '<span class="badge"><span class="dot" aria-hidden="true"></span>Nichts wartet</span>',
+    );
     const two = [item("pending", "AAAAAA"), item("pending", "DDDDDD")];
     expect(renderInboxPage({ ...model, items: two }, ctx("de"))).toContain("2 warten</span>");
     expect(renderInboxPage(model, ctx("de"))).toContain("1 wartet</span>");
@@ -401,20 +409,20 @@ describe("consent pages", () => {
       ctx(),
     );
     expect(html).toContain(
-      '<li class="step step-now" aria-current="step"><span class="step-mark">1</span>Permissions and token</li>',
+      '<li class="step step-now" aria-current="step"><span class="dot dot-waits" aria-hidden="true"></span>Permissions and token</li>',
     );
     expect(html).toContain(
-      '<li class="step step-next"><span class="step-mark">2</span>Confirm account</li>',
+      '<li class="step step-next"><span class="dot dot-faint" aria-hidden="true"></span>Confirm account</li>',
     );
     expect(html).toContain('<label class="tier"><input type="checkbox" checked disabled> ');
     expect(html).toContain('<input type="hidden" name="tier" value="read">');
     expect(html).toContain('<input type="checkbox" name="tier" value="write"> ');
     expect(html).toContain('<input type="checkbox" name="tier" value="commit" checked> ');
     expect(html).toContain(
-      '<span class="badge badge-ok"><span class="tier-dot"></span><strong>Read</strong></span>',
+      '<span class="badge"><span class="dot dot-done" aria-hidden="true"></span><strong>Read</strong></span>',
     );
     expect(html).toMatch(
-      /<span class="badge badge-approve"><svg[^>]*>.*?<\/svg><strong>Commit<\/strong><\/span>/,
+      /<span class="badge"><svg[^>]*>.*?<\/svg><strong>Commit<\/strong><\/span>/,
     );
     expect(html).not.toContain('role="alert"');
     expect(html.indexOf("<form")).toBe(html.lastIndexOf("<form"));
@@ -436,7 +444,7 @@ describe("consent pages", () => {
     expect(html).toContain("This app runs on your own computer");
     expect(html).toContain("<strong>127.0.0.1:53111</strong>");
     expect(html).not.toContain("It calls itself");
-    expect(html).toContain('<div class="callout callout-danger" role="alert">');
+    expect(html).toContain('<div class="alert alert-danger" role="alert">');
     expect(html).toContain("<div>No &lt;token&gt;.</div>");
   });
 
@@ -454,7 +462,9 @@ describe("consent pages", () => {
       ctx("de"),
     );
     expect(html).toContain("<h1>Mit dem sevDesk‑Konto 4711 verbinden?</h1>");
-    expect(html).toContain('<li class="step step-done"><span class="step-mark"><svg');
+    expect(html).toContain(
+      '<li class="step step-done"><span class="dot dot-done" aria-hidden="true"></span>',
+    );
     expect(html).toContain("<dt>Name laut sevDesk</dt><dd>„Muster &amp; Co“</dd>");
     expect(html).toContain("<strong>Entwerfen</strong>");
     expect(html).toContain("Sie nennt sich „Claude“ (eigene Angabe, nicht überprüft).");

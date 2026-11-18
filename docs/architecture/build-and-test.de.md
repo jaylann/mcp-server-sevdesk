@@ -26,8 +26,10 @@ Derselbe Quellcode wird in drei Formen ausgeliefert; kein Codepfad gehört nur z
   GitHub-Release.
 
 Alle drei tragen die Schriften und das Icon der Seiten im JavaScript
-(`src/pages/assets.generated.ts`, von `pnpm pages:assets` aus `assets/` geschrieben; ein Test
-scheitert, wenn beide auseinanderlaufen) und die Lizenztexte der Schriften (`licenses/`).
+(`src/pages/assets.generated.ts`, von `pnpm pages:assets` aus `assets/` geschrieben), das
+Stylesheet der Seiten (`src/pages/styles.generated.ts`, von `pnpm pages:css` aus
+`src/pages/pages.css` und `@lanfermann/ui` kompiliert; für beide scheitert ein Test, wenn sie von
+ihren Quellen abweichen) und die Lizenztexte der Schriften und Icons (`licenses/`).
 
 ## Tests
 
