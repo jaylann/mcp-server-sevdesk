@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { ALL_PROBES } from "../../../scripts/lib/probes/catalog.js";
+import { berlinMidnight } from "../../../scripts/lib/probes/core.js";
 import {
   allowanceFacts,
   comparePaging,
@@ -143,7 +144,27 @@ interface AccountSettings {
   readonly refuseInvoiceFromOrder?: boolean;
   /** Synthetic (not recorded): createContractNoteFromOrder and createPackingListFromOrder refuse. */
   readonly refuseOrderCopies?: boolean;
+  /** Synthetic (not recorded): a new template comes with automatic sending on. */
+  readonly autoSendOnCreate?: boolean;
+  /** Synthetic (not recorded): deactivateAutoSending leaves automatic sending on. */
+  readonly autoSendSticks?: boolean;
+  /** Synthetic (not recorded): a creating saveInvoice ignores automatic generation. */
+  readonly ignoreAutoGenerateOnCreate?: boolean;
+  /** Synthetic (not recorded): every contact has an e-mail address. */
+  readonly contactEmail?: boolean;
+  /** Synthetic (not recorded): a save with more than one discount row is refused. */
+  readonly refuseTwoDiscounts?: boolean;
 }
+
+/** An automatic sending configuration as the embed reads it when on (recorded 2026-11-17, D-132). */
+const AUTO_SEND_CONFIGURATION: Rec = {
+  id: "77",
+  objectName: "AutoSendConfiguration",
+  sendDate: null,
+  sendIntervalAfterCreation: "P0D",
+  sendType: "VM",
+  status: "HEAD",
+};
 
 const DOC_ID = "d4605b19248ad176443b7cb382679b1f";
 
@@ -224,6 +245,26 @@ function gapsAccount(settings: AccountSettings = {}) {
     }));
   for (const invoice of settings.invoices ?? [])
     docs.set(`Invoice/${idOf(invoice["id"])}`, invoice);
+  /**
+   * The two switches of each template (D-132), kept apart from the record: only
+   * `embed=propertyAutoGenerateRecurringInvoice,autoSendConfiguration` returns them.
+   */
+  const switches = new Map<string, { generate: unknown; send: unknown }>();
+  const AUTO_GENERATE = "propertyAutoGenerateRecurringInvoice";
+
+  /** A document as a read with `query` returns it: with the switches when embedded. */
+  function withSwitches(doc: Rec, query: Readonly<Record<string, unknown>>): Rec {
+    const embed = typeof query["embed"] === "string" ? query["embed"].split(",") : [];
+    const stored = switches.get(String(doc["id"]));
+    if (doc["invoiceType"] !== "WKR") return doc;
+    return {
+      ...doc,
+      ...(embed.includes(AUTO_GENERATE) ? { [AUTO_GENERATE]: stored?.generate ?? null } : {}),
+      ...(embed.includes("autoSendConfiguration")
+        ? { autoSendConfiguration: stored?.send ?? null }
+        : {}),
+    };
+  }
 
   const nextNumber = (range: string) => `${PREFIX[range] ?? range}-${counters[range] ?? 0}`;
 
@@ -328,6 +369,13 @@ function gapsAccount(settings: AccountSettings = {}) {
       rawDiscounts !== null && typeof rawDiscounts === "object" && !Array.isArray(rawDiscounts)
         ? [rawDiscounts]
         : rawDiscounts;
+    if (
+      settings.refuseTwoDiscounts === true &&
+      Array.isArray(discountSave) &&
+      discountSave.length > 1
+    ) {
+      refuse(422, "Only one discount allowed");
+    }
     if (settings.refuseGrossDocuments === true && header["showNet"] === false) {
       refuse(422, "Gross documents are not allowed");
     }
@@ -349,6 +397,12 @@ function gapsAccount(settings: AccountSettings = {}) {
       for (const [field, value] of Object.entries(header)) {
         if (["id", "objectName", "mapAll"].includes(field)) continue;
         if (SCHEDULE_DATES.includes(field) || field.startsWith("recurring")) continue;
+        if (field === AUTO_GENERATE) {
+          // Recorded 2026-11-17 (D-132): true reads "1", false reads "".
+          const stored = switches.get(String(found["id"])) ?? { generate: null, send: null };
+          switches.set(String(found["id"]), { ...stored, generate: value === true ? "1" : "" });
+          continue;
+        }
         found[field] = value;
       }
       if (found["invoiceType"] === "WKR") applySchedule(found, header);
@@ -361,9 +415,21 @@ function gapsAccount(settings: AccountSettings = {}) {
       // recurring* fields and keeps only the schedule dates of D-111.
       const kept = Object.fromEntries(
         Object.entries(header).filter(
-          ([field]) => !SCHEDULE_DATES.includes(field) && !field.startsWith("recurring"),
+          ([field]) =>
+            !SCHEDULE_DATES.includes(field) &&
+            !field.startsWith("recurring") &&
+            field !== AUTO_GENERATE,
         ),
       );
+      if (header["invoiceType"] === "WKR") {
+        switches.set(id, {
+          generate:
+            header[AUTO_GENERATE] === true && settings.ignoreAutoGenerateOnCreate !== true
+              ? "1"
+              : null,
+          send: settings.autoSendOnCreate === true ? AUTO_SEND_CONFIGURATION : null,
+        });
+      }
       doc = {
         ...(header["invoiceType"] === "WKR" ? kept : header),
         ...(header["invoiceType"] === "WKR"
@@ -502,7 +568,10 @@ function gapsAccount(settings: AccountSettings = {}) {
     if (query["origin[id]"] !== undefined) {
       rows = rows.filter((row) => idOf(row["origin"]) === String(query["origin[id]"]));
     }
-    return list(rows);
+    if (query["contact[id]"] !== undefined) {
+      rows = rows.filter((row) => idOf(row["contact"]) === String(query["contact[id]"]));
+    }
+    return list(rows.map((row) => withSwitches(row, query)));
   }
 
   const handler = (call: ScriptedCall): unknown => {
@@ -658,7 +727,7 @@ function gapsAccount(settings: AccountSettings = {}) {
       const store = byId[1] === "TextTemplate" ? undefined : `${byId[1] ?? ""}/${byId[2] ?? ""}`;
       const doc = store === undefined ? textTemplates.get(byId[2] ?? "") : docs.get(store);
       if (doc === undefined) return refuse(404, "not found");
-      if (method === "GET") return { objects: [doc] };
+      if (method === "GET") return { objects: [withSwitches(doc, query)] };
       if (method === "DELETE") {
         // Recorded 2026-11-16: drafts only (D-109); templates at 100 and 50, never at 200 (D-112).
         const status = String(doc["status"]);
@@ -682,6 +751,28 @@ function gapsAccount(settings: AccountSettings = {}) {
       return list(ofDoc(positions, kind, String(query[`${key}[id]`]), key));
     }
     if (path === "/Invoice") return invoiceList(query);
+    const deactivate = /^\/Invoice\/(\d+)\/deactivateAutoSending$/.exec(path);
+    if (method === "POST" && deactivate !== null) {
+      const id = deactivate[1] ?? "";
+      if (!docs.has(`Invoice/${id}`)) return refuse(404, "not found");
+      const stored = switches.get(id) ?? { generate: null, send: null };
+      if (settings.autoSendSticks !== true) switches.set(id, { ...stored, send: null });
+      return { objects: null };
+    }
+    if (method === "GET" && path === "/CommunicationWay") {
+      return list(
+        settings.contactEmail === true
+          ? [
+              {
+                id: "60",
+                objectName: "CommunicationWay",
+                type: "EMAIL",
+                contact: ref("Contact", query["contact[id]"]),
+              },
+            ]
+          : [],
+      );
+    }
     if (path === "/Order" || path === "/CreditNote") {
       return list(
         [...docs.entries()]
@@ -692,7 +783,7 @@ function gapsAccount(settings: AccountSettings = {}) {
     if (method !== "GET") refuse(422, "not simulated");
     return list([]);
   };
-  return { client: new ScriptedClient(handler), handler, docs, counters, discounts };
+  return { client: new ScriptedClient(handler), handler, docs, counters, discounts, switches };
 }
 
 async function run(client: ScriptedClient, overrides: Partial<RunOptions> = {}) {
@@ -726,6 +817,7 @@ describe("gaps-documents probe catalog", () => {
       "write-reserved-number-delete-draft",
       "write-reserved-number-ab-li",
       "write-recurring-template-due",
+      "write-recurring-template-autogenerate",
       "write-einvoice-discount",
     ]);
     for (const probe of GAPS_DOCUMENTS_PROBES.filter((item) => item.optIn === true)) {
@@ -958,9 +1050,11 @@ describe("gaps-documents probes on a simulated trial account", () => {
       "write-reserved-number-delete-draft",
       "write-reserved-number-ab-li",
       "write-recurring-template-due",
+      "write-recurring-template-autogenerate",
       "write-einvoice-discount",
     ]);
     expect(client.calls.some((call) => call.query["useNextNumber"] === "true")).toBe(false);
+    expect(client.calls.some((call) => call.path.endsWith("/deactivateAutoSending"))).toBe(false);
     expect(client.calls.some((call) => call.path.endsWith("/getXml"))).toBe(false);
   });
 
@@ -1701,6 +1795,246 @@ describe("gaps-documents probes for the open discount and template questions (#1
       only: ["read-recurring-generated-discounts"],
     });
     expect(none.report.results[0]?.status).toBe("inconclusive");
+  });
+
+  /** The creating saveInvoice of the autogenerate template (the one with its header). */
+  const autogenerateCreates = (client: ScriptedClient) =>
+    client
+      .writes()
+      .filter(
+        (call) =>
+          call.path === "/Invoice/Factory/saveInvoice" &&
+          ((call.body as Rec)["invoice"] as Rec)["header"] === `${TAG} Abo autogenerate`,
+      );
+
+  it("leaves one template with automatic generation on, sending off and its first run tomorrow (#158)", async () => {
+    const { client, docs, switches } = gapsAccount({ discountsAsRecorded: true });
+    const { report, finding } = await run(client, {
+      only: ["write-recurring-template-autogenerate"],
+    });
+    expect(report.results[0]?.status).toBe("observed");
+    const text = finding("write-recurring-template-autogenerate");
+    expect(text).toMatch(
+      /^Kept template (\d+) for contact \d+ \(no e-mail address: 0 communication way\(s\), none of type EMAIL\): status 100; accountIntervall P0Y1M0W, .*accountNextInvoice 2026-11-21T00:00:00\+01:00, .*accountStartDate 2026-11-21T00:00:00\+01:00/,
+    );
+    expect(text).toMatch(
+      /right after saving: automatic generation "1" \(on\), automatic sending null \(off\); deactivateAutoSending ok; now: automatic generation "1" \(on\), automatic sending null \(off\), sendType \(empty\)\./,
+    );
+    expect(text).toMatch(
+      /10 % and a fixed 5\.00 on 100\.00 net at 19 %: sumNet 85\.00, sumTax 16\.15, sumGross 101\.15, sumDiscounts -15\.00.*; getDiscounts 2 row\(s\) \(id \d+: discount 1, percentage 1, value 10, isNet 1, object \d+; id \d+: discount 1, percentage 0, value 5/,
+    );
+    expect(text).toMatch(
+      /Invoices with this template as origin right after saving: 0\. Run read-recurring-generated-autogenerate after 00:00 on 2026-11-21 /,
+    );
+    // The template stays, marked active in the cleanup list; nothing else was saved.
+    const kept = Number(/^Kept template (\d+)/.exec(text)?.[1]);
+    expect(left(docs, "Invoice")).toEqual([`Invoice/${kept}`]);
+    expect(report.created.find((record) => record.id === kept)?.state).toBe(
+      "ACTIVE recurring template (WKR, automatic generation on, sending off): end/delete after read-recurring-generated-autogenerate",
+    );
+    expect(switches.get(String(kept))).toEqual({ generate: "1", send: null });
+    // One creating save: monthly, start tomorrow at 00:00 Berlin, generation on, two discounts.
+    const [create, ...more] = autogenerateCreates(client);
+    expect(more).toEqual([]);
+    expect(create?.tier).toBe("commit");
+    expect((create?.body as Rec)["invoice"]).toMatchObject({
+      invoiceType: "WKR",
+      status: "100",
+      accountIntervall: "P0Y1M0W",
+      accountStartDate: berlinMidnight("2026-11-21"),
+      invoiceDate: "21.11.2026",
+      propertyAutoGenerateRecurringInvoice: true,
+    });
+    expect((create?.body as Rec)["invoice"]).not.toHaveProperty("autoSendConfiguration");
+    expect((create?.body as Rec)["discountSave"]).toEqual([
+      expect.objectContaining({ percentage: true, value: 10 }),
+      expect.objectContaining({ percentage: false, value: 5 }),
+    ]);
+    const writes = client.writes().map((call) => `${call.method} ${call.path} ${call.tier ?? ""}`);
+    expect(writes).toEqual([
+      "POST /Contact write",
+      "POST /Invoice/Factory/saveInvoice commit",
+      `POST /Invoice/${kept}/deactivateAutoSending write`,
+    ]);
+    // The switches are read with the embed, the contact's communication ways with a limit.
+    const reads = client.calls.filter((call) => call.path === `/Invoice/${kept}`);
+    for (const call of reads) {
+      expect(call.query).toMatchObject({
+        embed: "propertyAutoGenerateRecurringInvoice,autoSendConfiguration",
+      });
+    }
+    expect(client.calls.find((call) => call.path === "/CommunicationWay")?.query).toMatchObject({
+      limit: 100,
+      "contact[objectName]": "Contact",
+    });
+    expect(renderReport(report)).not.toContain(`${TAG} discount`);
+  });
+
+  it("switches automatic sending off and generation on when the first read shows otherwise", async () => {
+    const { client, switches } = gapsAccount({
+      discountsAsRecorded: true,
+      autoSendOnCreate: true,
+      ignoreAutoGenerateOnCreate: true,
+    });
+    const { report, finding } = await run(client, {
+      only: ["write-recurring-template-autogenerate"],
+    });
+    expect(report.results[0]?.status).toBe("observed");
+    const text = finding("write-recurring-template-autogenerate");
+    expect(text).toMatch(
+      /right after saving: automatic generation null \(never set: off\), automatic sending ON \(sendType VM, sendIntervalAfterCreation P0D\); deactivateAutoSending ok; switched on by an update: ok → "1" \(on\); now: automatic generation "1" \(on\), automatic sending null \(off\)/,
+    );
+    const kept = /^Kept template (\d+)/.exec(text)?.[1] ?? "";
+    expect(switches.get(kept)).toEqual({ generate: "1", send: null });
+    const update = client
+      .writes()
+      .find(
+        (call) =>
+          call.path === "/Invoice/Factory/saveInvoice" &&
+          ((call.body as Rec)["invoice"] as Rec)["id"] === Number(kept),
+      );
+    expect(update?.tier).toBe("commit");
+    expect((update?.body as Rec)["invoice"]).toEqual({
+      id: Number(kept),
+      objectName: "Invoice",
+      mapAll: true,
+      propertyAutoGenerateRecurringInvoice: true,
+    });
+  });
+
+  it("deletes the template and stops when automatic sending stays on", async () => {
+    const { client, docs } = gapsAccount({
+      discountsAsRecorded: true,
+      autoSendOnCreate: true,
+      autoSendSticks: true,
+    });
+    const { report, finding } = await run(client, {
+      only: ["write-recurring-template-autogenerate"],
+    });
+    expect(report.results[0]?.status).toBe("inconclusive");
+    expect(finding("write-recurring-template-autogenerate")).toMatch(
+      /^STOPPED: automatic sending is not off, so template \d+ was not kept \(deleted\)\. .*now: automatic generation "1" \(on\), automatic sending ON \(sendType VM/,
+    );
+    expect(left(docs, "Invoice")).toEqual([]);
+    expect(
+      report.created.filter((record) => record.objectName === "Invoice").map((r) => r.state),
+    ).toEqual(["deleted by the probe"]);
+  });
+
+  it("saves nothing when the contact has an e-mail address", async () => {
+    const { client, docs } = gapsAccount({ discountsAsRecorded: true, contactEmail: true });
+    const { report, finding } = await run(client, {
+      only: ["write-recurring-template-autogenerate"],
+    });
+    expect(report.results[0]?.status).toBe("inconclusive");
+    expect(finding("write-recurring-template-autogenerate")).toMatch(
+      /^STOPPED before saving a template: the communication ways of contact \d+ hold 1 e-mail address\(es\)\.$/,
+    );
+    expect(autogenerateCreates(client)).toEqual([]);
+    expect(left(docs, "Invoice")).toEqual([]);
+  });
+
+  it("keeps a template with the 10 % alone when sevDesk refuses two discount rows", async () => {
+    const { client } = gapsAccount({ discountsAsRecorded: true, refuseTwoDiscounts: true });
+    const { report, finding } = await run(client, {
+      only: ["write-recurring-template-autogenerate"],
+    });
+    expect(report.results[0]?.status).toBe("observed");
+    const text = finding("write-recurring-template-autogenerate");
+    expect(text).toMatch(/10 % only on 100\.00 net at 19 %: sumNet 90\.00/);
+    expect(text).toMatch(
+      /Tried before: with 2 discount row\(s\): refused \(422: Only one discount allowed\)\.$/,
+    );
+    expect(autogenerateCreates(client)).toHaveLength(2);
+  });
+
+  it("finds the invoices generated from the autogenerate template and compares their discounts", async () => {
+    const { client, docs, discounts } = gapsAccount({ discountsAsRecorded: true });
+    const written = await run(client, { only: ["write-recurring-template-autogenerate"] });
+    const kept = /^Kept template (\d+)/.exec(
+      written.finding("write-recurring-template-autogenerate"),
+    )?.[1];
+    const template = docs.get(`Invoice/${kept ?? ""}`) ?? {};
+    const writesBefore = client.writes().length;
+    // Nothing generated yet: inconclusive, with the template's switches and discounts.
+    const before = await run(client, {
+      allowWrites: false,
+      only: ["read-recurring-generated-autogenerate"],
+    });
+    expect(before.report.results[0]?.status).toBe("inconclusive");
+    expect(before.finding("read-recurring-generated-autogenerate")).toMatch(
+      /^1 template\(s\) of write-recurring-template-autogenerate, 0 generated invoice\(s\)\. Template \d+ \(status 100, automatic generation "1" \(on\), automatic sending null \(off\); .*getDiscounts 2 row\(s\).*generated: none yet\. Nothing generated yet: run again after the next run date\.$/,
+    );
+    // What sevDesk generated on the run date (D-111): a draft with the template as origin, here
+    // with the template's discounts; and a draft of the same contact and header without origin.
+    const generated = (id: string, extra: Rec): Rec => ({
+      id,
+      objectName: "Invoice",
+      invoiceType: "RE",
+      status: "100",
+      header: template["header"],
+      contact: template["contact"],
+      invoiceNumber: "RE-1065",
+      invoiceDate: "2026-11-21T00:01:12+01:00",
+      deliveryDate: "2026-11-21T00:00:00+01:00",
+      deliveryDateUntil: "2026-12-20T00:00:00+01:00",
+      sendDate: null,
+      sendType: "0",
+      ...extra,
+    });
+    docs.set(
+      "Invoice/991",
+      generated("991", {
+        origin: ref("Invoice", kept),
+        sumNet: template["sumNet"],
+        sumTax: template["sumTax"],
+        sumGross: template["sumGross"],
+        sumDiscounts: template["sumDiscounts"],
+        sumDiscountNet: template["sumDiscountNet"],
+        sumDiscountGross: template["sumDiscountGross"],
+      }),
+    );
+    for (const row of discounts.filter((item) => idOf(item["object"]) === kept)) {
+      discounts.push({ ...row, id: `9${String(row["id"])}`, object: ref("Invoice", "991") });
+    }
+    docs.set("Invoice/992", generated("992", { origin: null, sumNet: "100.00" }));
+    const { report, finding } = await run(client, {
+      allowWrites: false,
+      only: ["read-recurring-generated-autogenerate"],
+    });
+    expect(report.results[0]?.status).toBe("observed");
+    const text = finding("read-recurring-generated-autogenerate");
+    expect(text).toMatch(/^1 template\(s\) of write-recurring-template-autogenerate, 2 generated/);
+    expect(text).toMatch(
+      /991 \(origin the template\): type RE, status 100, number \S+, invoiceDate 2026-11-21, deliveryDate 2026-11-21, deliveryDateUntil 2026-12-20, sendDate -, sendType 0; carries the template's 2 discount row\(s\); sumNet 85\.00, .*\(sums equal to the template's\); getDiscounts 2 row\(s\)/,
+    );
+    expect(text).toMatch(
+      /992 \(same contact and header, no origin link\): .*carries NO discount rows; sumNet 100\.00, .*\(sums differ from the template's in sumNet, sumTax, sumGross, sumDiscounts, sumDiscountNet, sumDiscountGross\); getDiscounts 0 row\(s\)\.$/,
+    );
+    expect(text).not.toContain("RE-1065");
+    expect(client.writes()).toHaveLength(writesBefore);
+    // The templates are listed with the embed and an explicit limit.
+    const listed = client.calls.filter(
+      (call) => call.path === "/Invoice" && call.query["invoiceType"] === "WKR",
+    );
+    for (const call of listed) {
+      expect(call.query).toMatchObject({
+        embed: "propertyAutoGenerateRecurringInvoice,autoSendConfiguration",
+        limit: 1000,
+      });
+    }
+    const empty = gapsAccount();
+    const none = await run(empty.client, {
+      allowWrites: false,
+      only: ["read-recurring-generated-autogenerate"],
+    });
+    expect(none.report.results[0]).toMatchObject({
+      status: "inconclusive",
+      finding: expect.stringMatching(
+        /^No tagged template of write-recurring-template-autogenerate/,
+      ) as unknown,
+    });
+    expect(empty.client.writes()).toEqual([]);
   });
 
   it("tells document allowances from line allowances in UBL and CII", () => {
