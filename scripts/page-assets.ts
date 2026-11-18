@@ -4,8 +4,8 @@
  * carry them without an asset pipeline. Written by `pnpm pages:assets`
  * (scripts/embed-page-assets.ts); a test fails when the module and `assets/` drift apart.
  *
- * The fonts are the files Google Fonts serves (Archivo and Martian Mono, SIL Open Font License,
- * `licenses/fonts/`), unmodified. Each asset is served under a name that carries the start of its
+ * The fonts are the variable files Fontsource publishes (Sofia Sans and JetBrains Mono, SIL Open
+ * Font License, `licenses/fonts/`), unmodified. Each asset is served under a name that carries the start of its
  * SHA-256, so a changed file gets a new URL and the old one can be cached forever.
  */
 import { createHash } from "node:crypto";
@@ -13,9 +13,9 @@ import { readFileSync } from "node:fs";
 
 /** The embedded assets: key in the module, source file under `assets/`, media type. */
 const SOURCES = [
-  { key: "archivoLatin", file: "fonts/archivo-latin.woff2", type: "font/woff2" },
-  { key: "archivoLatinExt", file: "fonts/archivo-latin-ext.woff2", type: "font/woff2" },
-  { key: "martianMonoLatin", file: "fonts/martian-mono-latin.woff2", type: "font/woff2" },
+  { key: "sofiaSansLatin", file: "fonts/sofia-sans-latin.woff2", type: "font/woff2" },
+  { key: "sofiaSansLatinExt", file: "fonts/sofia-sans-latin-ext.woff2", type: "font/woff2" },
+  { key: "jetbrainsMonoLatin", file: "fonts/jetbrains-mono-latin.woff2", type: "font/woff2" },
   { key: "icon", file: "icon.svg", type: "image/svg+xml" },
 ] as const;
 
@@ -23,7 +23,7 @@ const ASSETS_DIR = new URL("../assets/", import.meta.url);
 /** Characters of base64 per source line. */
 const LINE = 96;
 
-/** `archivo-latin.4c98b9d490d1.woff2` for `fonts/archivo-latin.woff2`. */
+/** `sofia-sans-latin.4c98b9d490d1.woff2` for `fonts/sofia-sans-latin.woff2`. */
 function servedName(file: string, bytes: Uint8Array): string {
   const base = file.slice(file.lastIndexOf("/") + 1);
   const dot = base.lastIndexOf(".");

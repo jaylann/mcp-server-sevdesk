@@ -10,10 +10,18 @@
  *
  * What the preview says (the action, its warnings and facts) comes from the tool that asked and
  * may contain sevDesk text; it is sanitized before it gets here (`displayPreview`) and shown
- * inside the sheet, apart from the page's own words. The page never cuts or scrolls a value, and
+ * inside the card, apart from the page's own words. The page never cuts or scrolls a value, and
  * shows the warnings before the facts: the reader passes everything before reaching the buttons.
  */
-import { badge, callout, facts, pageTime, reference, stamp } from "../pages/components.js";
+import {
+  badge,
+  callout,
+  checkpoint,
+  dot,
+  facts,
+  pageTime,
+  reference,
+} from "../pages/components.js";
 import type { RenderContext } from "../pages/context.js";
 import { renderFrame } from "../pages/frame.js";
 import { type Html, markup } from "../pages/html.js";
@@ -100,8 +108,11 @@ export interface LoginPageModel {
   readonly purpose?: "approvals" | "files" | undefined;
 }
 
-/** The badge colour of each tier, as on the website: commit is stamp ink, external is storno. */
-const TIER_TONE = { write: "info", commit: "approve", external: "danger" } as const;
+/**
+ * The badge tone of each tier: neutral, but `external` (it reaches people outside sevDesk) as a
+ * warning. The badge's words name the tier; the tone only repeats it.
+ */
+const TIER_TONE = { write: "neutral", commit: "neutral", external: "warning" } as const;
 
 /**
  * The time left, as CSS for this response: the seconds until the request expires (`--ttl`,
@@ -134,16 +145,16 @@ export function renderApprovalPage(model: ApprovalPageModel, ctx: RenderContext)
   const t = ctx.t.approval;
   const { preview } = model;
   const warnings: Html[] = preview.warnings.map(
-    (warning) => markup`<li>${callout(warning, { icon: "alert" })}</li>`,
+    (warning) => markup`<li>${callout(warning, { tone: "warning" })}</li>`,
   );
   if (preview.irreversible) {
     const line = markup`<strong>${t.irreversible}</strong>`;
-    warnings.push(markup`<li>${callout(line, { tone: "danger", icon: "alert" })}</li>`);
+    warnings.push(markup`<li>${callout(line, { tone: "danger" })}</li>`);
   }
-  const consequences = warnings.length === 0 ? "" : markup`<ul class="callouts">${warnings}</ul>\n`;
+  const consequences = warnings.length === 0 ? "" : markup`<ul class="alerts">${warnings}</ul>\n`;
   const rows = preview.facts.map((fact) => ({ label: fact.label, value: shownValue(fact.value) }));
   const changed = model.recordChanged
-    ? markup`<div class="notice">${callout(t.changed, { icon: "refresh" })}</div>\n`
+    ? markup`<div class="notice">${callout(t.changed, { tone: "info", icon: "refresh" })}</div>\n`
     : "";
   const tier = badge(markup`${icon("lock")}${t.tier[model.tier]}`, TIER_TONE[model.tier]);
   const code = markup`<span class="fine">${t.reference}</span> ${reference(model.reference)}`;
@@ -151,21 +162,20 @@ export function renderApprovalPage(model: ApprovalPageModel, ctx: RenderContext)
     model.inboxHref === undefined
       ? ""
       : markup`\n<p class="small after"><a href="${model.inboxHref}">${ctx.t.inbox.back}</a></p>`;
-  const body = markup`<p class="eyebrow">${icon("stamp")}${t.eyebrow}</p>
-<h1>${t.heading}</h1>
+  const body = markup`<h1>${t.heading}</h1>
 <p class="lead">${t.lead}</p>
-${changed}<section class="sheet">
-<div class="sheet-head">${tier}<span class="ref-line">${code}</span></div>
+${changed}<section class="card">
+<div class="card-head">${tier}<span class="ref-line">${code}</span></div>
 <h2>${preview.action}</h2>
 <p class="meta">${t.tool(markup`<code>${model.toolName}</code>`, model.toolTitle)}</p>
 ${consequences}${facts(rows)}
-<form method="post" action="${model.formAction}" class="strip">
+<form method="post" action="${model.formAction}" class="card-foot">
 <input type="hidden" name="csrf" value="${model.csrf}">
 <p class="live">${t.unless}</p>
 <p class="late">${t.expired}</p>
 <div class="actions live">
-<button type="submit" name="decision" value="reject" class="btn btn-outline">${t.reject}</button>
-<button type="submit" name="decision" value="approve" class="btn btn-approve">${icon("stamp")}${t.approve}</button>
+<button type="submit" name="decision" value="reject" class="btn btn-quiet">${t.reject}</button>
+<button type="submit" name="decision" value="approve" class="btn btn-ask">${t.approve}</button>
 </div>
 </form>
 </section>
@@ -178,7 +188,7 @@ ${consequences}${facts(rows)}
 }
 
 /**
- * The page after a decision: the stamp, what was decided (the reference code and the action) and
+ * The page after a decision: the checkpoint, what was decided (the reference code and the action) and
  * what to do next.
  */
 export function renderDecisionPage(model: DecisionPageModel, ctx: RenderContext): string {
@@ -192,8 +202,8 @@ export function renderDecisionPage(model: DecisionPageModel, ctx: RenderContext)
     { label: ctx.t.approval.reference, value: reference(model.reference) },
     { label: ctx.t.approval.decided.action, value: model.action, long: false },
   ]);
-  const body = markup`<section class="sheet struck">
-${stamp(text.title, approved ? "approve" : "plain")}
+  const body = markup`<section class="card">
+${checkpoint(approved)}
 <h1>${text.title}</h1>
 <p class="message">${text.message}</p>
 ${decided}${back}
@@ -201,7 +211,8 @@ ${decided}${back}
   return renderFrame({ title: text.title, body }, ctx);
 }
 
-const STATUS_TONE = { pending: "approve", approved: "ok", rejected: "plain" } as const;
+/** The mark of each status: an accent ring waits for the person, an accent disc is their approval. */
+const STATUS_DOT = { pending: "waits", approved: "chosen", rejected: "open" } as const;
 
 function renderInboxItem(item: InboxItem, ctx: RenderContext): Html {
   const t = ctx.t.inboxPage;
@@ -215,13 +226,13 @@ function renderInboxItem(item: InboxItem, ctx: RenderContext): Html {
   const until = when === undefined ? "" : markup` <span class="fine">${when}</span>`;
   const review =
     item.status === "pending"
-      ? markup`\n<span class="btn btn-outline btn-sm" aria-hidden="true">${t.review}</span>`
+      ? markup`\n<span class="btn btn-sm" aria-hidden="true">${t.review}</span>`
       : "";
   return markup`<li class="row row-${item.status}">
 <div class="row-main">
 <p class="row-title"><a href="${item.href}">${item.action}</a></p>
 <p class="row-meta">${t.tool(markup`<code>${item.toolName}</code>`, item.toolTitle)} ${reference(item.reference)}</p>
-<p class="row-status">${badge(t.status[item.status], STATUS_TONE[item.status])}${until}</p>
+<p class="row-status">${badge(markup`${dot(STATUS_DOT[item.status])}${t.status[item.status]}`)}${until}</p>
 </div>${review}
 </li>`;
 }
@@ -230,27 +241,27 @@ function renderInboxItem(item: InboxItem, ctx: RenderContext): Html {
 export function renderInboxPage(model: InboxPageModel, ctx: RenderContext): string {
   const t = ctx.t.inboxPage;
   const waiting = model.items.filter((item) => item.status === "pending").length;
-  const refresh = markup`<a class="btn btn-outline btn-sm" href="${model.inboxHref}">${icon("refresh")}${t.refresh}</a>`;
-  const count = badge(t.waiting(waiting), waiting === 0 ? "plain" : "approve");
+  const refresh = markup`<a class="btn btn-sm" href="${model.inboxHref}">${icon("refresh")}${t.refresh}</a>`;
+  const count = badge(markup`${dot(waiting === 0 ? "open" : "waits")}${t.waiting(waiting)}`);
   const list =
     model.items.length === 0
-      ? markup`<div class="empty">${icon("envelope", 1.25)}
+      ? markup`<div class="empty">${icon("inbox")}
 <h2>${t.emptyTitle}</h2>
 <p>${t.empty}</p>
 ${refresh}
 </div>`
-      : markup`<div class="sheet-head">${count}${refresh}</div>
+      : markup`<div class="card-head">${count}${refresh}</div>
 <ul class="rows">
 ${model.items.map((item) => markup`${renderInboxItem(item, ctx)}\n`)}</ul>`;
   const body = markup`<div class="title-row">
 <h1>${t.heading}</h1>
 <form method="post" action="${model.logoutAction}">
 <input type="hidden" name="csrf" value="${model.csrf}">
-<button type="submit" class="btn btn-ghost btn-sm">${t.signOut}</button>
+<button type="submit" class="btn btn-quiet btn-sm">${t.signOut}</button>
 </form>
 </div>
 <p class="lead">${t.lead(markup`<strong>${model.accountId}</strong>`)}</p>
-<section class="sheet">
+<section class="card">
 ${list}
 </section>
 <p class="fine after">${t.fine}</p>`;
@@ -267,21 +278,21 @@ export function renderLoginPage(model: LoginPageModel, ctx: RenderContext): stri
   const note =
     model.message === undefined
       ? ""
-      : markup`${callout(model.message, { tone: "danger", icon: "alert", alert: true })}\n`;
+      : markup`${callout(model.message, { tone: "danger", alert: true })}\n`;
   const next =
     model.next === undefined
       ? ""
       : markup`<input type="hidden" name="next" value="${model.next}">\n`;
   const body = markup`<h1>${words.heading}</h1>
 <p class="lead">${words.lead}</p>
-<section class="sheet">
+<section class="card">
 ${note}<div class="address">${icon("lock")}<span>${model.host}</span></div>
 <p class="small">${t.onlyOn(markup`<strong>${model.host}</strong>`)}</p>
 <form method="post" action="${model.formAction}" class="login">
 <label for="token">${t.tokenLabel}</label>
 <input type="password" id="token" name="token" autocomplete="off" spellcheck="false" maxlength="256" required>
 <p class="hint">${t.where}</p>
-${next}<button type="submit" class="btn btn-ink">${t.submit}</button>
+${next}<button type="submit" class="btn btn-primary">${t.submit}</button>
 </form>
 </section>
 <p class="fine after">${t.fine(model.sessionHours)}</p>`;

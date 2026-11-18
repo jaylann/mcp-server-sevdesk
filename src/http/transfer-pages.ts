@@ -8,7 +8,7 @@
  * file's name, is shown cleaned and escaped on the receipt. Downloads are always attachments
  * under a sandboxing CSP: a file is never rendered on this origin (XML could run XHTML script).
  */
-import { facts, pageTime, reference } from "../pages/components.js";
+import { callout, facts, pageTime, reference } from "../pages/components.js";
 import type { PageContext, RenderContext } from "../pages/context.js";
 import { renderFrame } from "../pages/frame.js";
 import { markup } from "../pages/html.js";
@@ -98,14 +98,14 @@ export function renderUploadPage(model: UploadPageModel, ctx: RenderContext): st
   const code = reference(model.reference);
   const body = markup`<h1>${purpose.title}</h1>
 <p class="lead">${t.lead(purpose.noun, account)}</p>
-<section class="sheet">
+<section class="card">
 ${limits}
 <form method="post" action="${model.formAction}" enctype="multipart/form-data" class="upload">
 <input type="hidden" name="csrf" value="${model.csrf}">
 <label for="file" class="field">${t.file}</label>
 <input type="file" id="file" name="file" accept="${accept}" required>
 <p class="hint">${t.dropHint}</p>
-<button type="submit" class="btn btn-ink">${icon("upload")}${t.submit}</button>
+<button type="submit" class="btn btn-primary">${icon("upload")}${t.submit}</button>
 </form>
 </section>
 <p class="fine after"><span class="ref-line">${ctx.t.approval.reference} ${code}</span> ${ctx.t.approval.sameCode} ${t.fine}</p>`;
@@ -156,15 +156,18 @@ ${limits}
 <label for="file" class="field">${b.files}</label>
 <input type="file" id="file" name="file" accept="${accept}" multiple required>
 <p class="hint">${b.hint}</p>
-<button type="submit" class="btn btn-ink">${icon("upload")}${t.submit}</button>
+<button type="submit" class="btn btn-primary">${icon("upload")}${t.submit}</button>
 </form>`;
   const error =
     model.error === undefined
       ? markup``
-      : markup`<div class="callout" role="alert"><div><h2>${model.error.title}</h2><p>${model.error.message}</p></div></div>`;
+      : callout(markup`<h2>${model.error.title}</h2><p>${model.error.message}</p>`, {
+          tone: "danger",
+          alert: true,
+        });
   const body = markup`<h1>${b.title}</h1>
 <p class="lead">${b.lead(batch.count, markup`<strong>${model.accountId}</strong>`)}</p>
-<section class="sheet">${error}${form}<section class="next"><h2>${b.progress}</h2><ul>${progress}</ul></section></section>
+<section class="card">${error}${form}<section class="next"><h2>${b.progress}</h2><ul>${progress}</ul></section></section>
 <p class="fine after"><span class="ref-line">${ctx.t.approval.reference} ${reference(batch.reference)}</span> ${b.fine}</p>`;
   return renderFrame({ title: b.title, body }, ctx);
 }
@@ -189,8 +192,8 @@ export function renderUploadReceipt(model: UploadReceiptModel, ctx: RenderContex
     megabytes(model.size),
     pageTime(model.expiresAt),
   );
-  const body = markup`<section class="sheet">
-<div class="result-icon result-ok">${icon("check", 2)}</div>
+  const body = markup`<section class="card">
+<div class="result-icon result-ok">${icon("done")}</div>
 <h1>${t.received}</h1>
 <p class="message">${lead}</p>
 ${facts([{ label: ctx.t.approval.reference, value: reference(model.reference) }])}

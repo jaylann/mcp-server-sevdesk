@@ -41,7 +41,10 @@ tool list.
 
 The pages a human sees (approval, inbox, sign-in, consent, upload) share `src/pages/`: the
 `markup` template tag escapes every value, the texts live in `src/pages/text/en.ts` and `de.ts`,
-and one stylesheet (`theme.ts`) styles them all. There is no script, no `style=""` attribute and
+and one stylesheet styles them all: `src/pages/pages.css`, compiled with Tailwind on top of the
+website's design system (`@lanfermann/ui`) into `styles.generated.ts`. Style a page with the
+system's tokens and utilities (`var(--lf-accent)`, `@apply depth-raised spring-snap`), not with
+colours or shadows of its own. There is no script, no `style=""` attribute and
 nothing loaded from outside `/assets/`; a test renders every page in every state and both
 languages and fails on any of these.
 
@@ -50,6 +53,7 @@ pnpm pages:preview    # http://127.0.0.1:4173: every page state, en/de, light/da
 pnpm pages:watch      # the same, started again on every save (reload the tab)
 pnpm pages:shots      # screenshots of every state into build/page-shots/; fails on page errors
 pnpm pages:assets     # after changing a file in assets/: regenerate the embedded copy
+pnpm pages:css        # after changing pages.css or updating @lanfermann/ui: recompile the stylesheet
 ```
 
 Add a new state to `test/helpers/page-gallery.ts`, so the preview and the tests cover it. The

@@ -1,9 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  DARK_SCHEME,
   DARK_TOKENS,
-  LIGHT_SCHEME,
   LIGHT_TOKENS,
   NARROW,
   PAGE_CSS,
@@ -28,45 +26,53 @@ function contrast(a: string, b: string): number {
 
 /** Text on a background, as the pages combine them: at least 4.5:1 (WCAG AA). */
 const TEXT_PAIRS: readonly (readonly [TokenName, TokenName])[] = [
-  ["text", "bg"],
-  ["text", "bg-2"],
+  ["text", "ground"],
   ["text", "surface"],
-  ["text-2", "bg"],
-  ["text-2", "bg-2"],
-  ["text-2", "surface"],
-  // Not on bg-2: the tinted inbox rows set their secondary text in text-2.
-  ["text-3", "bg"],
-  ["text-3", "surface"],
-  ["text-2", "line-2"],
-  ["on-action", "action"],
-  ["on-action", "action-hover"],
-  ["on-approve", "approve"],
-  ["on-approve", "approve-hover"],
-  ["approve-text", "approve-tint"],
-  ["approve-text", "bg"],
-  ["approve-text", "surface"],
-  ["ok-text", "ok-tint"],
-  ["ok", "bg"],
-  ["ok", "surface"],
-  ["ok", "bg-2"],
-  ["info", "info-tint"],
-  ["danger", "danger-tint"],
-  ["text", "danger-tint"],
+  ["text", "surface-quiet"],
+  ["text", "well"],
+  ["text", "tint"],
+  ["text-body", "ground"],
+  ["text-body", "surface"],
+  ["text-body", "surface-quiet"],
+  ["text-body", "well"],
+  ["text-body", "tint"],
+  // Hints, labels of facts, the card's footer and the muted lines of the inbox.
+  ["text-muted", "ground"],
+  ["text-muted", "surface"],
+  ["text-muted", "well"],
+  // Links.
+  ["accent", "ground"],
+  ["accent", "surface"],
+  ["on-key", "key"],
+  ["on-key", "key-hover"],
+  ["on-key", "key-pressed"],
+  ["on-accent", "accent"],
+  ["on-accent", "accent-hover"],
+  ["on-accent", "accent-pressed"],
+  // Badges, and the words and icons of alerts.
+  ["info", "info-soft"],
+  ["success", "success-soft"],
+  ["warning", "warning-soft"],
+  ["danger", "danger-soft"],
+  ["text-body", "info-soft"],
+  ["text-body", "success-soft"],
+  ["text-body", "warning-soft"],
+  ["text-body", "danger-soft"],
 ];
 
 /** Shapes that carry meaning without text: at least 3:1 (WCAG 1.4.11). */
 const GRAPHIC_PAIRS: readonly (readonly [TokenName, TokenName])[] = [
-  ["field", "surface"],
-  ["field", "bg-2"],
-  ["focus", "bg"],
-  ["focus", "surface"],
-  ["stamp-ink", "surface"],
-  ["stamp-plain", "surface"],
-  ["approve", "bg"],
-  ["stamp-ink", "line"],
-  ["text", "line-2"],
-  ["danger", "surface"],
-  ["ok", "ok-tint"],
+  // The outline of a field and a checkbox, the open dot, the drop zone (all on the surface).
+  ["line", "surface"],
+  ["line", "ground"],
+  // A checked box, the dot of a person's decision, the focus ring.
+  ["accent", "surface"],
+  ["accent", "ground"],
+  ["accent", "tint"],
+  // The fill of the countdown in its trough.
+  ["text", "trough"],
+  ["key", "ground"],
+  ["key", "surface"],
 ];
 
 describe("page colours", () => {
@@ -95,28 +101,24 @@ describe("page colours", () => {
     }
   });
 
-  it("uses the website's stamp ink for approvals and ink for other actions", () => {
-    expect(LIGHT_TOKENS.approve).toBe("#5a3fc0");
-    expect(LIGHT_TOKENS.action).toBe("#1b2233");
-    expect(LIGHT_TOKENS.bg).toBe("#f9f9f6");
+  it("uses the Lanfermann system's Paper and Ink: Indigo for the ask, the key for other actions", () => {
+    expect(LIGHT_TOKENS.accent).toBe("#5f50d0");
+    expect(LIGHT_TOKENS.key).toBe("#24232f");
+    expect(LIGHT_TOKENS.ground).toBe("#fbfbfd");
+    expect(DARK_TOKENS.ground).toBe("#13121c");
+    expect(DARK_TOKENS.accent).toBe("#a6a1fd");
   });
 });
 
 describe("page stylesheet", () => {
-  it("names colours only through tokens", () => {
-    const rules = PAGE_CSS.slice(PAGE_CSS.indexOf("*,*::before"));
-    // The shadows are ink or white at an opacity; every other colour is a token.
-    expect(rules).not.toMatch(/#[0-9a-f]{3,8}\b/i);
-    expect(rules.replaceAll(/rgb\((?:27 34 51|255 255 255|0 0 0)\/[.\d]+\)/g, "")).not.toMatch(
-      /rgb\((?!from )/,
+  it("is the system's, with Ink for a browser that prefers dark", () => {
+    expect(PAGE_CSS).toMatch(/:root,\[data-theme=paper\][^{]*\{[^}]*--lf-ground:#fbfbfd/);
+    expect(PAGE_CSS).toMatch(/\.dark,\[data-theme=ink\]\{[^}]*--lf-ground:#13121c/);
+    expect(PAGE_CSS).toMatch(
+      /@media \(prefers-color-scheme:dark\)\{:root:not\(\[data-theme\]\)\{color-scheme:dark;--lf-ground:#13121c/,
     );
-  });
-
-  it("applies the dark tokens when the system prefers dark", () => {
-    expect(PAGE_CSS).toContain(`:root{color-scheme:light dark;${LIGHT_SCHEME};`);
-    expect(PAGE_CSS).toContain(`@media (prefers-color-scheme:dark){:root{${DARK_SCHEME}}}`);
-    expect(DARK_SCHEME).toContain("--stamp-blend:normal");
-    expect(LIGHT_SCHEME).toContain("--stamp-blend:multiply");
+    // Only what the pages use: not the system's components.
+    expect(PAGE_CSS).not.toMatch(/\.prose\b|\.not-prose\b|\[data-theme=indigo\]/);
   });
 
   it("loads fonts from /assets/ only, and nothing else from anywhere", () => {
@@ -128,18 +130,18 @@ describe("page stylesheet", () => {
 
   it("keeps values readable in full and respects reduced motion", () => {
     // Fact values keep their line breaks (the write flow relies on it).
-    expect(PAGE_CSS).toContain(
-      ".facts dd{min-width:0;overflow-wrap:anywhere;white-space: pre-wrap",
-    );
+    expect(PAGE_CSS).toMatch(/\.facts dd\{[^}]*white-space:pre-wrap/);
     expect(PAGE_CSS).not.toMatch(
-      /\.facts[^{]*\{[^}]*(?:max-height|overflow:(?:auto|scroll|hidden))/,
+      /\.facts?[^{]*\{[^}]*(?:max-height|overflow:(?:auto|scroll|hidden))/,
     );
-    expect(PAGE_CSS).toContain(
-      "@media (prefers-reduced-motion:reduce){.stamp,.struck,.meter i{animation:none}}",
+    expect(PAGE_CSS).toMatch(
+      /\.meter i\{[^}]*\}@media \(prefers-reduced-motion:reduce\)\{\.meter i\{animation:none\}\}/,
     );
     // The expiry itself is not motion: it stays on.
     expect(PAGE_CSS).toContain(".live{animation:expire 1ms linear var(--ttl) forwards}");
     expect(PAGE_CSS).toContain(`@media (max-width:${NARROW}){`);
-    expect(PAGE_CSS).toContain(":focus-visible{outline:2px solid var(--focus);outline-offset:3px}");
+    expect(PAGE_CSS).toContain(
+      ":focus-visible{outline:2px solid var(--lf-accent);outline-offset:2px}",
+    );
   });
 });

@@ -46,7 +46,10 @@ ihre Werkzeugliste.
 
 Die Seiten, die ein Mensch sieht (Freigabe, Postfach, Anmeldung, Zustimmung, Upload), teilen sich
 `src/pages/`: Das Template-Tag `markup` maskiert jeden Wert, die Texte liegen in
-`src/pages/text/en.ts` und `de.ts`, und ein einziges Stylesheet (`theme.ts`) gestaltet sie alle. Es
+`src/pages/text/en.ts` und `de.ts`, und ein einziges Stylesheet gestaltet sie alle:
+`src/pages/pages.css`, mit Tailwind auf dem Designsystem der Website (`@lanfermann/ui`) nach
+`styles.generated.ts` kompiliert. Gestalte eine Seite mit den Tokens und Utilities des Systems
+(`var(--lf-accent)`, `@apply depth-raised spring-snap`), nicht mit eigenen Farben oder Schatten. Es
 gibt kein Skript, kein `style=""`-Attribut und nichts, was von außerhalb von `/assets/` geladen
 wird; ein Test rendert jede Seite in jedem Zustand und beiden Sprachen und schlägt bei jedem
 dieser Punkte fehl.
@@ -56,6 +59,7 @@ pnpm pages:preview    # http://127.0.0.1:4173: jeder Seitenzustand, en/de, hell/
 pnpm pages:watch      # dasselbe, bei jedem Speichern neu gestartet (Tab neu laden)
 pnpm pages:shots      # Screenshots jedes Zustands nach build/page-shots/; schlägt bei Seitenfehlern fehl
 pnpm pages:assets     # nach einer Änderung an einer Datei in assets/: die eingebettete Kopie neu erzeugen
+pnpm pages:css        # nach einer Änderung an pages.css oder einem Update von @lanfermann/ui: das Stylesheet neu kompilieren
 ```
 
 Trage einen neuen Zustand in `test/helpers/page-gallery.ts` ein, damit die Vorschau und die Tests

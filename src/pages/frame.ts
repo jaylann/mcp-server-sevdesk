@@ -37,11 +37,11 @@ export function renderFrame(options: FrameOptions, ctx: RenderContext): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="same-origin">
-<meta name="theme-color" content="${LIGHT_TOKENS.bg}" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="${DARK_TOKENS.bg}" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="${LIGHT_TOKENS.ground}" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="${DARK_TOKENS.ground}" media="(prefers-color-scheme: dark)">
 <title>${options.title}</title>
 <link rel="icon" href="${assetPath("icon")}" type="image/svg+xml">
-<link rel="preload" href="${assetPath("archivoLatin")}" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="${assetPath("sofiaSansLatin")}" as="font" type="font/woff2" crossorigin>
 <style nonce="${ctx.nonce}">${trusted(PAGE_CSS)}${trusted(options.css ?? "")}</style>
 </head>
 <body${options.wide === true ? trusted(' class="wide"') : ""}>

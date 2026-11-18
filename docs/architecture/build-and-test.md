@@ -23,8 +23,10 @@ The same source ships in three forms; no code path is specific to one of them.
   attestation.
 
 All three carry the pages' fonts and icon inside the JavaScript (`src/pages/assets.generated.ts`,
-written by `pnpm pages:assets` from `assets/`; a test fails when the two drift apart) and the
-fonts' licence texts (`licenses/`).
+written by `pnpm pages:assets` from `assets/`), the pages' stylesheet
+(`src/pages/styles.generated.ts`, compiled by `pnpm pages:css` from `src/pages/pages.css` and
+`@lanfermann/ui`; for both, a test fails when they drift apart from their sources) and the
+licence texts of the fonts and icons (`licenses/`).
 
 ## Testing
 

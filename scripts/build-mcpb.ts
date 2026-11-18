@@ -46,7 +46,7 @@ import { getDefaultEnvironment, StdioClientTransport } from "@modelcontextprotoc
 import { build } from "tsdown";
 
 import { ALL_TOOLS } from "../src/tools/index.js";
-import type { EmbeddedFont } from "./lib/mcpb.js";
+import type { BundledPackage, EmbeddedFont } from "./lib/mcpb.js";
 import {
   bundleOutputProblems,
   licenseProblems,
@@ -70,11 +70,15 @@ const UNREACHABLE_BASE_URL = "https://127.0.0.1:9/api/v1";
 /** The fonts of the server's pages (`assets/fonts/`), with their license texts. */
 function embeddedFonts(): EmbeddedFont[] {
   return [
-    { name: "Archivo", source: "https://github.com/Omnibus-Type/Archivo", file: "Archivo-OFL.txt" },
     {
-      name: "Martian Mono",
-      source: "https://github.com/evilmartians/mono",
-      file: "MartianMono-OFL.txt",
+      name: "Sofia Sans",
+      source: "https://github.com/lettersoup/Sofia-Sans",
+      file: "SofiaSans-OFL.txt",
+    },
+    {
+      name: "JetBrains Mono",
+      source: "https://github.com/JetBrains/JetBrainsMono",
+      file: "JetBrainsMono-OFL.txt",
     },
   ].map(({ name, source, file }) => ({
     name,
@@ -82,6 +86,26 @@ function embeddedFonts(): EmbeddedFont[] {
     source,
     text: readFileSync(join(ROOT, "licenses", "fonts", file), "utf8"),
   }));
+}
+
+/**
+ * The pictograms of the server's pages: path data copied from the Hugeicons free set into
+ * `src/pages/icons.ts` (not imported, so the bundler does not see the package).
+ */
+function copiedIcons(): BundledPackage {
+  return {
+    name: "@hugeicons/core-free-icons",
+    version: "4.4.0",
+    license: "MIT",
+    author: "Hugeicons",
+    repository: "https://github.com/hugeicons/hugeicons",
+    notices: [
+      {
+        file: "LICENSE.md",
+        text: readFileSync(join(ROOT, "licenses", "icons", "Hugeicons-MIT.txt"), "utf8"),
+      },
+    ],
+  };
 }
 
 function fail(message: string): never {
@@ -116,7 +140,10 @@ async function bundleServer(version: string): Promise<number> {
   if (problems.length > 0) fail(problems.join("\n"));
 
   const moduleIds = outputs.flatMap((output) => (output.type === "chunk" ? output.moduleIds : []));
-  const packages = packageRoots(moduleIds).map((root) => readBundledPackage(root));
+  const packages = [
+    ...packageRoots(moduleIds).map((root) => readBundledPackage(root)),
+    copiedIcons(),
+  ];
   const licenses = licenseProblems(packages);
   if (licenses.length > 0) fail(licenses.join("\n"));
   writeFileSync(
