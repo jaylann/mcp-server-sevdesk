@@ -14039,6 +14039,10 @@ exports[`tools/list > over HTTP with file transfer (SEVDESK_HTTP_FILES on): adds
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
       "properties": {
+        "allowDuplicate": {
+          "description": "Send the file although a voucher in sevDesk already carries a receipt with the same SHA-256 (otherwise refused). A guard against filing the same file twice, not a safety confirmation: set it only after checking that voucher.",
+          "type": "boolean",
+        },
         "dryRun": {
           "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
           "type": "boolean",

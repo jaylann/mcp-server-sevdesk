@@ -86,6 +86,32 @@ export function voucherListRoute(rows: readonly Row[] = []): FakeRoute {
   return { path: "/Voucher", response: { body: { objects: rows } } };
 }
 
+/**
+ * `GET /Voucher?embed=document` (the checksum check before a recognition, #127) answering `rows`;
+ * listed before {@link voucherListRoute}, which would answer it too.
+ */
+export function sameFileRoute(rows: readonly Row[] = []): FakeRoute {
+  return { path: "/Voucher", query: { embed: "document" }, response: { body: { objects: rows } } };
+}
+
+/**
+ * A voucher row with its receipt embedded as `GET /Voucher?embed=document` lists it (D-100):
+ * the Document with `contentHash` (`null` for a receipt made by `createVoucherFromFile`).
+ */
+export function storedReceiptRow(contentHash: string | null, overrides: Row = {}): Row {
+  return draftRow({
+    document: {
+      id: "7701",
+      objectName: "Document",
+      contentHash,
+      filesize: "1435",
+      extension: "pdf",
+      mimeType: null,
+    },
+    ...overrides,
+  });
+}
+
 /** `GET /Voucher/{id}` answering `row`. */
 export function voucherRoute(row: Row): FakeRoute {
   return { path: `/Voucher/${String(row["id"])}`, response: { body: { objects: [row] } } };
