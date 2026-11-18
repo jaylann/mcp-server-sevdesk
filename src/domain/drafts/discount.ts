@@ -30,9 +30,10 @@
  *
  * How sevDesk splits the deduction and rounds it was settled by the 40 cases recorded on
  * 2026-11-18 (probes `write-discount-mixed-tax-uneven` and `write-discount-rounding-edges`, D-116):
- * every one fits the rule below, and each competing rule misses at least five. Rounding is half-up
- * to cents throughout, ties included (49.50 × 19 % = 9.405 gave 9.41; 10 % of 146.45 = 14.645
- * gave 14.65).
+ * every one fits the rule below. Each competing split or tax rounding misses at least five;
+ * variants of the rule itself (the leftover cent elsewhere, unrounded shares) miss one to four.
+ * Rounding is half-up to cents throughout, ties included (49.50 × 19 % = 9.405 gave 9.41; 10 % of
+ * 146.45 = 14.645 gave 14.65).
  *
  * - Net prices: the deduction D is the fixed amount, or the percentage of the net total N. Each
  *   position (not each rate: 10.01 × 3 at 19 % with 10 % gave tax 5.13, the rate's sum 5.14)
@@ -46,7 +47,9 @@
  *   net Σ of the positions' nets, tax the difference.
  *
  * The recorded gross cases have one position per tax rate, so a split per position and one per
- * rate give the same sums there; per position is taken, as recorded for net prices.
+ * rate give the same sums there; per position is taken, as recorded for net prices. None of them
+ * leaves a cent over after the split or rounds a tie, so the leftover cent's place on gross prices
+ * (the largest gross) and half-up at a tie are carried over from net prices, not recorded.
  *
  * Not computed here, with a trusted preview warning instead of a refusal:
  * - a new or kept discount on stored positions whose sums sevDesk did not send, or whose sums do

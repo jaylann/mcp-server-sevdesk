@@ -5038,7 +5038,11 @@ pdf, sevClient, name, default, img}]}`, `GET /DocServer/getTemplatesWithThumb?ty
         nets, each share rounded half-up, the cent left over on the largest net; each position's
         tax is the rest of its net times its rate, rounded half-up; the document's tax is the sum.
         It fits all 29 net cases recorded on 2026-11-16 and 2026-11-18; GU misses 5, every other
-        candidate more.
+        candidate more. Variants of the rule itself come closer: the leftover cent on another
+        position (the last, the first, the highest or lowest rate, the smallest) misses one to
+        four of the #155 cases (101.75/39.05/80.66, 76.24/62.21/32.45, 25.79/40.18/28.80,
+        32.47/89.92/102.48), unrounded shares three; which of two equal largest nets takes the
+        cent is not recorded.
       - **A percentage on gross prices is a share of the gross total**: 3 % of 99.99 gross took
         3.00 off the gross (`sumDiscountGross` -3, `sumDiscountNet` -2.53) and gave net 81.5, not
         the 81.51 that 3 % of the net 84.03 gives; the earlier gross percentages (119 and 119 +
@@ -5046,9 +5050,12 @@ pdf, sevClient, name, default, img}]}`, `GET /DocServer/getTemplatesWithThumb?ty
         rule: the deduction (the fixed amount, or the percentage of the gross total rounded
         half-up) is split by the gross of each part, rounded half-up, the leftover cent on the
         largest; each part's net is its discounted gross / (1 + rate), rounded half-up; the gross
-        is the total less the deduction, the tax the difference. It fits all 11 gross cases. They
-        have one position per rate, so whether the parts are positions or rates is not recorded;
-        the code takes positions, as on net prices.
+        is the total less the deduction, the tax the difference. It fits all 11 gross cases, and
+        no other candidate does (G3 misses 80.51/42.55, N three, F3 five, F1 six). They have one
+        position per rate, so whether the parts are positions or rates is not recorded; the code
+        takes positions, as on net prices. None of them leaves a cent over after the split or
+        rounds a tie, so the leftover's place (the largest gross) and half-up are taken from net
+        prices.
 
     - Surcharges (`discount: false`), 100.00 net at 19 %: 10 % and a fixed 10.00 each gave 110,
       20.9, 130.9 (`sumDiscounts` +10, `sumDiscountGross` +11.9); the row reads `discount` `"0"`.
