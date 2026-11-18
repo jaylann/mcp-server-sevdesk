@@ -1250,6 +1250,23 @@ describe("trial probes of the open live questions (#136, #134)", () => {
     expect(contactNames(account.contacts)).toEqual([TAG]);
     expect(account.documents.size).toBe(0);
   });
+
+  it("is inconclusive when neither organisation can be made: no DELETE was asked", async () => {
+    const id = "write-contact-delete-cascade";
+    const account = gapsAccount({
+      refuseWhen: (call) =>
+        call.method === "POST" &&
+        call.path === "/Contact" &&
+        String((call.body as Rec)["name"]).includes("Kaskade"),
+    });
+    const report = await runProbes(options(account.client, { only: [id] }));
+    const own = result(report, id);
+    expect(own.status).toBe("inconclusive");
+    expect(own.finding).toMatch(
+      /^organisation with persons: refused \(422: Synthetic refusal\)\. organisation with a referenced person: refused \(422: Synthetic refusal\)\.$/,
+    );
+    expect(account.client.writes().filter((call) => call.method === "DELETE")).toEqual([]);
+  });
 });
 
 describe("gap probes (#86, #87): read probes", () => {

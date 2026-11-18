@@ -1185,27 +1185,26 @@ async function contactDeleteCascade(
   }
 
   // (b) An organisation whose contact person a draft invoice names as its contact.
+  /** Stops before (b)'s DELETE: without (a)'s DELETE either, a setup failure, not an answer. */
+  const stop = (line: string): ProbeOutcome => {
+    lines.push(line);
+    const finding = `${lines.join(". ")}.`;
+    return plain.id === undefined ? inconclusive(finding) : { verdict: "observed", finding };
+  };
   const referenced = await organisation(ctx, "Kaskade Referenz");
   if (referenced.id === undefined) {
-    lines.push(`organisation with a referenced person: ${outcomeOf(referenced.result)}`);
-    return { verdict: "observed", finding: `${lines.join(". ")}.` };
+    return stop(`organisation with a referenced person: ${outcomeOf(referenced.result)}`);
   }
   orgs.push({ objectName: "Contact", id: referenced.id });
   const child = await person(ctx, "Kaskade Referenzperson", {
     parent: ref("Contact", referenced.id),
   });
-  if (child.id === undefined) {
-    lines.push(`the referenced person: ${outcomeOf(child.result)}`);
-    return { verdict: "observed", finding: `${lines.join(". ")}.` };
-  }
+  if (child.id === undefined) return stop(`the referenced person: ${outcomeOf(child.result)}`);
   persons.push({ objectName: "Contact", id: child.id });
   const draft = await ownInvoice(ctx, "cascade", documents, {
     contact: ref("Contact", child.id),
   });
-  if (draft.id === undefined) {
-    lines.push(`the draft naming the person: ${draft.failure}`);
-    return { verdict: "observed", finding: `${lines.join(". ")}.` };
-  }
+  if (draft.id === undefined) return stop(`the draft naming the person: ${draft.failure}`);
   const before = await ctx.read.byId("Invoice", draft.id);
   const deleted = await ctx.http.write("DELETE", `/Contact/${referenced.id}`, { tier: "write" });
   const orgState = await contactAfter(ctx, referenced.id);
