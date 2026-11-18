@@ -194,9 +194,9 @@ describe("sevdesk_order_create_draft (community order bodies, fake data)", () =>
     expect(plan.preview.warnings).toEqual([
       "Possible duplicate: orders 3050, 3051 for the same contact, date (2026-11-07) and gross " +
         "total (65.45 EUR) already exist. Check it before creating another one.",
-      "Saving reserves the number AN-1000 from sevDesk's offer number range (Nummernkreis). If " +
-        "saving fails, that number is skipped (a gap in the range); if another document takes " +
-        "it first, the draft gets the next number.",
+      "Saving reserves the next number of sevDesk's offer number range (Nummernkreis), shown as " +
+        "Number. If saving fails, that number is skipped (a gap in the range); if another " +
+        "document takes it first, the draft gets the next number.",
     ]);
   });
 

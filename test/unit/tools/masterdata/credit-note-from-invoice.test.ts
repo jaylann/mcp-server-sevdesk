@@ -24,6 +24,10 @@ const COUNTER_WARNING =
   "sevDesk gives the draft the next credit note number without advancing its counter, so the " +
   "counter is moved past the new number afterwards; otherwise the next credit note could get " +
   "the same number.";
+/** The counter note: it points at the output field instead of quoting the number (#152). */
+const MOVED_PAST =
+  "sevDesk's credit note counter was moved past the new draft's number (creditNote.number), so " +
+  "the next credit note cannot get it again.";
 const byContact = { "contact[id]": 1001, "contact[objectName]": "Contact" };
 
 const table: (readonly [string, FakeRoute])[] = [
@@ -140,12 +144,10 @@ describe("sevdesk_credit_note_create_from_invoice", () => {
       ["false", false],
       ["true", true],
     ]);
-    expect(output.data.notes).toEqual([
-      "sevDesk's credit note counter was moved past GU-1000 (the new draft's number), so the " +
-        "next credit note cannot get it again.",
-    ]);
+    expect(output.data.notes).toEqual([MOVED_PAST]);
     expect(output.data.creditNote).toMatchObject({
       id: 2101,
+      number: "GU-1000",
       status: { code: 100 },
       sourceInvoiceId: 1004,
     });
@@ -174,11 +176,10 @@ describe("sevdesk_credit_note_create_from_invoice", () => {
     const client = new FakeSevdeskClient(routes({ numbers }));
     const { output } = await executeWrite(tool, { invoiceId: 1004 }, client);
     expect(output.data.notes).toEqual([
-      "sevDesk's credit note counter was moved past GU-1000 (the new draft's number), so the " +
-        "next credit note cannot get it again.",
-      "The new draft has the same number (GU-1000) as credit note 2090: sevDesk's counter was " +
-        "behind the numbers in use when it handed that number out. Give one of them another " +
-        "number in the sevDesk web app before finalizing either.",
+      MOVED_PAST,
+      "The new draft has the same number (creditNote.number) as credit note 2090: sevDesk's " +
+        "counter was behind the numbers in use when it handed that number out. Give one of them " +
+        "another number in the sevDesk web app before finalizing either.",
     ]);
   });
 
@@ -189,10 +190,7 @@ describe("sevdesk_credit_note_create_from_invoice", () => {
       }),
     );
     const { output } = await executeWrite(tool, { invoiceId: 1004 }, client);
-    expect(output.data.notes).toEqual([
-      "sevDesk's credit note counter was moved past GU-1000 (the new draft's number), so the " +
-        "next credit note cannot get it again.",
-    ]);
+    expect(output.data.notes).toEqual([MOVED_PAST]);
   });
 
   it("leaves the counter alone when it is past the new number already", async () => {
@@ -227,9 +225,10 @@ describe("sevdesk_credit_note_create_from_invoice", () => {
       const client = new FakeSevdeskClient(routes({ ...moved, numbers }));
       const { output } = await executeWrite(tool, { invoiceId: 1004 }, client);
       expect(output.data.notes).toEqual([
-        "The new draft has the same number (GU-1000) as credit note 2077, credit note 2090: " +
-          "sevDesk's counter was moved on by someone else after it handed out that number. " +
-          "Give one of them another number in the sevDesk web app before finalizing either.",
+        "The new draft has the same number (creditNote.number) as credit note 2077, credit note " +
+          "2090: sevDesk's counter was moved on by someone else after it handed out that " +
+          "number. Give one of them another number in the sevDesk web app before finalizing " +
+          "either.",
       ]);
       // A check only: the counter is not touched, nothing else is written.
       expect(client.writes().map((call) => call.path)).toEqual([CREATE]);
@@ -247,9 +246,9 @@ describe("sevdesk_credit_note_create_from_invoice", () => {
       );
       const { output } = await executeWrite(tool, { invoiceId: 1004 }, client);
       expect(output.data.notes).toEqual([
-        "The new draft has the same number (the new draft's number) as credit note 2090: " +
-          "sevDesk's counter was moved on by someone else after it handed out that number. " +
-          "Give one of them another number in the sevDesk web app before finalizing either.",
+        "The new draft has the same number (creditNote.number) as credit note 2090: sevDesk's " +
+          "counter was moved on by someone else after it handed out that number. Give one of " +
+          "them another number in the sevDesk web app before finalizing either.",
       ]);
     });
 
@@ -260,9 +259,9 @@ describe("sevdesk_credit_note_create_from_invoice", () => {
       const client = new FakeSevdeskClient(routes({ ...moved, numbers: many }));
       const { output } = await executeWrite(tool, { invoiceId: 1004 }, client);
       expect(output.data.notes).toEqual([
-        "sevDesk's credit note counter does not offer GU-1000 (the new draft's number) any " +
-          "more, and not every credit note could be checked for the same number. Check it with " +
-          "sevdesk_credit_notes_list before finalizing.",
+        "sevDesk's credit note counter does not offer the new draft's number " +
+          "(creditNote.number) any more, and not every credit note could be checked for the " +
+          "same number. Check it with sevdesk_credit_notes_list before finalizing.",
       ]);
     });
 
@@ -275,9 +274,10 @@ describe("sevdesk_credit_note_create_from_invoice", () => {
       );
       const { output } = await executeWrite(tool, { invoiceId: 1004 }, client);
       expect(output.data.notes).toEqual([
-        "sevDesk's credit note counter does not offer GU-1000 (the new draft's number) any more, " +
-          "and whether another credit note carries the same number could not be checked. Check " +
-          "it with sevdesk_credit_notes_list before finalizing.",
+        "sevDesk's credit note counter does not offer the new draft's number " +
+          "(creditNote.number) any more, and whether another credit note carries the same " +
+          "number could not be checked. Check it with sevdesk_credit_notes_list before " +
+          "finalizing.",
       ]);
       expect(output.affected).toEqual([{ objectName: "CreditNote", id: "2101" }]);
     });
@@ -291,9 +291,10 @@ describe("sevdesk_credit_note_create_from_invoice", () => {
       const client = new FakeSevdeskClient(routes(overrides));
       const { output } = await executeWrite(tool, { invoiceId: 1004 }, client);
       expect(output.data.notes).toEqual([
-        "sevDesk's credit note counter could not be checked or moved past GU-1000: the next " +
-          "credit note may get the same number. sevdesk_credit_note_create_draft skips numbers in " +
-          "use; elsewhere check the number before finalizing.",
+        "sevDesk's credit note counter could not be checked or moved past the new draft's " +
+          "number (creditNote.number): the next credit note may get the same number. " +
+          "sevdesk_credit_note_create_draft skips numbers in use; elsewhere check the number " +
+          "before finalizing.",
       ]);
       expect(output.affected).toEqual([{ objectName: "CreditNote", id: "2101" }]);
     }
@@ -318,9 +319,10 @@ describe("sevdesk_credit_note_create_from_invoice", () => {
     const { output } = await executeWrite(tool, { invoiceId: 1004 }, client);
     expect(client.writes().map((call) => call.path)).toEqual([CREATE, NEXT]);
     expect(output.data.notes).toEqual([
-      "sevDesk's credit note counter moved on while it was being moved past GU-1000: the " +
-        "reservation took GU-1001 instead, which is now skipped (a gap in the number range, " +
-        "Nummernkreis). Check that no other credit note carries GU-1000 before finalizing.",
+      "sevDesk's credit note counter moved on while it was being moved past the new draft's " +
+        "number (creditNote.number): the reservation took another number instead, which is now " +
+        "skipped (a gap in the number range, Nummernkreis). Check that no other credit note " +
+        "carries the same number before finalizing.",
     ]);
   });
 
