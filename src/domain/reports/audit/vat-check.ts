@@ -53,13 +53,16 @@ import {
   scanNotes,
 } from "./findings.js";
 import {
+  ADDRESS_REREAD_MAX,
   customerVatIdOf,
   loadPartyDirectory,
   locate,
+  type PartyAddresses,
   type PartyArea,
   type PartyDirectory,
   type PartyFacts,
   type PartyLocation,
+  rereadPartyAddresses,
 } from "./parties.js";
 
 /** Purchase tax rules this check compares with the supplier. */
@@ -377,7 +380,15 @@ function inScope(header: DocumentHeader): boolean {
   return header.kind === "invoice" && header.invoiceType !== "SR" && REVENUE_RULES.has(rule);
 }
 
-function partyOf(header: DocumentHeader, directory: PartyDirectory): Party {
+/**
+ * The other side of `header`: the document's own data merged with the directory's entry, or, when
+ * `reread` is given, with the contact's addresses as read again (see `rereadPartyAddresses`).
+ */
+function partyOf(
+  header: DocumentHeader,
+  directory: PartyDirectory,
+  reread?: PartyAddresses,
+): Party {
   const id = header.contact?.id;
   const listed = id === undefined ? undefined : directory.parties.get(id);
   const embedded = header.contactVatId;
@@ -386,18 +397,19 @@ function partyOf(header: DocumentHeader, directory: PartyDirectory): Party {
     header.countryId === undefined ? undefined : directory.countryCodes.get(header.countryId);
   const countries = [
     ...new Set([
-      ...(listed?.countries ?? []),
+      ...(reread?.countries ?? listed?.countries ?? []),
       ...(documentCountry === undefined ? [] : [documentCountry]),
     ]),
   ].sort();
+  const addressesUnknown =
+    reread === undefined ? listed?.countriesUnknown === true : reread.countriesUnknown;
   const facts: PartyFacts = {
     id,
     name: listed?.name ?? header.contact?.name,
     vatId,
     countries,
     countriesUnknown:
-      listed?.countriesUnknown === true ||
-      (header.countryId !== undefined && documentCountry === undefined),
+      addressesUnknown || (header.countryId !== undefined && documentCountry === undefined),
   };
   return {
     facts,
@@ -405,8 +417,31 @@ function partyOf(header: DocumentHeader, directory: PartyDirectory): Party {
     location: locate(facts),
     complete:
       !directory.coverage.addressesTruncated &&
+      reread?.complete !== false &&
       (listed !== undefined || !directory.coverage.contactsTruncated),
   };
+}
+
+/**
+ * Whether a verdict rests on addresses a paged address list may have skipped (D-146), so that the
+ * contact's addresses are read again first: a finding or a rate check on a purchase, a purchase
+ * not judged for want of any data, and German VAT to an EU business (rule 1, where a German
+ * address would settle it). Missing addresses can only turn these into OK or not judged; an OK
+ * never needs them (see `judgePurchase`). Findings on a customer's VAT id (rules 3, 21) do not.
+ */
+function restsOnAddresses(header: DocumentHeader, party: Party, verdict: Verdict): boolean {
+  if (party.facts.id === undefined) return false;
+  if (header.direction === "expense") {
+    if (verdict.kind === "finding" || verdict.kind === "positions") return true;
+    const { location } = party;
+    return (
+      verdict.kind === "not_judged" &&
+      party.facts.countriesUnknown !== true &&
+      !location.germany &&
+      !location.abroad
+    );
+  }
+  return verdict.kind === "finding" && verdict.code === "german_vat_to_eu_business";
 }
 
 /**
@@ -576,15 +611,56 @@ async function runVatCheck(context: AuditCheckContext): Promise<AuditCheckResult
     contact: contactOf(party),
     header,
   });
+  const judge = (header: DocumentHeader, party: Party): Verdict => {
+    // `inScope` passed only documents with a tax rule.
+    const rule = header.taxRuleId ?? 0;
+    return header.direction === "expense"
+      ? judgePurchase(header, rule, party)
+      : judgeSale(header, rule, party);
+  };
+  // First pass. With an address list read in pages, verdicts that rest on addresses wait for
+  // the contact's addresses to be read again (D-146, see `parties.ts`).
+  const judged: { readonly header: DocumentHeader; party: Party; verdict: Verdict }[] = [];
+  const waiting: number[] = [];
   for (const header of candidates) {
     if (directory === undefined) break;
     const party = partyOf(header, directory);
-    // `inScope` passed only documents with a tax rule.
-    const rule = header.taxRuleId ?? 0;
-    const verdict =
-      header.direction === "expense"
-        ? judgePurchase(header, rule, party)
-        : judgeSale(header, rule, party);
+    const verdict = judge(header, party);
+    judged.push({ header, party, verdict });
+    const id = party.facts.id;
+    if (
+      id !== undefined &&
+      directory.coverage.addressesPaged &&
+      restsOnAddresses(header, party, verdict)
+    ) {
+      waiting.push(id);
+    }
+  }
+  const reread =
+    directory === undefined || waiting.length === 0
+      ? new Map<number, PartyAddresses>()
+      : await rereadPartyAddresses(client, waiting, directory, {
+          cacheOwner: context.cacheOwner,
+          signal: options.signal,
+        });
+  const rereadIncomplete = new Set<number>();
+  const notReread = new Set<number>();
+  for (const entry of judged) {
+    if (directory === undefined) break;
+    const id = entry.party.facts.id;
+    if (!directory.coverage.addressesPaged || id === undefined) continue;
+    if (!restsOnAddresses(entry.header, entry.party, entry.verdict)) continue;
+    const addresses = reread.get(id);
+    // Beyond the cap: the addresses may be incomplete, so the party is.
+    entry.party =
+      addresses === undefined
+        ? { ...entry.party, complete: false }
+        : partyOf(entry.header, directory, addresses);
+    if (addresses === undefined) notReread.add(id);
+    else if (!addresses.complete) rereadIncomplete.add(id);
+    entry.verdict = judge(entry.header, entry.party);
+  }
+  for (const { header, party, verdict } of judged) {
     switch (verdict.kind) {
       case "finding":
         drafts.push(draftOf(verdict.code, header, party));
@@ -643,7 +719,9 @@ async function runVatCheck(context: AuditCheckContext): Promise<AuditCheckResult
     pagedNote !== undefined ||
     (scan !== undefined && scan.notRead > 0) ||
     incomplete > 0 ||
-    contacts?.truncated === true;
+    contacts?.truncated === true ||
+    notReread.size > 0 ||
+    rereadIncomplete.size > 0;
 
   const notes = [
     "Documents are selected by document date; drafts are not checked. Sales are checked on " +
@@ -665,6 +743,22 @@ async function runVatCheck(context: AuditCheckContext): Promise<AuditCheckResult
         "missing: for contacts not read only what the document shows " +
         "was used (the VAT id and address on an invoice), and no finding was made that their " +
         "missing data could overturn.",
+    );
+  }
+  if (reread.size > 0 || notReread.size > 0) {
+    notes.push(
+      "The address list was read page by page, where sevDesk can skip a row between pages " +
+        `(D-146): the addresses of ${plural(reread.size, "contact")} with a finding (or with no ` +
+        "data to judge by) were read again, one request each, before judging." +
+        (rereadIncomplete.size > 0
+          ? ` For ${plural(rereadIncomplete.size, "contact")} that read did not come back ` +
+            "complete, so no finding was made that a further address could overturn."
+          : "") +
+        (notReread.size > 0
+          ? ` ${plural(notReread.size, "further contact")} ${notReread.size === 1 ? "was" : "were"} ` +
+            `not read again (at most ${ADDRESS_REREAD_MAX} per run), so no finding was made for ` +
+            "them that a further address could overturn."
+          : ""),
     );
   }
   if (contacts?.addressesTruncated === true) {

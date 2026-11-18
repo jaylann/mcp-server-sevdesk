@@ -16,9 +16,10 @@
  * `write-discount-net-gross`, `write-discount-mixed-tax-uneven`), but it does not decide what
  * sevDesk deducts: on a document with gross prices (`showNet` false) a fixed amount comes off the
  * gross total with `isNet` "1" and "0" alike, and on one with net prices it comes off the net total
- * with `isNet` "1" and "0" alike. A percentage takes the same share of net, tax and gross on
- * either. So the basis shown for a fixed amount follows the document's price mode
- * ({@link appliedDiscount}), and `isNet` only where that is not known.
+ * with `isNet` "1" and "0" alike. A percentage is a share of the net total on net prices and of
+ * the gross total on gross prices (3 % of 99.99 gross took 3.00 off the gross, recorded
+ * 2026-11-18, probe `write-discount-rounding-edges`). So the basis shown follows the document's
+ * price mode ({@link appliedDiscount}), and `isNet` only where that is not known.
  *
  * A document can hold several rows (a second `discountSave` without a delete adds one), but then
  * sevDesk's sums do not count all of them: in the check of 2026-11-17 (a fixed 5.00, then 3 %) only
@@ -152,8 +153,8 @@ const discountItemSchema = z.object({
     .enum(["net", "gross"])
     .optional()
     .describe(
-      "net or gross: the total a fixed amount comes off (on gross prices always the gross " +
-        "total); a percentage takes the same share of both.",
+      "net or gross: the total the discount comes off, or a percentage is taken of (on gross " +
+        "prices the gross total, on net prices the net total).",
     ),
   surcharge: z
     .boolean()
@@ -255,14 +256,14 @@ type PriceModeOfDocument = "net" | "gross" | undefined;
 /**
  * A stored discount with the basis sevDesk applies it on (see the module comment): a fixed amount
  * comes off the total of the document's price mode whatever its `isNet` (gross on gross prices,
- * net on net prices); a percentage, and a fixed amount on a document of unknown price mode, keep
- * the stored `isNet`.
+ * net on net prices); a percentage on gross prices is a share of the gross total. A percentage on
+ * net prices, and any discount on a document of unknown price mode, keep the stored `isNet`.
  */
 export function appliedDiscount<T extends DiscountAmount>(
   row: T,
   priceMode: PriceModeOfDocument,
 ): T {
-  if (row.percentage || priceMode === undefined) return row;
+  if (priceMode === undefined || (row.percentage && priceMode === "net")) return row;
   return { ...row, isNet: priceMode === "net" };
 }
 

@@ -324,8 +324,8 @@ export interface InvoiceDraftState {
   /** Set for updates: the invoice the save must keep. */
   readonly invoiceId?: number | undefined;
   /**
-   * Expected totals when the call set the positions or the discount (the gross total only when
-   * sevDesk splits net and tax, see `createTotals`); the read-back compares the gross total.
+   * Expected totals when the call set the positions or the discount (see `createTotals` and
+   * `updateTotals`); the read-back compares them.
    */
   readonly expected?: ExpectedTotals | undefined;
   /** The discount the call sent (`null`: removed), checked in the read-back. */
@@ -414,12 +414,7 @@ export async function prepareInvoiceCreate(
     `Create a draft invoice (Rechnungsentwurf) for ${customerRef(args.contactId)} with ` +
       `${positionCount(basics.positions.length)}, gross ${moneyText(totals.gross, currency)}.`,
     facts,
-    [
-      duplicateWarning("invoice", duplicates, duplicateQuery),
-      ...basics.warnings,
-      taxHint?.en,
-      totals.warning,
-    ],
+    [duplicateWarning("invoice", duplicates, duplicateQuery), ...basics.warnings, taxHint?.en],
   );
   return { preview, state: { body, expected: expectedOfCreate(totals), discount } };
 }

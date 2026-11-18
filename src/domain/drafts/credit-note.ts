@@ -324,8 +324,8 @@ export interface CreditNoteDraftState {
   /** Set for updates: the credit note the save must keep (no number is reserved then). */
   readonly creditNoteId?: number | undefined;
   /**
-   * Expected totals when the call set the positions or the discount (the gross total only when
-   * sevDesk splits net and tax, see `createTotals`); the read-back compares the gross total.
+   * Expected totals when the call set the positions or the discount (see `createTotals` and
+   * `updateTotals`); the read-back compares them.
    */
   readonly expected?: ExpectedTotals | undefined;
   /** Create only: the number the preview showed. */
@@ -454,7 +454,6 @@ export async function prepareCreditNoteCreate(
       reservationWarning("credit note"),
       royaltyWarning(category),
       ...basics.warnings,
-      totals.warning,
     ],
   );
   return {

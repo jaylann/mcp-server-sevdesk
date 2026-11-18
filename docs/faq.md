@@ -106,10 +106,11 @@ refused before anything is saved, because sevDesk would not finalize such docume
 
 ### Can it give a discount on the whole invoice?
 
-Yes, on invoice, offer, order confirmation and credit note drafts: a percentage of the net total or
-a fixed net amount in EUR, with its text, set, replaced or removed with the draft tools
-([A discount on the whole invoice](guides/invoices.md#a-discount-on-the-whole-invoice)). For now
-only on net prices with a single tax rate and not on e-invoices, the cases verified against sevDesk.
+Yes, on invoice, offer, order confirmation and credit note drafts: a percentage or a fixed amount in
+the document's currency (net on net prices, gross on gross prices), with its text, set, replaced or
+removed with the draft tools
+([A discount on the whole invoice](guides/invoices.md#a-discount-on-the-whole-invoice)), also over
+several tax rates and on e-invoices. The preview computes the total the way sevDesk does.
 Whatever discount a draft carries is shown in the approval before you finalize or send it, and an
 invoice made from an offer takes over the offer's discount.
 

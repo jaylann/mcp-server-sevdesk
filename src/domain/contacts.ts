@@ -478,6 +478,37 @@ export async function listContactAddressLocations(
   );
 }
 
+/** Rows of the one page {@link contactAddressLocationsOf} reads (sevDesk's largest page). */
+const CONTACT_ADDRESS_PAGE = 1000;
+
+/**
+ * The addresses of one contact, reduced to contact and country, with one request: `GET
+ * /ContactAddress` with the contact filter (`contact[id]`, D-032) and a page of 1000, as
+ * `listChildRows` starts. Rows of other contacts are dropped. `complete` is false when that page
+ * may not hold them all: a row of another contact came back (the filter was ignored), or sevDesk's
+ * total is missing or larger than the page. Unlike `listChildRows` it never reads further pages,
+ * so a caller can bound its requests.
+ */
+export async function contactAddressLocationsOf(
+  client: SevdeskClient,
+  contactId: number,
+  signal?: AbortSignal,
+): Promise<{ readonly items: readonly ContactAddressLocation[]; readonly complete: boolean }> {
+  const page = await client.list(
+    "/ContactAddress",
+    { "contact[id]": toSevdeskId(contactId), "contact[objectName]": "Contact" },
+    { limit: CONTACT_ADDRESS_PAGE, ...(signal === undefined ? {} : { signal }) },
+  );
+  const rows = page.items.map((raw) => {
+    const row = parseUpstream(addressRecordSchema, raw, "contact addresses");
+    return { contactId: row.contact?.id, countryId: row.country?.id };
+  });
+  const own = rows.filter((row) => row.contactId === contactId);
+  const received = page.items.length;
+  const nothingLeft = received === 0 || (page.total !== undefined && page.total <= received);
+  return { items: own, complete: own.length === rows.length && nothingLeft };
+}
+
 // ---------------------------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------------------------

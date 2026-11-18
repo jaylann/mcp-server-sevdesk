@@ -1911,7 +1911,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         },
         "discount": {
           "additionalProperties": false,
-          "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. sevDesk splits it over the tax rates by their net shares.",
+          "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. sevDesk splits it over the positions by their shares of the total.",
           "properties": {
             "amount": {
               "description": "Fixed Rabatt in the document's currency, e.g. "50.00": net on net prices, gross on gross prices (priceMode gross); at most that total.",
@@ -1921,7 +1921,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
               ],
             },
             "percent": {
-              "description": "Rabatt in percent of the net total, more than 0 and at most 100, e.g. 3.",
+              "description": "Rabatt in percent of the total (net on net prices, gross on gross prices), more than 0 and at most 100, e.g. 3.",
               "type": [
                 "string",
                 "number",
@@ -2408,7 +2408,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "anyOf": [
             {
               "additionalProperties": false,
-              "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. sevDesk splits it over the tax rates by their net shares.",
+              "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. sevDesk splits it over the positions by their shares of the total.",
               "properties": {
                 "amount": {
                   "description": "Fixed Rabatt in the document's currency, e.g. "50.00": net on net prices, gross on gross prices (priceMode gross); at most that total.",
@@ -2418,7 +2418,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
                   ],
                 },
                 "percent": {
-                  "description": "Rabatt in percent of the net total, more than 0 and at most 100, e.g. 3.",
+                  "description": "Rabatt in percent of the total (net on net prices, gross on gross prices), more than 0 and at most 100, e.g. 3.",
                   "type": [
                     "string",
                     "number",
@@ -3030,7 +3030,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         },
         "discount": {
           "additionalProperties": false,
-          "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. sevDesk splits it over the tax rates by their net shares.",
+          "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. sevDesk splits it over the positions by their shares of the total.",
           "properties": {
             "amount": {
               "description": "Fixed Rabatt in the document's currency, e.g. "50.00": net on net prices, gross on gross prices (priceMode gross); at most that total.",
@@ -3040,7 +3040,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
               ],
             },
             "percent": {
-              "description": "Rabatt in percent of the net total, more than 0 and at most 100, e.g. 3.",
+              "description": "Rabatt in percent of the total (net on net prices, gross on gross prices), more than 0 and at most 100, e.g. 3.",
               "type": [
                 "string",
                 "number",
@@ -3888,7 +3888,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "anyOf": [
             {
               "additionalProperties": false,
-              "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. sevDesk splits it over the tax rates by their net shares.",
+              "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. sevDesk splits it over the positions by their shares of the total.",
               "properties": {
                 "amount": {
                   "description": "Fixed Rabatt in the document's currency, e.g. "50.00": net on net prices, gross on gross prices (priceMode gross); at most that total.",
@@ -3898,7 +3898,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
                   ],
                 },
                 "percent": {
-                  "description": "Rabatt in percent of the net total, more than 0 and at most 100, e.g. 3.",
+                  "description": "Rabatt in percent of the total (net on net prices, gross on gross prices), more than 0 and at most 100, e.g. 3.",
                   "type": [
                     "string",
                     "number",
@@ -4533,7 +4533,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         },
         "discount": {
           "additionalProperties": false,
-          "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. sevDesk splits it over the tax rates by their net shares.",
+          "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. sevDesk splits it over the positions by their shares of the total.",
           "properties": {
             "amount": {
               "description": "Fixed Rabatt in the document's currency, e.g. "50.00": net on net prices, gross on gross prices (priceMode gross); at most that total.",
@@ -4543,7 +4543,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
               ],
             },
             "percent": {
-              "description": "Rabatt in percent of the net total, more than 0 and at most 100, e.g. 3.",
+              "description": "Rabatt in percent of the total (net on net prices, gross on gross prices), more than 0 and at most 100, e.g. 3.",
               "type": [
                 "string",
                 "number",
@@ -4974,7 +4974,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "anyOf": [
             {
               "additionalProperties": false,
-              "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. sevDesk splits it over the tax rates by their net shares.",
+              "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. sevDesk splits it over the positions by their shares of the total.",
               "properties": {
                 "amount": {
                   "description": "Fixed Rabatt in the document's currency, e.g. "50.00": net on net prices, gross on gross prices (priceMode gross); at most that total.",
@@ -4984,7 +4984,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
                   ],
                 },
                 "percent": {
-                  "description": "Rabatt in percent of the net total, more than 0 and at most 100, e.g. 3.",
+                  "description": "Rabatt in percent of the total (net on net prices, gross on gross prices), more than 0 and at most 100, e.g. 3.",
                   "type": [
                     "string",
                     "number",
@@ -8096,7 +8096,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         },
         "discount": {
           "additionalProperties": false,
-          "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. sevDesk splits it over the tax rates by their net shares.",
+          "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. sevDesk splits it over the positions by their shares of the total.",
           "properties": {
             "amount": {
               "description": "Fixed Rabatt in the document's currency, e.g. "50.00": net on net prices, gross on gross prices (priceMode gross); at most that total.",
@@ -8106,7 +8106,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
               ],
             },
             "percent": {
-              "description": "Rabatt in percent of the net total, more than 0 and at most 100, e.g. 3.",
+              "description": "Rabatt in percent of the total (net on net prices, gross on gross prices), more than 0 and at most 100, e.g. 3.",
               "type": [
                 "string",
                 "number",
@@ -8415,7 +8415,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "anyOf": [
             {
               "additionalProperties": false,
-              "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. sevDesk splits it over the tax rates by their net shares.",
+              "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. sevDesk splits it over the positions by their shares of the total.",
               "properties": {
                 "amount": {
                   "description": "Fixed Rabatt in the document's currency, e.g. "50.00": net on net prices, gross on gross prices (priceMode gross); at most that total.",
@@ -8425,7 +8425,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
                   ],
                 },
                 "percent": {
-                  "description": "Rabatt in percent of the net total, more than 0 and at most 100, e.g. 3.",
+                  "description": "Rabatt in percent of the total (net on net prices, gross on gross prices), more than 0 and at most 100, e.g. 3.",
                   "type": [
                     "string",
                     "number",
@@ -8799,7 +8799,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         },
         "discount": {
           "additionalProperties": false,
-          "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. sevDesk splits it over the tax rates by their net shares.",
+          "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. sevDesk splits it over the positions by their shares of the total.",
           "properties": {
             "amount": {
               "description": "Fixed Rabatt in the document's currency, e.g. "50.00": net on net prices, gross on gross prices (priceMode gross); at most that total.",
@@ -8809,7 +8809,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
               ],
             },
             "percent": {
-              "description": "Rabatt in percent of the net total, more than 0 and at most 100, e.g. 3.",
+              "description": "Rabatt in percent of the total (net on net prices, gross on gross prices), more than 0 and at most 100, e.g. 3.",
               "type": [
                 "string",
                 "number",
@@ -9218,7 +9218,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "anyOf": [
             {
               "additionalProperties": false,
-              "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. sevDesk splits it over the tax rates by their net shares.",
+              "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. sevDesk splits it over the positions by their shares of the total.",
               "properties": {
                 "amount": {
                   "description": "Fixed Rabatt in the document's currency, e.g. "50.00": net on net prices, gross on gross prices (priceMode gross); at most that total.",
@@ -9228,7 +9228,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
                   ],
                 },
                 "percent": {
-                  "description": "Rabatt in percent of the net total, more than 0 and at most 100, e.g. 3.",
+                  "description": "Rabatt in percent of the total (net on net prices, gross on gross prices), more than 0 and at most 100, e.g. 3.",
                   "type": [
                     "string",
                     "number",
@@ -9625,7 +9625,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         },
         "discount": {
           "additionalProperties": false,
-          "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. sevDesk splits it over the tax rates by their net shares.",
+          "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. sevDesk splits it over the positions by their shares of the total.",
           "properties": {
             "amount": {
               "description": "Fixed Rabatt in the document's currency, e.g. "50.00": net on net prices, gross on gross prices (priceMode gross); at most that total.",
@@ -9635,7 +9635,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
               ],
             },
             "percent": {
-              "description": "Rabatt in percent of the net total, more than 0 and at most 100, e.g. 3.",
+              "description": "Rabatt in percent of the total (net on net prices, gross on gross prices), more than 0 and at most 100, e.g. 3.",
               "type": [
                 "string",
                 "number",
@@ -9917,7 +9917,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "anyOf": [
             {
               "additionalProperties": false,
-              "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. sevDesk splits it over the tax rates by their net shares.",
+              "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. sevDesk splits it over the positions by their shares of the total.",
               "properties": {
                 "amount": {
                   "description": "Fixed Rabatt in the document's currency, e.g. "50.00": net on net prices, gross on gross prices (priceMode gross); at most that total.",
@@ -9927,7 +9927,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
                   ],
                 },
                 "percent": {
-                  "description": "Rabatt in percent of the net total, more than 0 and at most 100, e.g. 3.",
+                  "description": "Rabatt in percent of the total (net on net prices, gross on gross prices), more than 0 and at most 100, e.g. 3.",
                   "type": [
                     "string",
                     "number",

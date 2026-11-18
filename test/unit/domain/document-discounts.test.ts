@@ -187,8 +187,13 @@ describe("the basis sevDesk applies a discount on (D-116, recorded 2026-11-18)",
     expect(appliedDiscount({ ...fixed, isNet: false }, "net").isNet).toBe(true);
   });
 
-  it("keeps the stored isNet for a percentage and without a price mode", () => {
-    expect(appliedDiscount(percent, "gross")).toBe(percent);
+  it("takes a percentage on gross prices off the gross total (recorded 2026-11-18)", () => {
+    // 3 % of 99.99 gross took 3.00 off the gross total (probe write-discount-rounding-edges).
+    expect(appliedDiscount(percent, "gross")).toEqual({ ...percent, isNet: false });
+  });
+
+  it("keeps the stored isNet for a percentage on net prices and without a price mode", () => {
+    expect(appliedDiscount(percent, "net")).toBe(percent);
     expect(appliedDiscount({ ...percent, isNet: false }, "net")).toEqual({
       ...percent,
       isNet: false,
@@ -201,7 +206,7 @@ describe("the basis sevDesk applies a discount on (D-116, recorded 2026-11-18)",
     const sums = { sumDiscountNet: "-8.4", sumDiscountGross: "-10" };
     expect(documentDiscountDto([fixed, percent], sums, "EUR", "gross")?.items).toEqual([
       { id: 9001, kind: "amount", value: "10", basis: "gross", text: "Rabatt" },
-      { id: 9002, kind: "percent", value: "10", basis: "net", text: "Rabatt" },
+      { id: 9002, kind: "percent", value: "10", basis: "gross", text: "Rabatt" },
     ]);
     expect(documentDiscountDto([fixed], sums, "EUR", "net")?.items[0]?.basis).toBe("net");
   });

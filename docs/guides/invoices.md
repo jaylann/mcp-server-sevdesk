@@ -97,15 +97,14 @@ refused before anything is saved. An update that does not name a cost centre kee
 > Give Musterfirma 3 % off the whole invoice.
 
 Besides a discount per position, a draft can carry one discount on the whole document (Rabatt auf
-den Gesamtbetrag): a percentage of the net total or a fixed amount in the document's currency, with
-the text printed next to it ("Rabatt" unless you name another). The fixed amount is net on net
-prices and gross on gross prices. The preview shows it and the total it leads to; the result shows
-what sevDesk deducted. Offers, order confirmations and credit notes take the same discount, and an
-e-invoice carries it as an allowance on the whole invoice. Over several tax rates sevDesk spreads
-the discount by their shares of the net total, and the preview computes it the same way. A fixed
-amount on gross prices comes off the gross total exactly; how sevDesk splits it into net and tax
-the server does not compute, so the preview shows the gross total only and says so. The total is
-also left to sevDesk when a new discount goes on stored positions with several tax rates.
+den Gesamtbetrag): a percentage or a fixed amount in the document's currency, with the text printed
+next to it ("Rabatt" unless you name another). Both refer to the net total on net prices and to the
+gross total on gross prices. The preview shows it and the total it leads to; the result shows what
+sevDesk deducted. Offers, order confirmations and credit notes take the same discount, and an
+e-invoice carries it as an allowance on the whole invoice. sevDesk spreads the discount over the
+positions by their shares of the net or gross total, rounding each share to cents, and the preview
+computes it the same way. The total is left to sevDesk, and the preview says so, when a new
+discount goes on stored positions whose sums sevDesk does not send.
 Changing the draft later keeps the discount unless you replace it or remove
 it. A document with several discounts (sevDesk's totals then count only one of them) is left to
 the sevDesk web app, and the get tools and the approval warn about it.

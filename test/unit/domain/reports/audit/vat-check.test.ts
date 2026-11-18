@@ -15,6 +15,7 @@ import {
 import {
   accountDatevRoute,
   addressRow,
+  contactAddressRoutes,
   CONTACTS,
   type ContactSpec,
   COUNTRY,
@@ -492,26 +493,141 @@ describe("check vat: incomplete reads", () => {
     expect(idsOf(result, "eu_service_without_eu_vat_id")).toEqual([3204]);
   });
 
-  it("still judges every party when the address list is read in two pages (D-146)", async () => {
-    // More than 1,000 addresses: the list is read in two pages. Its paging is not measured
-    // (#158), and every address counts for every party, so only its cap makes findings unjudged.
-    const routes = quarterRoutes();
+  /**
+   * The quarter with more than 1,000 addresses, so the address list is read in two pages;
+   * `skip` leaves addresses out of that list as a paged read can (D-146). The contact-filtered
+   * reads answer each contact's own addresses (`perContact` false: no such routes, so the filter
+   * reads get the whole list, as when sevDesk ignores the filter).
+   */
+  function pagedQuarter(
+    options: {
+      readonly skip?: (row: Record<string, unknown>) => boolean;
+      readonly perContact?: boolean;
+    } = {},
+  ): FakeRoute[] {
     const filler = Array.from({ length: 1100 }, () => addressRow(9_999_999, COUNTRY.DE));
-    const padded = routes.map((route) => {
+    const padded = quarterRoutes().map((route) => {
+      if (route.path !== "/ContactAddress" || !("body" in route.response)) return route;
+      const listed = (route.response.body as { objects: Record<string, unknown>[] }).objects;
+      const kept = listed.filter((row) => options.skip?.(row) !== true);
+      return { ...route, response: { body: { objects: [...kept, ...filler] } } };
+    });
+    const customer: ContactSpec = { id: 4001, name: "Client SARL", countries: [] };
+    return [
+      regularAccount,
+      ...(options.perContact === false
+        ? []
+        : contactAddressRoutes([...Object.values(CONTACTS), customer])),
+      ...padded,
+    ];
+  }
+
+  /** The contact ids of the contact-filtered address reads, in order. */
+  const rereadIds = (client: FakeSevdeskClient) =>
+    client
+      .callsTo("/ContactAddress")
+      .filter((call) => call.query["contact[id]"] !== undefined)
+      .map((call) => call.query["contact[id]"]);
+
+  it("reads the addresses of would-be findings again when the address list pages (D-146)", async () => {
+    const { client, result } = await audit(pagedQuarter());
+
+    const listCalls = client
+      .callsTo("/ContactAddress")
+      .filter((call) => call.query["contact[id]"] === undefined);
+    expect(listCalls.map((call) => call.query["offset"])).toEqual([0, 1000]);
+    // Suppliers with a finding or a rate check, the one without data, the French customer of a
+    // rule 1 finding: each read once, one page with the contact filter.
+    expect(rereadIds(client)).toEqual([2002, 2001, 2003, 2009, 2010, 2011, 2007, 2008, 4001]);
+    for (const call of client
+      .callsTo("/ContactAddress")
+      .filter((item) => item.query["contact[id]"] !== undefined)) {
+      expect(call.query).toEqual({
+        "contact[id]": call.query["contact[id]"],
+        "contact[objectName]": "Contact",
+        limit: 1000,
+        offset: 0,
+        countAll: true,
+      });
+    }
+    for (const code of VAT_FINDING_CODES) {
+      expect(idsOf(result, code), code).toEqual(expectedIds(code));
+    }
+    expect(result.coverage.truncated).toBe(false);
+    expect(result.notes.join(" ")).toContain(
+      "The address list was read page by page, where sevDesk can skip a row between pages " +
+        "(D-146): the addresses of 9 contacts with a finding (or with no data to judge by) were " +
+        "read again, one request each, before judging.",
+    );
+  });
+
+  it("regression: an address the paged list skipped does not make a finding (#158, D-146)", async () => {
+    // The trial's 36 addresses came back in another order in pages of 5 (2026-11-18, probe
+    // write-contact-address-paging-seed); on larger lists such a reorder lost rows. Here the
+    // paged list loses the German branch address of the Dutch supplier, which alone makes its
+    // German VAT right (§ 13b Abs. 7 UStG).
+    const branch = String(CONTACTS.germanBranch.id);
+    const skip = (row: Record<string, unknown>) =>
+      (row["contact"] as { id: string }).id === branch &&
+      (row["country"] as { id: string }).id === String(COUNTRY.DE);
+    const { client, result } = await audit(pagedQuarter({ skip }));
+
+    expect(rereadIds(client)).toContain(CONTACTS.germanBranch.id);
+    expect(idsOf(result, "foreign_supplier_charged_german_vat")).toEqual(
+      expectedIds("foreign_supplier_charged_german_vat"),
+    );
+    expect(idsOf(result, "foreign_supplier_charged_german_vat")).not.toContain(3107);
+  });
+
+  it("leaves a party unjudged when its own read is not complete (the filter ignored)", async () => {
+    const { result } = await audit(pagedQuarter({ perContact: false }));
+    // Every re-read answered the whole list: other contacts' rows came back, so no finding rests
+    // on addresses; the findings on a customer's VAT id (rules 3 and 21) stand.
+    for (const code of VAT_FINDING_CODES) {
+      const stands =
+        code === "intra_eu_supply_without_eu_vat_id" || code === "eu_service_without_eu_vat_id";
+      expect(idsOf(result, code), code).toEqual(stands ? expectedIds(code) : []);
+    }
+    expect(result.coverage.truncated).toBe(true);
+    expect(result.notes.join(" ")).toContain(
+      "For 9 contacts that read did not come back complete, so no finding was made that a " +
+        "further address could overturn.",
+    );
+  });
+
+  it("reads at most 50 contacts again and says so", async () => {
+    // 52 Polish suppliers booked under rule 12: each would be a finding.
+    const suppliers: ContactSpec[] = Array.from({ length: 52 }, (_, index) => ({
+      id: 5000 + index,
+      name: `Budowa ${index}`,
+      vatNumber: "PL1234567890",
+      countries: [COUNTRY.PL],
+    }));
+    const vouchers = suppliers.map((supplier, index) =>
+      purchase(6000 + index, supplier, 12, [{ rate: "0", net: "100", tax: "0" }], "x"),
+    );
+    const filler = Array.from({ length: 1100 }, () => addressRow(9_999_999, COUNTRY.DE));
+    const routes = directoryRoutes(suppliers).map((route) => {
       if (route.path !== "/ContactAddress" || !("body" in route.response)) return route;
       const listed = (route.response.body as { objects: unknown[] }).objects;
       return { ...route, response: { body: { objects: [...listed, ...filler] } } };
     });
-    const { client, result } = await audit([regularAccount, ...padded]);
-
-    expect(client.callsTo("/ContactAddress").map((call) => call.query["offset"])).toEqual([
-      0, 1000,
+    const { client, result } = await audit([
+      regularAccount,
+      accountDatevRoute,
+      ...scenarioRoutes({ vouchers, invoices: [] }),
+      ...contactAddressRoutes(suppliers),
+      ...routes,
     ]);
-    for (const code of VAT_FINDING_CODES) {
-      expect(idsOf(result, code), code).toEqual(expectedIds(code));
-    }
-    expect(result.coverage.contacts?.truncated).toBe(false);
-    expect(result.notes.join(" ")).not.toContain("The address list");
+
+    expect(rereadIds(client)).toHaveLength(50);
+    expect(idsOf(result, "eu_supplier_under_rule_12")).toHaveLength(50);
+    expect(result.coverage.notJudged).toBe(2);
+    expect(result.coverage.truncated).toBe(true);
+    expect(result.notes.join(" ")).toContain(
+      "2 further contacts were not read again (at most 50 per run), so no finding was made " +
+        "for them that a further address could overturn.",
+    );
   });
 
   it("makes no finding an address beyond the cap of the address list could overturn", async () => {

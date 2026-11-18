@@ -471,9 +471,10 @@ describe("sevdesk_invoice_create_from_order with a discount on the whole order",
       "Order discount",
       "Order discounts deduct",
     ]);
+    // The order has gross prices: a percentage is a share of the gross total (D-116).
     expect(plan.preview.facts).toContainEqual({
       label: "Order discount",
-      value: '10 % of the net total ("Rabatt")',
+      value: '10 % of the gross total ("Rabatt")',
     });
     expect(plan.preview.facts).toContainEqual({
       label: "Order discounts deduct",

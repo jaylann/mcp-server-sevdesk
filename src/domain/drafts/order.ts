@@ -239,7 +239,7 @@ export interface OrderDraftState {
   /** The body to save; on create its `orderNumber` is the peeked one, replaced by the reserved. */
   readonly body: SaveOrderBody;
   readonly orderId?: number | undefined;
-  /** Expected totals (the gross total only when sevDesk splits net and tax, see `createTotals`). */
+  /** Expected totals (see `createTotals`). */
   readonly expected?: ExpectedTotals | undefined;
   /** The discount the call sent (`null`: removed), checked in the read-back. */
   readonly discount?: DraftDiscount | null | undefined;
@@ -345,7 +345,6 @@ export async function prepareOrderCreate(
       duplicateWarning("order", duplicates, duplicateQuery),
       reservationWarning(args.type.replace("_", " ")),
       ...basics.warnings,
-      totals.warning,
     ],
   );
   return {

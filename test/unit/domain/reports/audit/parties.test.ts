@@ -4,11 +4,81 @@ import {
   customerVatIdOf,
   loadPartyDirectory,
   locate,
+  type PartyDirectory,
+  rereadPartyAddresses,
   vatIdArea,
 } from "../../../../../src/domain/reports/audit/parties.js";
 import { SevdeskError } from "../../../../../src/sevdesk/errors.js";
 import { FakeSevdeskClient } from "../../../../helpers/fake-client.js";
-import { CONTACTS, COUNTRY, directoryRoutes } from "./scenario.js";
+import {
+  addressRow,
+  contactAddressRoutes,
+  CONTACTS,
+  COUNTRY,
+  directoryRoutes,
+} from "./scenario.js";
+
+describe("rereadPartyAddresses (D-146, #158)", () => {
+  const directory: PartyDirectory = {
+    parties: new Map(),
+    countryCodes: new Map(),
+    coverage: {
+      read: 0,
+      addressesRead: 0,
+      truncated: false,
+      contactsTruncated: false,
+      addressesTruncated: false,
+      addressesPaged: true,
+    },
+    countriesUnread: false,
+  };
+
+  it("reads each contact once with its filter and one page, and resolves the countries", async () => {
+    const client = new FakeSevdeskClient([
+      ...contactAddressRoutes([CONTACTS.germanBranch]),
+      {
+        path: "/ContactAddress",
+        query: { "contact[id]": 77 },
+        // A country the table does not know, and a row of another contact (filter ignored).
+        response: { body: { objects: [addressRow(77, 999_999), addressRow(78, COUNTRY.DE)] } },
+      },
+      {
+        path: "/StaticCountry",
+        response: { fixture: "recorded/2026-11-07/meta/static-countries.json" },
+      },
+    ]);
+    const result = await rereadPartyAddresses(
+      client,
+      [CONTACTS.germanBranch.id, CONTACTS.germanBranch.id, 77],
+      directory,
+      { cacheOwner: {} },
+    );
+
+    expect(result.get(CONTACTS.germanBranch.id)).toEqual({
+      countries: ["DE", "NL"],
+      countriesUnknown: false,
+      complete: true,
+    });
+    expect(result.get(77)).toEqual({ countries: [], countriesUnknown: true, complete: false });
+    expect(client.callsTo("/ContactAddress").map((call) => call.query)).toEqual([
+      {
+        "contact[id]": CONTACTS.germanBranch.id,
+        "contact[objectName]": "Contact",
+        limit: 1000,
+        offset: 0,
+        countAll: true,
+      },
+      {
+        "contact[id]": 77,
+        "contact[objectName]": "Contact",
+        limit: 1000,
+        offset: 0,
+        countAll: true,
+      },
+    ]);
+    expect(client.callsTo("/StaticCountry")).toHaveLength(1);
+  });
+});
 
 describe("vatIdArea", () => {
   it.each([
@@ -148,6 +218,7 @@ describe("loadPartyDirectory", () => {
       truncated: false,
       contactsTruncated: false,
       addressesTruncated: false,
+      addressesPaged: false,
     });
     expect(directory.countriesUnread).toBe(false);
     expect(client.callsTo("/Contact")[0]?.query).toMatchObject({ depth: "1", limit: 1000 });

@@ -154,6 +154,22 @@ export function directoryRoutes(
   ];
 }
 
+/**
+ * `GET /ContactAddress` with the contact filter of each of `contacts` (D-032): that contact's
+ * addresses only. Put them before {@link directoryRoutes}, whose list route takes any query.
+ */
+export function contactAddressRoutes(
+  contacts: readonly ContactSpec[] = Object.values(CONTACTS),
+): FakeRoute[] {
+  return contacts.map((contact) => ({
+    path: "/ContactAddress",
+    query: { "contact[id]": contact.id, "contact[objectName]": "Contact" },
+    response: {
+      body: { objects: contact.countries.map((country) => addressRow(contact.id, country)) },
+    },
+  }));
+}
+
 /** What the `vat` check must make of a document. */
 export type Expectation = string;
 

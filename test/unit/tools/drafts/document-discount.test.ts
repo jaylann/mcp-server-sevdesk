@@ -85,8 +85,8 @@ const savedTen = {
 
 describe("create with a discount", () => {
   // 3 × 10.00 + 1 × 25.00 net at 19 %: 55.00 net, 10.45 tax; 10 % off is 5.50 net, and the tax
-  // is that of the rest, 49.50 × 19 % = 9.405 → 9.41 (the rule recorded 2026-11-18, D-116; the
-  // half-up at this tie is assumed, no recorded case lands on a half cent).
+  // is that of the rest, 49.50 × 19 % = 9.405 → 9.41 (the rule recorded 2026-11-18, D-116; this
+  // very case was recorded by probe write-discount-rounding-edges: 49.5, 9.41, 58.91).
   const discounted = { net: "49.50", tax: "9.41", gross: "58.91" };
 
   it("sends the recorded keys after the positions, previews the discount and its total", async () => {
@@ -226,9 +226,9 @@ describe("create with a discount", () => {
     expect(plan.preview.warnings.join(" ")).not.toContain("does not compute");
   });
 
-  it("takes a fixed amount on gross prices as gross and leaves net and tax to sevDesk", async () => {
-    // Recorded 2026-11-18 (D-116): a fixed amount comes off the gross total exactly; how sevDesk
-    // splits it into net and tax is not reproduced here.
+  it("takes a fixed amount on gross prices as gross and computes net and tax", async () => {
+    // Recorded 2026-11-18 (D-116): a fixed amount comes off the gross total exactly, split by the
+    // positions' gross shares; each position's net is its discounted gross / 1.19.
     const client = new FakeSevdeskClient(invoiceCreateRoutes);
     const plan = await prepareWrite(
       invoiceCreateDraftTool,
@@ -240,22 +240,19 @@ describe("create with a discount", () => {
       invoice: { showNet: false },
       discountSave: [{ ...savedTen, percentage: false, value: 5 }],
     });
-    // 3 × 10.00 + 25.00 gross, less 5.00.
-    expect(plan.state.expected).toEqual({ gross: "50.00" });
+    // 3 × 10.00 + 25.00 gross, less 5.00: shares 2.73 and 2.27; nets 27.27 / 1.19 = 22.92 and
+    // 22.73 / 1.19 = 19.10.
+    expect(plan.state.expected).toEqual({ net: "42.02", tax: "7.98", gross: "50.00" });
     expect(plan.preview.facts).toContainEqual({
       label: "Discount",
       value: '5.00 EUR gross ("Rabatt")',
     });
     expect(plan.preview.facts).toContainEqual({
       label: "Total (expected)",
-      value: "gross 50.00 EUR; net and tax as sevDesk splits them",
+      value: "net 42.02 EUR, tax 7.98 EUR, gross 50.00 EUR",
     });
     expect(plan.preview.action).toContain("gross 50.00 EUR");
-    expect(plan.preview.warnings).toContainEqual(
-      "On gross prices a fixed discount comes off the gross total (expected gross 50.00); " +
-        "sevDesk splits it into net and tax in a way this server does not compute. Check net " +
-        "and tax in the result before finalizing.",
-    );
+    expect(plan.preview.warnings.join(" ")).not.toContain("does not compute");
   });
 
   it.each([
@@ -276,8 +273,8 @@ describe("create with a discount", () => {
   });
 
   it("takes a percentage on gross prices and a fixed amount in USD (recorded 2026-11-18)", async () => {
-    // A percentage on gross prices gives the same totals as on net prices; a fixed amount is in
-    // the document's currency (D-116).
+    // A percentage on gross prices is a share of the gross total, rounded, split by the gross
+    // shares; a fixed amount is in the document's currency (D-116).
     const gross = await prepareWrite(
       invoiceCreateDraftTool,
       { ...invoiceCreateArgs, priceMode: "gross", discount: { percent: 10 } },
@@ -286,8 +283,10 @@ describe("create with a discount", () => {
     expect(gross.state.body).toMatchObject({ discountSave: [savedTen], discountDelete: null });
     expect(gross.preview.facts).toContainEqual({
       label: "Discount",
-      value: '10 % of the net total ("Rabatt")',
+      value: '10 % of the gross total ("Rabatt")',
     });
+    // 55.00 gross less 5.50: 27.00 / 1.19 = 22.69 and 22.50 / 1.19 = 18.91.
+    expect(gross.state.expected).toEqual({ net: "41.60", tax: "7.90", gross: "49.50" });
 
     const usd = await prepareWrite(
       invoiceCreateDraftTool,
@@ -398,7 +397,13 @@ describe("update: keep, replace, remove", () => {
       return {
         path: "/InvoicePos",
         query: { "invoice[id]": 2102 },
-        response: { body: { objects: [{ ...stored.objects[0], price: "100", sumNet: "100" }] } },
+        response: {
+          body: {
+            objects: [
+              { ...stored.objects[0], price: "100", sumNet: "100", sumTax: "19", sumGross: "119" },
+            ],
+          },
+        },
       };
     }
 
@@ -558,8 +563,9 @@ describe("update: keep, replace, remove", () => {
     );
   });
 
-  it("leaves a new discount on stored positions with several rates to sevDesk, with a warning", async () => {
-    // Stored 19 % and 7 %: the stored sums do not show the net of each rate.
+  it("splits a new discount over stored positions of several rates by their stored sums", async () => {
+    // Stored 80.00 at 19 % and 20.00 at 7 %: 10 % takes 8.00 and 2.00; tax 72 × 19 % = 13.68
+    // and 18 × 7 % = 1.26.
     const client = new FakeSevdeskClient(invoiceUpdateRoutes);
     const plan = await prepareWrite(
       invoiceUpdateDraftTool,
@@ -568,11 +574,32 @@ describe("update: keep, replace, remove", () => {
     );
     expect(client.writes()).toEqual([]);
     expect(plan.state.body).toMatchObject({ discountSave: [savedTen] });
+    expect(plan.state.expected).toEqual({ net: "90.00", tax: "14.94", gross: "104.94" });
+    expect(plan.preview.warnings.join(" ")).not.toContain("sevDesk computes the new total");
+  });
+
+  it("leaves a new discount on stored positions without sums to sevDesk, with a warning", async () => {
+    const stored = loadFixture("drafts/invoice-positions-2102.json").body as { objects: Row[] };
+    const client = new FakeSevdeskClient(
+      withRoutes(invoiceUpdateRoutes, {
+        path: "/InvoicePos",
+        query: { "invoice[id]": 2102 },
+        response: {
+          body: {
+            objects: stored.objects.map(({ sumNet: _net, sumGross: _gross, ...row }) => row),
+          },
+        },
+      }),
+    );
+    const plan = await prepareWrite(
+      invoiceUpdateDraftTool,
+      { id: 2102, discount: { percent: 10 } },
+      client,
+    );
     expect(plan.state.expected).toBeUndefined();
     expect(plan.preview.warnings).toContainEqual(
-      "The stored positions have several tax rates, and the stored sums do not show the net of " +
-        "each, which the split of the discount needs. sevDesk computes the new total; check it " +
-        "in the result before finalizing.",
+      "sevDesk sent no sums for the stored positions, which the split of the discount over them " +
+        "needs. sevDesk computes the new total; check it in the result before finalizing.",
     );
   });
 
@@ -622,7 +649,7 @@ describe("update: keep, replace, remove", () => {
     expect(client.writes()).toEqual([]);
   });
 
-  it("takes a fixed gross amount on a credit note with gross prices, net and tax by sevDesk", async () => {
+  it("takes a fixed gross amount on a credit note with gross prices and computes net and tax", async () => {
     const client = new FakeSevdeskClient(creditNoteUpdateRoutes);
     const plan = await prepareWrite(
       creditNoteUpdateDraftTool,
@@ -635,12 +662,9 @@ describe("update: keep, replace, remove", () => {
       client,
     );
     expect(client.writes()).toEqual([]);
-    expect(plan.state.expected).toBeUndefined();
-    expect(plan.preview.warnings).toContainEqual(
-      "On gross prices a fixed discount comes off the gross total (expected gross 10.90); " +
-        "sevDesk splits it into net and tax in a way this server does not compute. sevDesk " +
-        "computes the new total; check it in the result before finalizing.",
-    );
+    // 11.90 less 1.00 = 10.90 gross; 10.90 / 1.19 = 9.16 net.
+    expect(plan.state.expected).toEqual({ net: "9.16", tax: "1.74", gross: "10.90" });
+    expect(plan.preview.warnings.join(" ")).not.toContain("sevDesk computes the new total");
     // More than the gross total is still refused.
     const error = await refusal(
       creditNoteUpdateDraftTool,

@@ -27,6 +27,13 @@
  *   list's cap are unknown, and beyond the address list's cap any contact may lack addresses. More
  *   data can only add a German or a foreign location, so the checks keep what such a contact's
  *   data already settles and do not judge what its missing data could change.
+ * - When the address list is read in more than one page, sevDesk can skip rows between pages
+ *   (D-146: on the trial, 36 addresses read in pages of 5 came back in another order from row 12
+ *   on, the pattern that lost rows on other lists). Flagging every party would leave every
+ *   finding unjudged on an account with more than 1,000 addresses, so the check reads the
+ *   addresses of each party it would otherwise report (or leave unjudged for lack of any data)
+ *   again, one request per contact with the contact filter ({@link rereadPartyAddresses}), and
+ *   judges it on those; only a party whose own read is incomplete is left unjudged.
  *
  * A VAT id must look like one (two letters, then at least one digit), so text such as "keine"
  * typed into the field is not read as a country. Where a party is established, the prefix decides
@@ -34,7 +41,11 @@
  * intra-EU sale is a stricter question ({@link customerVatIdOf}).
  */
 import type { SevdeskClient } from "../../../sevdesk/types.js";
-import { listContactAddressLocations, searchContacts } from "../../contacts.js";
+import {
+  contactAddressLocationsOf,
+  listContactAddressLocations,
+  searchContacts,
+} from "../../contacts.js";
 import { loadCountryCodes } from "../../country-codes.js";
 import { euMemberStateByVatPrefix, isEuMemberState, vatCountryOf } from "../../vat/eu.js";
 import { checkVatIdFormat, type VatIdFormatCheck } from "../../vat/vat-id.js";
@@ -184,6 +195,11 @@ export interface PartyDirectory {
      * several pages does not set it (see `loadPartyDirectory`).
      */
     readonly addressesTruncated: boolean;
+    /**
+     * The address list was read in more than one page, where sevDesk can skip a row (D-146): a
+     * party's addresses are read again before a finding rests on them (see the module doc).
+     */
+    readonly addressesPaged: boolean;
   };
   /** True when addresses or documents had countries but the country table could not be read. */
   readonly countriesUnread: boolean;
@@ -264,12 +280,68 @@ export async function loadPartyDirectory(
       truncated: contacts.truncated || addresses.truncated || contacts.paged,
       // A contact list read in more than one page may have missed a contact (D-146): as good as
       // capped, but it only leaves the contacts it did not read unjudged. The address list is
-      // not flagged when it pages: every address counts for every party, so a flag would leave
-      // every finding unjudged on any account with more than 1,000 addresses, and its paging is
-      // not measured (D-146, #158). Its rows are still kept once; only its cap counts.
+      // not flagged as incomplete when it pages: every address counts for every party, so the
+      // flag would leave every finding unjudged on any account with more than 1,000 addresses.
+      // Instead the check reads a would-be finding's addresses again (`addressesPaged`).
       contactsTruncated: contacts.truncated || contacts.paged,
       addressesTruncated: addresses.truncated,
+      addressesPaged: addresses.paged,
     },
     countriesUnread: withCountry && countryCodes.size === 0,
   };
+}
+
+/** Contacts whose addresses one run reads again at most, one request each (see the module doc). */
+export const ADDRESS_REREAD_MAX = 50;
+
+/** One contact's addresses as read again with its own filter. */
+export interface PartyAddresses {
+  /** ISO codes, upper case, sorted, without repeats. */
+  readonly countries: readonly string[];
+  /** An address has a country that could not be resolved to an ISO code. */
+  readonly countriesUnknown: boolean;
+  /** False when the one page may not hold them all (`contactAddressLocationsOf`). */
+  readonly complete: boolean;
+}
+
+/**
+ * Reads the addresses of `contactIds` again, one request per contact (the contact filter, one
+ * page of 1000), at most {@link ADDRESS_REREAD_MAX} of them in the order given; the rest are not
+ * read and are missing from the map. Country ids become ISO codes with the directory's table, read
+ * here when the directory did not need it.
+ */
+export async function rereadPartyAddresses(
+  client: SevdeskClient,
+  contactIds: readonly number[],
+  directory: PartyDirectory,
+  options: { readonly cacheOwner: object; readonly signal?: AbortSignal | undefined },
+): Promise<Map<number, PartyAddresses>> {
+  const read = new Map<number, Awaited<ReturnType<typeof contactAddressLocationsOf>>>();
+  for (const id of [...new Set(contactIds)].slice(0, ADDRESS_REREAD_MAX)) {
+    read.set(id, await contactAddressLocationsOf(client, id, options.signal));
+  }
+  const withCountry = [...read.values()].some((entry) =>
+    entry.items.some((address) => address.countryId !== undefined),
+  );
+  const countryCodes =
+    withCountry && directory.countryCodes.size === 0
+      ? await loadCountryCodes(client, { cacheOwner: options.cacheOwner, signal: options.signal })
+      : directory.countryCodes;
+  const result = new Map<number, PartyAddresses>();
+  for (const [id, entry] of read) {
+    const countries = new Set<string>();
+    let countriesUnknown = false;
+    for (const address of entry.items) {
+      if (address.countryId === undefined) continue;
+      const code = countryCodes.get(address.countryId);
+      if (code === undefined) countriesUnknown = true;
+      else countries.add(code);
+    }
+    result.set(id, {
+      countries: [...countries].sort(),
+      countriesUnknown,
+      complete: entry.complete,
+    });
+  }
+  return result;
 }

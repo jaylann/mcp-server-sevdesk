@@ -16,9 +16,9 @@ import {
   discountText,
   type DraftDiscount,
   expectedOfCreate,
+  type PartTotal,
   planDiscountChange,
-  type RateTotal,
-  rateTotals,
+  positionParts,
   resolveDiscount,
   storedDiscountState,
   storedDiscountText,
@@ -217,9 +217,9 @@ function at(unitPrice: string, taxRate: string): DraftPosition {
   return { ...recordedPosition, unitPrice, taxRate };
 }
 
-/** One rate's undiscounted totals, for `discountedTotals`. */
-function rate(value: string, net: string, gross: string): RateTotal {
-  return { rate: value, net: decimal(net), gross: decimal(gross) };
+/** One position's undiscounted totals, for `discountedTotals`. */
+function part(rate: string, net: string, gross: string): PartTotal {
+  return { rate, net: decimal(net), gross: decimal(gross) };
 }
 
 const percent = (value: string): DraftDiscount => ({ percentage: true, value, text: "Rabatt" });
@@ -231,7 +231,6 @@ describe("totals with the discount", () => {
     expect(createTotals([recordedPosition], "net", ten)).toEqual({
       expected: recorded,
       gross: "107.10",
-      warning: undefined,
     });
     expect(createTotals([recordedPosition], "net", fixed).expected).toEqual(recorded);
   });
@@ -368,84 +367,224 @@ describe("totals with the discount", () => {
       "24.70",
       "214.70",
     ],
+    // Recorded 2026-11-18, probe write-discount-rounding-edges (#158): half-cent ties on one rate
+    // (half-up on the tax of the rest), several positions at one rate (split per position).
+    [
+      "3 × 10.00 + 25.00 at 19 %, 10 % (tax 9.405 → 9.41)",
+      [{ ...at("10", "19"), quantity: "3" }, at("25", "19")],
+      percent("10"),
+      "49.50",
+      "9.41",
+      "58.91",
+    ],
+    ["58.95 at 19 %, fixed 9.45", [at("58.95", "19")], amount("9.45"), "49.50", "9.41", "58.91"],
+    ["61.00 at 7 %, fixed 9.50", [at("61", "7")], amount("9.5"), "51.50", "3.61", "55.11"],
+    [
+      "146.45 at 19 %, 10 % (deduction 14.645 → 14.65)",
+      [at("146.45", "19")],
+      percent("10"),
+      "131.80",
+      "25.04",
+      "156.84",
+    ],
+    ["98.05 at 7 %, 10 %", [at("98.05", "7")], percent("10"), "88.24", "6.18", "94.42"],
+    [
+      "51.50 at 19 %, 3 % (deduction 1.545 → 1.55)",
+      [at("51.5", "19")],
+      percent("3"),
+      "49.95",
+      "9.49",
+      "59.44",
+    ],
+    [
+      "10.01 × 3 positions at 19 %, 10 % (per rate would give tax 5.14)",
+      [at("10.01", "19"), at("10.01", "19"), at("10.01", "19")],
+      percent("10"),
+      "27.03",
+      "5.13",
+      "32.16",
+    ],
+    [
+      "33.33 + 33.33 + 33.34 at 19 %, fixed 9.99",
+      [at("33.33", "19"), at("33.33", "19"), at("33.34", "19")],
+      amount("9.99"),
+      "90.01",
+      "17.10",
+      "107.11",
+    ],
+    [
+      "43.24 + 11.89 + 9.72 at 19 %, 10 %",
+      [at("43.24", "19"), at("11.89", "19"), at("9.72", "19")],
+      percent("10"),
+      "58.36",
+      "11.08",
+      "69.44",
+    ],
+    [
+      "38.75 + 7.34 + 12.59 at 19 %, fixed 9.20",
+      [at("38.75", "19"), at("7.34", "19"), at("12.59", "19")],
+      amount("9.2"),
+      "49.48",
+      "9.41",
+      "58.89",
+    ],
+    [
+      "29.45 + 49.40 at 19 % + 28.80 at 7 %, 10 %",
+      [at("29.45", "19"), at("49.40", "19"), at("28.80", "7")],
+      percent("10"),
+      "96.88",
+      "15.30",
+      "112.18",
+    ],
+    [
+      "37.14 + 37.50 at 19 % + 34.22 at 7 %, fixed 13.30",
+      [at("37.14", "19"), at("37.50", "19"), at("34.22", "7")],
+      amount("13.3"),
+      "95.56",
+      "14.54",
+      "110.10",
+    ],
   ] as const)("gives the recorded sums for %s", (_label, positions, discount, net, tax, gross) => {
     expect(createTotals(positions, "net", discount)).toEqual({
       expected: { net, tax, gross },
       gross,
-      warning: undefined,
     });
   });
 
-  it("gives the recorded sums for a percentage on gross prices with two rates", () => {
-    // Recorded 2026-11-18: 119.00 at 19 % + 107.00 at 7 % (gross), 10 %: 180, 23.4, 203.4.
-    expect(createTotals([at("119", "19"), at("107", "7")], "gross", ten).expected).toEqual({
-      net: "180.00",
-      tax: "23.40",
-      gross: "203.40",
-    });
-  });
-
+  // D-116, recorded 2026-11-18 on gross prices (probes write-discount-net-gross,
+  // write-discount-mixed-tax-uneven and write-discount-rounding-edges): the deduction comes off the
+  // gross total (a percentage of the gross, rounded), split by the positions' gross shares; each
+  // position's net is its discounted gross / (1 + rate).
   it.each([
-    // Recorded 2026-11-18 (D-116): the gross total less the amount, exactly.
-    ["119.00 at 19 %, fixed 10", [at("119", "19")], "10", "109.00"],
-    ["119.00 at 19 % + 107.00 at 7 %, fixed 10", [at("119", "19"), at("107", "7")], "10", "216.00"],
+    ["119.00 at 19 %, 10 %", [at("119", "19")], percent("10"), "90.00", "17.10", "107.10"],
+    [
+      "119.00 at 19 % + 107.00 at 7 %, 10 %",
+      [at("119", "19"), at("107", "7")],
+      percent("10"),
+      "180.00",
+      "23.40",
+      "203.40",
+    ],
+    ["119.00 at 19 %, fixed 10", [at("119", "19")], amount("10"), "91.60", "17.40", "109.00"],
+    [
+      "119.00 at 19 % + 107.00 at 7 %, fixed 10",
+      [at("119", "19"), at("107", "7")],
+      amount("10"),
+      "191.15",
+      "24.85",
+      "216.00",
+    ],
     [
       "83.30 at 19 % + 32.10 at 7 %, fixed 9.99",
       [at("83.30", "19"), at("32.10", "7")],
-      "9.99",
+      amount("9.99"),
+      "91.34",
+      "14.07",
       "105.41",
     ],
+    [
+      "99.99 at 19 %, 3 % (3 % of the net would give 81.51 / 97.00)",
+      [at("99.99", "19")],
+      percent("3"),
+      "81.50",
+      "15.49",
+      "96.99",
+    ],
+    [
+      "99.99 at 19 % + 49.99 at 7 %, 7 %",
+      [at("99.99", "19"), at("49.99", "7")],
+      percent("7"),
+      "121.59",
+      "17.89",
+      "139.48",
+    ],
+    [
+      "80.51 at 19 % + 42.55 at 7 %, 3 %",
+      [at("80.51", "19"), at("42.55", "7")],
+      percent("3"),
+      "104.20",
+      "15.17",
+      "119.37",
+    ],
+    [
+      "133.52 at 19 % + 136.29 at 7 %, fixed 10.42",
+      [at("133.52", "19"), at("136.29", "7")],
+      amount("10.42"),
+      "230.33",
+      "29.06",
+      "259.39",
+    ],
+    [
+      "68.95 at 19 % + 30.38 at 7 %, fixed 6.63",
+      [at("68.95", "19"), at("30.38", "7")],
+      amount("6.63"),
+      "80.58",
+      "12.12",
+      "92.70",
+    ],
+    [
+      "59.09 at 19 % + 184.71 at 7 %, fixed 5.61",
+      [at("59.09", "19"), at("184.71", "7")],
+      amount("5.61"),
+      "217.16",
+      "21.03",
+      "238.19",
+    ],
   ] as const)(
-    "takes a fixed amount on gross prices off the gross total and leaves net and tax to sevDesk: %s",
-    (_label, positions, value, gross) => {
-      const totals = createTotals(positions, "gross", amount(value));
-      expect(totals).toEqual({
-        expected: undefined,
-        gross,
-        warning:
-          `On gross prices a fixed discount comes off the gross total (expected gross ${gross}); ` +
-          "sevDesk splits it into net and tax in a way this server does not compute. Check net " +
-          "and tax in the result before finalizing.",
-      });
-      expect(expectedOfCreate(totals)).toEqual({ gross });
+    "gives the recorded sums on gross prices for %s",
+    (_label, positions, discount, net, tax, gross) => {
+      const totals = createTotals(positions, "gross", discount);
+      expect(totals).toEqual({ expected: { net, tax, gross }, gross });
+      expect(expectedOfCreate(totals)).toEqual({ net, tax, gross });
     },
   );
 
-  it("rounds each rate's share half-up and gives the cent left over to the rate with the largest net", () => {
+  it("rounds each position's share half-up and gives the cent left over to the largest one", () => {
     // 10.00 over 50.00 at each of three rates: 3.33 each, the cent left over to the first of
     // equals (the recorded cases put it on the largest net; equal nets are not recorded).
     expect(
       discountedTotals(
-        [rate("19", "50", "59.5"), rate("7", "50", "53.5"), rate("0", "50", "50")],
+        [part("19", "50", "59.5"), part("7", "50", "53.5"), part("0", "50", "50")],
         "net",
         amount("10"),
       ),
-    ).toEqual({
-      kind: "computed",
       // 19 %: (50 − 3.34) × 0.19 = 8.8654 → 8.87; 7 %: 46.67 × 0.07 = 3.2669 → 3.27.
-      amounts: { net: "140.00", tax: "12.14", gross: "152.14" },
+    ).toEqual({ net: "140.00", tax: "12.14", gross: "152.14" });
+    expect(discountedTotals([part("19", "33.33", "39.66")], "net", percent("3"))).toEqual({
+      net: "32.33",
+      tax: "6.14",
+      gross: "38.47",
     });
-    expect(discountedTotals([rate("19", "33.33", "39.66")], "net", percent("3"))).toEqual({
-      kind: "computed",
-      amounts: { net: "32.33", tax: "6.14", gross: "38.47" },
+    expect(discountedTotals([part("0", "100", "100")], "net", ten)).toEqual({
+      net: "90.00",
+      tax: "0.00",
+      gross: "90.00",
     });
-    expect(discountedTotals([rate("0", "100", "100")], "net", ten)).toEqual({
-      kind: "computed",
-      amounts: { net: "90.00", tax: "0.00", gross: "90.00" },
-    });
+    // Gross prices: 1.00 over three equal gross parts, the cent left over to the first.
+    expect(
+      discountedTotals(
+        [part("19", "10", "11.9"), part("19", "10", "11.9"), part("19", "10", "11.9")],
+        "gross",
+        amount("1"),
+      ),
+      // 11.90 − 0.34 = 11.56 → 9.71; 11.90 − 0.33 = 11.57 → 9.72 (twice).
+    ).toEqual({ net: "29.15", tax: "5.55", gross: "34.70" });
   });
 
   it("refuses an amount above the total and a total that is not positive", () => {
     expect(
-      refusal(() => discountedTotals([rate("19", "100", "119")], "net", amount("100.01"))).message,
+      refusal(() => discountedTotals([part("19", "100", "119")], "net", amount("100.01"))).message,
     ).toBe("The discount of 100.01 is more than the net total of 100.00.");
     expect(
-      refusal(() => discountedTotals([rate("19", "100", "119")], "gross", amount("119.01")))
+      refusal(() => discountedTotals([part("19", "100", "119")], "gross", amount("119.01")))
         .message,
     ).toBe("The discount of 119.01 is more than the gross total of 119.00.");
     expect(
-      refusal(() => discountedTotals([rate("19", "-5", "-5.95")], "net", ten)).message,
+      refusal(() => discountedTotals([part("19", "-5", "-5.95")], "net", ten)).message,
     ).toContain("needs a positive total");
+    expect(refusal(() => discountedTotals([part("19", "-5", "-5.95")], "gross", ten)).message).toBe(
+      "The gross total is -5.95; a discount on the whole document needs a positive total.",
+    );
     expect(refusal(() => createTotals([at("50", "19"), at("-50", "7")], "net", ten)).message).toBe(
       "The net total is 0.00; a discount on the whole document needs a positive total.",
     );
@@ -469,11 +608,15 @@ describe("totals with the discount", () => {
     ).toEqual({ net: "90.00", tax: "17.10", gross: "107.10" });
   });
 
-  it("sums the positions of one rate before splitting", () => {
-    const totals = rateTotals([at("40", "19"), at("10", "7"), at("60", "19.0")], "net");
-    expect(totals.map((item) => [item.rate, format(item.net, 2), format(item.gross, 2)])).toEqual([
-      ["19", "100.00", "119.00"],
+  it("splits over each position, not over the sum of a rate (recorded 2026-11-18)", () => {
+    const parts = positionParts(
+      [at("40", "19"), at("10", "7"), { ...at("60", "19.0"), optional: true }, at("60", "19.0")],
+      "net",
+    );
+    expect(parts.map((item) => [item.rate, format(item.net, 2), format(item.gross, 2)])).toEqual([
+      ["19", "40.00", "47.60"],
       ["7", "10.00", "10.70"],
+      ["19.0", "60.00", "71.40"],
     ]);
   });
 });
@@ -680,25 +823,23 @@ describe("the totals of an update", () => {
     const added = totals(surcharge, discountedDraft, { positions: [recordedPosition] });
     expect(added.expected).toBeUndefined();
     expect(added.warning).toContain("a surcharge");
+  });
 
-    // A kept fixed amount on gross prices: off the gross total, split by sevDesk (D-116).
+  it("computes a kept fixed amount on new gross positions (recorded 2026-11-18)", () => {
     const keepFixed = planDiscountChange(
       undefined,
       stored(row({ percentage: false })),
       "Invoice 2102",
     );
-    const gross = totals(keepFixed, discountedDraft, {
-      mode: "gross",
-      positions: [{ ...recordedPosition, unitPrice: "119" }],
-    });
-    expect(gross).toEqual({
-      expected: undefined,
+    expect(
+      totals(keepFixed, discountedDraft, {
+        mode: "gross",
+        positions: [{ ...recordedPosition, unitPrice: "119" }],
+      }),
+    ).toEqual({
+      expected: { net: "91.60", tax: "17.40", gross: "109.00" },
       changes: true,
-      warning:
-        "The draft keeps its discount on the whole document. On gross prices a fixed discount " +
-        "comes off the gross total (expected gross 109.00); sevDesk splits it into net and tax " +
-        "in a way this server does not compute. sevDesk computes the new total; check it in the " +
-        "result before finalizing.",
+      warning: undefined,
     });
   });
 
@@ -728,8 +869,38 @@ describe("the totals of an update", () => {
     ).toEqual({ net: "90.00", tax: "17.10", gross: "107.10" });
   });
 
-  it("leaves a new discount on stored positions with several rates to sevDesk", () => {
-    // The stored sums do not show the net per rate, which the split needs.
+  it("splits a new discount over the stored positions by their stored sums", () => {
+    // 10.01 × 3 at 19 % with 10 % (recorded 2026-11-18): tax 5.13, not the rate's 5.14.
+    const add = planDiscountChange({ percent: "10" }, stored(), "Invoice 2102");
+    const position = { taxRate: "19", sumNet: "10.01", sumTax: "1.9", sumGross: "11.91" };
+    const threeDraft = { currency: "EUR", sumNet: "30.03", sumTax: "5.7", sumGross: "35.73" };
+    expect(
+      totals(add, threeDraft, { storedPositions: [position, position, position] }).expected,
+    ).toEqual({ net: "27.03", tax: "5.13", gross: "32.16" });
+    // Several rates (70 at 19 % + 30 at 7 %, 10 %: 90, 13.86, 103.86).
+    const mixed = [
+      { taxRate: "19", sumNet: "70", sumTax: "13.3", sumGross: "83.3" },
+      { taxRate: "7", sumNet: "30", sumTax: "2.1", sumGross: "32.1" },
+      { taxRate: "7", optional: true, sumNet: "500", sumTax: "35", sumGross: "535" },
+    ];
+    const mixedDraft = { currency: "EUR", sumNet: "100", sumTax: "15.4", sumGross: "115.4" };
+    expect(totals(add, mixedDraft, { storedPositions: mixed }).expected).toEqual({
+      net: "90.00",
+      tax: "13.86",
+      gross: "103.86",
+    });
+    // On gross prices by the stored gross (99.99 at 19 %, 3 %: 81.50, 15.49, 96.99).
+    const grossDraft = { currency: "EUR", sumNet: "84.03", sumTax: "15.96", sumGross: "99.99" };
+    const grossPosition = { taxRate: "19", sumNet: "84.03", sumTax: "15.96", sumGross: "99.99" };
+    expect(
+      totals(planDiscountChange({ percent: "3" }, stored(), "Invoice 2102"), grossDraft, {
+        mode: "gross",
+        storedPositions: [grossPosition],
+      }).expected,
+    ).toEqual({ net: "81.50", tax: "15.49", gross: "96.99" });
+  });
+
+  it("leaves a new discount on stored positions to sevDesk when their sums are missing or do not add up", () => {
     const add = planDiscountChange({ percent: "10" }, stored(), "Invoice 2102");
     expect(
       totals(add, plainDraft, { storedPositions: [{ taxRate: "19" }, { taxRate: "7" }] }),
@@ -737,10 +908,15 @@ describe("the totals of an update", () => {
       expected: undefined,
       changes: true,
       warning:
-        "The stored positions have several tax rates, and the stored sums do not show the net " +
-        "of each, which the split of the discount needs. sevDesk computes the new total; check " +
-        "it in the result before finalizing.",
+        "sevDesk sent no sums for the stored positions, which the split of the discount over " +
+        "them needs. sevDesk computes the new total; check it in the result before finalizing.",
     });
+    const halves = { taxRate: "19", sumNet: "40", sumTax: "7.6", sumGross: "47.6" };
+    expect(totals(add, plainDraft, { storedPositions: [halves, halves] }).warning).toBe(
+      "The sums of the stored positions do not add up to the stored totals, which the split of " +
+        "the discount over them needs. sevDesk computes the new total; check it in the result " +
+        "before finalizing.",
+    );
     // An amount the stored total cannot take is still refused.
     const tooMuch = planDiscountChange({ amount: "100.01" }, stored(), "Invoice 2102");
     expect(
@@ -768,13 +944,14 @@ describe("the totals of an update", () => {
     ).toBeUndefined();
   });
 
-  it("leaves a new fixed amount on stored gross positions to sevDesk, with the gross total", () => {
+  it("computes a new fixed amount on one stored gross position from the stored totals", () => {
+    // 119.00 at 19 % gross, fixed 10.00 (recorded 2026-11-18): 91.60, 17.40, 109.00.
     const add = planDiscountChange({ amount: "10" }, stored(), "Invoice 2102");
-    expect(totals(add, plainDraft, { mode: "gross" }).warning).toBe(
-      "On gross prices a fixed discount comes off the gross total (expected gross 109.00); " +
-        "sevDesk splits it into net and tax in a way this server does not compute. sevDesk " +
-        "computes the new total; check it in the result before finalizing.",
-    );
+    expect(totals(add, plainDraft, { mode: "gross" })).toEqual({
+      expected: { net: "91.60", tax: "17.40", gross: "109.00" },
+      changes: true,
+      warning: undefined,
+    });
   });
 
   it("does not compute a new discount on stored sums in a new currency", () => {
@@ -793,7 +970,8 @@ describe("preview and read-back", () => {
     expect(discountText({ ...fixed, value: "50" }, "EUR", "gross")).toBe(
       '50.00 EUR gross ("Rabatt")',
     );
-    expect(discountText(ten, "EUR", "gross")).toBe('10 % of the net total ("Rabatt")');
+    // A percentage on gross prices is a share of the gross total (recorded 2026-11-18).
+    expect(discountText(ten, "EUR", "gross")).toBe('10 % of the gross total ("Rabatt")');
     expect(
       storedDiscountText(
         [row(), row({ id: 2, surcharge: true, percentage: false, isNet: false, text: undefined })],
@@ -819,10 +997,11 @@ describe("preview and read-back", () => {
 
   it("shows a stored fixed amount on gross prices as gross, whatever isNet says (D-116)", () => {
     // Recorded 2026-11-18: on a gross document a fixed 10.00 came off the gross total with isNet
-    // "1" and "0" alike; a percentage keeps its stored basis.
+    // "1" and "0" alike, and a percentage took its share of the gross total.
     const fixedRow = row({ percentage: false, value: "10" });
     expect(storedDiscountText([fixedRow], "EUR", "gross")).toBe('10.00 EUR gross ("Rabatt")');
-    expect(storedDiscountText([row()], "EUR", "gross")).toBe('10 % of the net total ("Rabatt")');
+    expect(storedDiscountText([row()], "EUR", "gross")).toBe('10 % of the gross total ("Rabatt")');
+    expect(storedDiscountText([row()], "EUR", "net")).toBe('10 % of the net total ("Rabatt")');
     // And on net prices it comes off the net total with isNet "0" too (recorded 2026-11-18).
     expect(storedDiscountText([row({ percentage: false, isNet: false })], "EUR", "net")).toBe(
       '10.00 EUR net ("Rabatt")',
