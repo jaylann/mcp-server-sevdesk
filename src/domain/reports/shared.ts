@@ -168,7 +168,7 @@ export function pagedReadNote(noun: string): string {
   return (
     `sevDesk lists more than ${REPORT_PAGE_SIZE.toLocaleString("en-US")} ${noun}, so they were ` +
     "read page by page; sevDesk's order is not stable between pages, so some may be missing " +
-    "here (each one read is counted once). A date range of fewer rows avoids this."
+    "here (each one read is counted once)."
   );
 }
 

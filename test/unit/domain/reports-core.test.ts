@@ -145,7 +145,7 @@ describe("incompleteSuffix", () => {
     expect(pagedReadNote("open invoices")).toBe(
       "sevDesk lists more than 1,000 open invoices, so they were read page by page; sevDesk's " +
         "order is not stable between pages, so some may be missing here (each one read is " +
-        "counted once). A date range of fewer rows avoids this.",
+        "counted once).",
     );
   });
 });

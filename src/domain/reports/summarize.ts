@@ -653,7 +653,11 @@ async function readRecords(
     scanned: scan.scanned,
     repeated: scan.repeated,
     truncated: scan.truncated,
-    pagedNote: scan.paged && params.subject !== "transactions" ? pagedReadNote(noun) : undefined,
+    pagedNote:
+      scan.paged && params.subject !== "transactions"
+        ? `${pagedReadNote(noun)} Pass both from and to: a range is read in date windows of ` +
+          "one page each."
+        : undefined,
   };
 }
 
