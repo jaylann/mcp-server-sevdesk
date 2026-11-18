@@ -1,8 +1,8 @@
 {
   "caseId": "csv-vouchers-de",
   "model": "claude-sonnet-5-5",
-  "key": "b1b05d6805492ee55b8d6ce0233ad6f630b897c994e9f6165cf43a836309fa5a",
-  "recordedAt": "2026-11-13T18:18:42.696Z",
+  "key": "b2ace7da76a14a5bace1da08e44891eb197e9661ffb866eff2d7945c96b0875c",
+  "recordedAt": "2026-11-18T15:26:28.279Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -17,7 +17,7 @@
       "inputTokens": 100,
       "outputTokens": 110,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 19456
+      "cacheReadInputTokens": 25479
     }
   }
 }

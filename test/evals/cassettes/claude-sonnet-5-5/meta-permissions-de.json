@@ -1,22 +1,22 @@
 {
   "caseId": "meta-permissions-de",
   "model": "claude-sonnet-5-5",
-  "key": "388445e95aa605a6ed4b167928c40828e39b47d1802fdba7d4b5a6d6f22193ef",
-  "recordedAt": "2026-11-13T18:16:46.302Z",
+  "key": "1cacc9e1148da9bf29081d79d2f939cf3aea7d3cb1fa3e593d8eb88589e03058",
+  "recordedAt": "2026-11-18T15:24:42.819Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
     "content": [
       {
         "type": "text",
-        "text": "Ich schaue kurz in deinem Konto nach, welche Rechte gerade aktiv sind."
+        "text": "Ich schaue kurz in der Kontoübersicht nach, welche Rechte gerade aktiv sind."
       },
       { "type": "tool_use", "name": "sevdesk_account_info", "input": {} }
     ],
     "usage": {
       "inputTokens": 116,
-      "outputTokens": 160,
-      "cacheCreationInputTokens": 43737,
+      "outputTokens": 176,
+      "cacheCreationInputTokens": 61907,
       "cacheReadInputTokens": 0
     }
   }

@@ -1,8 +1,8 @@
 {
   "caseId": "reconcile-suggest-en",
   "model": "claude-sonnet-5-5",
-  "key": "17fccc1f0a396fd54a228668271915008dcd5a39cbb2579e0948da5c3ebd4cf7",
-  "recordedAt": "2026-11-13T18:18:14.169Z",
+  "key": "424c27fb83ff4e83f18296cf8e34b68df729ded1d0f14d230a7436da7a6608d0",
+  "recordedAt": "2026-11-18T15:26:01.189Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -18,7 +18,7 @@
       "inputTokens": 97,
       "outputTokens": 113,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 17341
+      "cacheReadInputTokens": 22422
     }
   }
 }

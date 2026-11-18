@@ -1,20 +1,17 @@
 {
   "caseId": "invoice-email-de",
   "model": "claude-sonnet-5-5",
-  "key": "21b4d75266b2bc3af650ec89b24e856ffc80018cf5ba07c8ee02bedc261ca777",
-  "recordedAt": "2026-11-13T18:17:20.495Z",
+  "key": "5ecd658cfa18dbf1048b96add8995a1ade64e90b472392e135616ec2f135231b",
+  "recordedAt": "2026-11-18T15:25:11.654Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
-    "content": [
-      { "type": "text", "text": "Ich prüfe zuerst kurz die Rechnung, bevor ich sie verschicke." },
-      { "type": "tool_use", "name": "sevdesk_invoice_get", "input": { "id": 4711 } }
-    ],
+    "content": [{ "type": "tool_use", "name": "sevdesk_invoice_get", "input": { "id": 4711 } }],
     "usage": {
       "inputTokens": 147,
-      "outputTokens": 340,
+      "outputTokens": 253,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 56615
+      "cacheReadInputTokens": 89134
     }
   }
 }
