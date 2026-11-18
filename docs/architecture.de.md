@@ -219,10 +219,10 @@ für beide Protokollgenerationen und prüft, dass jedes Werkzeug, das ein Prompt
 `tools/list` dieser Konfiguration steht.
 
 Argumente lassen sich vervollständigen (`completion/complete`). Der Katalog nennt je Argument nur
-eine Art (Monat, Zeitraum, Kontakt, Zahlungskonto); `registerPrompts` hängt die Vervollständiger
-einer Serverinstanz an eine Kopie des Argumentschemas, weil `completable` aus dem SDK ein Schema
-dauerhaft markiert und die Schemas des Katalogs von allen Konten geteilt werden. Monate und
-Quartale ergeben sich aus der Uhr. Namen von Kontakten und Konten (`completions.ts`) kommen aus
+eine Art (Monat, Zeitraum, Jahr, Kontakt, Zahlungskonto); `registerPrompts` hängt die
+Vervollständiger einer Serverinstanz an eine Kopie des Argumentschemas, weil `completable` aus dem
+SDK ein Schema dauerhaft markiert und die Schemas des Katalogs von allen Konten geteilt werden.
+Monate, Quartale und Jahre ergeben sich aus der Uhr. Namen von Kontakten und Konten (`completions.ts`) kommen aus
 einer Listenabfrage je Art, dazu einer Namenssuche (Limit 100) je getipptem Namen, wenn das Konto
 mehr Kontakte hat, als eine Abfrage liefert, immer nur lesend und mit ausdrücklichem Limit.
 Gelesen werden sie nur, wenn `sevdesk_contacts_search` oder `sevdesk_bank_accounts_list`

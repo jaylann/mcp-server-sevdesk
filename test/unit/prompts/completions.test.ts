@@ -1,5 +1,5 @@
 /**
- * Argument suggestions (`src/prompts/completions.ts`): months and periods from the clock, contact
+ * Argument suggestions (`src/prompts/completions.ts`): months, periods and years from the clock, contact
  * and payment account names from the account (gated by the registered read tools, read-only,
  * with an explicit limit, cached per account, failures kept briefly, searches stopped when nobody
  * waits for them), and how `completableArgs` attaches them without touching the shared catalog
@@ -19,9 +19,10 @@ import {
   periodCompleters,
   periodSuggestions,
   rankNames,
+  yearSuggestions,
 } from "../../../src/prompts/completions.js";
 import { completableArgs } from "../../../src/prompts/index.js";
-import { MONTH_PATTERN, PERIOD_PATTERN } from "../../../src/prompts/periods.js";
+import { MONTH_PATTERN, PERIOD_PATTERN, YEAR_PATTERN } from "../../../src/prompts/periods.js";
 import type { PromptDefinition } from "../../../src/prompts/types.js";
 import { SevdeskError } from "../../../src/sevdesk/errors.js";
 import type { SevdeskClient } from "../../../src/sevdesk/types.js";
@@ -144,6 +145,41 @@ describe("period suggestions", () => {
     const completers = periodCompleters(() => Date.UTC(2026, 11, 31, 23, 30));
     expect((await completers.month?.(""))?.[0]).toBe("2027-01");
     expect((await completers.period?.(""))?.[0]).toBe("2027-Q1");
+    expect(await completers.year?.("")).toEqual(["2027", "2026", "2025", "2024", "2023", "2022"]);
+  });
+});
+
+describe("year suggestions", () => {
+  it("offers the current year and the five before it, newest first", () => {
+    const years = yearSuggestions("", TODAY);
+    expect(years).toEqual(["2026", "2025", "2024", "2023", "2022", "2021"]);
+    expect(years.every((year) => YEAR_PATTERN.test(year))).toBe(true);
+  });
+
+  it("narrows them by what was typed and offers an older year typed in full", () => {
+    expect(yearSuggestions("202", TODAY)).toEqual(["2026", "2025", "2024", "2023", "2022", "2021"]);
+    expect(yearSuggestions("2025", TODAY)).toEqual(["2025"]);
+    expect(yearSuggestions("201", TODAY)).toEqual([]);
+    expect(yearSuggestions("2014", TODAY)).toEqual(["2014"]);
+  });
+
+  it("never offers a future year or anything the argument would refuse", () => {
+    for (const value of ["2027", "2099", "1999", "20", " 2025", "x", "2025-"]) {
+      expect(
+        yearSuggestions(value, TODAY).filter((year) => year > "2026" || !YEAR_PATTERN.test(year)),
+        value,
+      ).toEqual([]);
+    }
+    expect(yearSuggestions("2027", TODAY)).toEqual([]);
+    expect(yearSuggestions("1999", TODAY)).toEqual([]);
+  });
+
+  it("starts at 2000", () => {
+    expect(yearSuggestions("", "2002-03-01")).toEqual(["2002", "2001", "2000"]);
+  });
+
+  it("is attached to year_end_handoff.year", () => {
+    expect(prompt("year_end_handoff").completions).toEqual({ year: "year" });
   });
 });
 

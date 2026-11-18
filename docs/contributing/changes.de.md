@@ -93,7 +93,7 @@ Darstellen nur Text und ruft sevDesk nie auf; nur die Vorschläge für manche Ar
 3. Argumente sind optionale Strings mit einer Muster- oder Längenprüfung. Zeige ein rohes Argument
    nur über `fenceInline`, nie im vertrauenswürdigen Text.
 4. Soll ein Argument vervollständigt werden, nenne seine `CompletionKind` in `completions` (month,
-   period, contact, checkAccount); der Katalog enthält nur diesen Namen. Eine neue Art braucht
+   period, year, contact, checkAccount); der Katalog enthält nur diesen Namen. Eine neue Art braucht
    einen Vervollständiger in `src/prompts/completions.ts`, einen Eintrag in `COMPLETION_HINTS`
    (die Spalte Suggestions in `docs/tools.md`) und, wenn sie sevDesk liest, einen in
    `COMPLETION_TOOLS`: das Lesewerkzeug, das registriert sein muss, bevor sie etwas liest. Ein

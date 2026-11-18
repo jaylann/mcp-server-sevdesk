@@ -138,7 +138,7 @@ describe.each(CASES)("%s era over %s", (era, transport) => {
     expect(fake.writes()).toEqual([]);
   });
 
-  it("completes the arguments of the missing-receipts and offer prompts, not the year", async () => {
+  it("completes the arguments of the missing-receipts, offer and year-end prompts", async () => {
     const { client, fake } = await serve(testConfig(), FIXTURE_ROUTES, era, transport);
 
     expect(await complete(client, "missing_receipts", "period", "2024-q")).toEqual([
@@ -147,8 +147,11 @@ describe.each(CASES)("%s era over %s", (era, transport) => {
       "2024-Q2",
       "2024-Q1",
     ]);
-    // The year has no completion kind: nothing is suggested, and nothing is read.
-    expect(await complete(client, "year_end_handoff", "year", "20")).toEqual([]);
+    // Years come from the clock (the real one here: a year typed in full is offered as it is).
+    const years = await complete(client, "year_end_handoff", "year", "20");
+    expect(years).toHaveLength(6);
+    expect(years.every((year) => /^20\d\d$/.test(year))).toBe(true);
+    expect(await complete(client, "year_end_handoff", "year", "2014")).toEqual(["2014"]);
     expect(await complete(client, "offer_follow_up", "minAgeDays", "1")).toEqual([]);
     expect(fake.calls).toEqual([]);
 

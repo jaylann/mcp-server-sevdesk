@@ -119,8 +119,8 @@ toolset or folder are listed with the setting that enables them. Prompts only pr
 assistant: every change still goes through the tools, with a dry run first and your confirmation
 for binding steps. Not tax advice.
 
-Clients that support argument completion suggest values while you type: months and quarters,
-recent ones first, and the names of your contacts and payment accounts. The names are read from
+Clients that support argument completion suggest values while you type: months, quarters and
+years, recent ones first, and the names of your contacts and payment accounts. The names are read from
 sevDesk (read-only, cached for a minute) and only when the contact or bank account tools are
 enabled.
 
