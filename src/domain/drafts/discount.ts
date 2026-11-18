@@ -38,7 +38,9 @@
  * the probe set apart (share rounded or exact; tax rounded on the total, on the deduction or per
  * rate; the leftover cent on the largest, first, last, highest-rate or lowest-rate position; a
  * percentage off the total or off each rate), only this one gives all 15 recorded splits (two and
- * three rates, 0 % included). On one rate it is N − D and (N − D) × r.
+ * three rates, 0 % included). On one rate it is N − D and (N − D) × r. No recorded share or tax
+ * lands on a half cent, so half-up at a tie (as for positions) is assumed: 49.50 × 19 % = 9.405
+ * gives 9.41 here.
  *
  * Not computed here, with a trusted preview warning instead of a refusal:
  * - how sevDesk splits a fixed amount on gross prices into net and tax: three rules fit the three
@@ -548,19 +550,28 @@ export interface UpdateTotals {
 
 /**
  * The rate totals an update's discount is split over: those of the new positions, or for stored
- * positions with one rate the undiscounted stored sums (`base`). `undefined` for stored positions
- * with several rates: the stored sums do not show the net per rate.
+ * positions with one rate the undiscounted stored sums (`base`). Otherwise why they are not known
+ * (trusted text): the stored sums do not show the net per rate, and without a rate the tax of the
+ * rest is unknown (taking 0 % would show a total without tax).
  */
 function updateRates(
   positions: readonly DraftPosition[] | undefined,
   storedPositions: readonly StoredPositionRate[],
   base: Amounts,
   mode: PriceMode,
-): RateTotal[] | undefined {
+): RateTotal[] | string {
   if (positions !== undefined) return rateTotals(positions, mode);
-  const rates = distinctRates(storedRates(storedPositions));
-  if (rates.length > 1) return undefined;
-  return [{ rate: rates[0] ?? "0", net: decimal(base.net), gross: decimal(base.gross) }];
+  const [rate, ...others] = distinctRates(storedRates(storedPositions));
+  if (rate === undefined) {
+    return "sevDesk sent no tax rate for the stored positions, which the tax of the new total needs.";
+  }
+  if (others.length > 0) {
+    return (
+      "The stored positions have several tax rates, and the stored sums do not show the net of " +
+      "each, which the split of the discount needs."
+    );
+  }
+  return [{ rate, net: decimal(base.net), gross: decimal(base.gross) }];
 }
 
 /**
@@ -616,12 +627,7 @@ export function updateTotals(input: {
         return uncomputed(`${prefix}${problem}`);
       }
       const rates = updateRates(positions, input.storedPositions, base, mode);
-      if (rates === undefined) {
-        return uncomputed(
-          `${prefix}The stored positions have several tax rates, and the stored sums do not ` +
-            "show the net of each, which the split of the discount needs.",
-        );
-      }
+      if (typeof rates === "string") return uncomputed(`${prefix}${rates}`);
       const result = discountedTotals(rates, mode, after.discount);
       if (result.kind === "grossOnly")
         return uncomputed(`${prefix}${grossSplitText(result.gross)}`);

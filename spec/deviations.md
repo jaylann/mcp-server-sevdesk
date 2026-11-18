@@ -4952,7 +4952,9 @@ pdf, sevClient, name, default, img}]}`, `GET /DocServer/getTemplatesWithThumb?ty
       to tell apart (share rounded or exact; tax rounded on the total, on the deduction, per rate
       on the deduction or per rate on the rest; the leftover cent on the largest, first, last,
       highest-rate or lowest-rate position; a percentage off the total or off each rate), no other
-      fits all 15.
+      fits all 15. Four of them (26.92/76.54 with 3 % and three of the three-rate ones) rule out
+      the earlier one-rate formula, a rate's position tax less the tax of its share. No recorded
+      share or tax lands on a half cent, so half-up at a tie is assumed, not recorded.
 
     - Gross prices, two rates: 119.00 at 19 % + 107.00 at 7 % with 10 % gave 180, 23.4, 203.4
       (`sumDiscountNet` -20), as on net prices; with a fixed 10.00 it gave 191.15, 24.85, 216

@@ -750,6 +750,24 @@ describe("the totals of an update", () => {
     ).toBe("The discount of 100.01 is more than the net total of 100.00.");
   });
 
+  it("leaves a discount on stored positions without a tax rate to sevDesk, not at 0 %", () => {
+    // Review of #161: the rule takes the tax of the rest at the rate, so a missing rate read as
+    // 0 % would expect 90.00 / 0.00 / 90.00 for a draft that carries 19 %.
+    const add = planDiscountChange({ percent: "10" }, stored(), "Invoice 2102");
+    expect(totals(add, plainDraft, { storedPositions: [{}] })).toEqual({
+      expected: undefined,
+      changes: true,
+      warning:
+        "sevDesk sent no tax rate for the stored positions, which the tax of the new total " +
+        "needs. sevDesk computes the new total; check it in the result before finalizing.",
+    });
+    // A replacement of the stored discount the same way.
+    const replace = planDiscountChange({ amount: "20" }, stored(row()), "Invoice 2102");
+    expect(
+      totals(replace, discountedDraft, { storedPositions: [{ taxRate: undefined }] }).expected,
+    ).toBeUndefined();
+  });
+
   it("leaves a new fixed amount on stored gross positions to sevDesk, with the gross total", () => {
     const add = planDiscountChange({ amount: "10" }, stored(), "Invoice 2102");
     expect(totals(add, plainDraft, { mode: "gross" }).warning).toBe(

@@ -85,7 +85,8 @@ const savedTen = {
 
 describe("create with a discount", () => {
   // 3 × 10.00 + 1 × 25.00 net at 19 %: 55.00 net, 10.45 tax; 10 % off is 5.50 net, and the tax
-  // is that of the rest, 49.50 × 19 % = 9.405 → 9.41 (the rule recorded 2026-11-18, D-116).
+  // is that of the rest, 49.50 × 19 % = 9.405 → 9.41 (the rule recorded 2026-11-18, D-116; the
+  // half-up at this tie is assumed, no recorded case lands on a half cent).
   const discounted = { net: "49.50", tax: "9.41", gross: "58.91" };
 
   it("sends the recorded keys after the positions, previews the discount and its total", async () => {
