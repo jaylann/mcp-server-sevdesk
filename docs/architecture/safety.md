@@ -21,9 +21,10 @@ its default and the switches (`SEVDESK_ALLOW`, `SEVDESK_READ_ONLY`, dry run) are
    `cancelInvoice`, `resetToDraft`, `resetToOpen`, `changeParameter`, a sending `getPdf`, DATEV
    `enshrine` exports, a `saveVoucher` whose voucher is not a draft (the voucher's finalize),
    `PUT`/`DELETE /CheckAccountTransaction/{id}` (private marking, reset), creating a bank
-   transaction (`POST /CheckAccountTransaction`), a document's status set directly (a `status` in
-   the body or query of a request to one document record; `PUT /Order/{id}` accepts or rejects
-   an offer this way) or through a save (a `saveInvoice`, `saveOrder` or `saveCreditNote` whose
+   transaction (`POST /CheckAccountTransaction`), creating or deleting a private-transaction rule
+   (`POST /PrivateTransactionRule`, `DELETE /PrivateTransactionRule/{id}`), a document's status
+   set directly (a `status` in the body or query of a request to one document record;
+   `PUT /Order/{id}` accepts or rejects an offer this way) or through a save (a `saveInvoice`, `saveOrder` or `saveCreditNote` whose
    document has a status other than the draft status 100), `createContractNoteFromOrder` (it
    accepts the source offer) and saving a recurring invoice template (a `saveInvoice` whose type
    is `WKR`, missing or not text, or a `PUT /Invoice/{id}` that sets the type or schedule) need

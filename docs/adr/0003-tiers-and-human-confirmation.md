@@ -44,7 +44,8 @@
    `bookAmount`, `enshrine`, `cancelInvoice`, `resetToDraft`, `resetToOpen`, `changeParameter`,
    `createContractNoteFromOrder`, a sending `getPdf`, DATEV exports with `enshrine`, a
    `saveVoucher` whose voucher is not a draft, a change to the bank transactions themselves
-   (`/CheckAccountTransaction` and `/CheckAccountTransaction/{id}`), a request to one document
+   (`/CheckAccountTransaction` and `/CheckAccountTransaction/{id}`), creating or deleting a
+   private-transaction rule (`/PrivateTransactionRule` and below), a request to one document
    record (`/Invoice/{id}`, `/Order/{id}`, `/CreditNote/{id}`, `/Voucher/{id}`) that sets its
    status (on an invoice also its type or schedule), a `saveInvoice`, `saveOrder` or
    `saveCreditNote` that saves a status other than the draft status 100 and a `saveInvoice` that
@@ -53,9 +54,9 @@
    send, even by mistake.
 
 **Binding requests the endpoint name does not show** (added 2026-11-16, from the recordings of
-D-095 to D-112). Three requests look like ordinary saves but bind or are hard to undo, so the
-client requires `commit` for them by path, query, body and form (`src/sevdesk/paths.ts`) before
-any tool sends them:
+D-095 to D-112; the private-transaction rules added 2026-11-18, #131). Four requests look like
+ordinary saves but bind or are hard to undo, so the client requires `commit` for them by path,
+query, body and form (`src/sevdesk/paths.ts`) before any tool sends them:
 
 - **Creating a bank transaction** (`POST /CheckAccountTransaction`). A new row changes the
   account's balance and what can be booked against it. It is not simply taken back: a delete only
@@ -63,6 +64,14 @@ any tool sends them:
   and it is enshrined, neither the row nor that payment can change (D-098). The rule matches the
   path alone; the client asks only about requests that change data, so the list `GET` of the same
   path is not affected.
+- **Creating or deleting a private-transaction rule** (`POST /PrivateTransactionRule`,
+  `DELETE /PrivateTransactionRule/{id}`). A rule makes sevDesk mark matching bank imports as
+  private on its own, on every later import (D-099): the step `PUT /CheckAccountTransaction/{id}`
+  takes by hand, without anyone asked each time. The rule tools are `commit` for that reason, and
+  the client now holds the requests to the same tier. The rule matches the path and everything
+  below it (sevDesk documents no sub-resource); the list `GET` is not affected, and
+  `sevdesk_api_get` may still read it, which is why the rule is a path and not an endpoint name in
+  the tier table (every listed name is refused there).
 - **Accepting or rejecting an offer.** `PUT /Order/{id}` with a `status` does it, and on a draft
   offer sevDesk renumbers it as well (D-108); `createContractNoteFromOrder` sets the source offer
   to accepted, even an unsent draft (D-107). A status written directly skips `sendBy` and the

@@ -197,6 +197,10 @@ function innerSideEffect(path: string): string | undefined {
  * - a request to the bank transactions themselves: `/CheckAccountTransaction` (creating one,
  *   {@link TRANSACTION_COLLECTION}) and `/CheckAccountTransaction/{id}` (marking it private,
  *   setting its status back, deleting it), not their sub-resources;
+ * - a request to the private-transaction rules: `/PrivateTransactionRule` (creating one) and
+ *   `/PrivateTransactionRule/{id}` (deleting it), {@link PRIVATE_RULE_PATH}; a rule is not an
+ *   endpoint name in the table, because `sevdesk_api_get` refuses every listed name and the rule
+ *   list stays readable there;
  * - a `Voucher/Factory/saveVoucher` whose body is not a draft (status ≠ 50: the voucher's
  *   finalize, {@link savesOpenVoucher});
  * - a request to one document record (`/Invoice/{id}`, `/Order/{id}`, `/CreditNote/{id}`,
@@ -237,20 +241,22 @@ function listedTier(name: string): WriteTier | undefined {
  * see `resolveGetSafety`): the endpoint's entry in the tier table, `commit` for a `getPdf` that
  * marks the document as sent (same effect as `sendBy`), for DATEV exports with an `enshrine`
  * flag and for the requests listed under {@link ENDPOINT_TIERS} by path, query, body and form
- * (bank transactions, a voucher save that is not a draft, a document's status written directly
- * or through a factory save, a recurring template), otherwise `write` (this includes a
- * next-number GET that reserves the number: a draft tool reserves the number it saves the draft
- * with). The client refuses a request whose declared tier does not cover it (`tierCovers`), so a
- * `write` tool can never finalize, book, cancel, accept an offer, create a bank transaction, save
- * a recurring template or send.
+ * (bank transactions, private-transaction rules, a voucher save that is not a draft, a
+ * document's status written directly or through a factory save, a recurring template), otherwise
+ * `write` (this includes a next-number GET that reserves the number: a draft tool reserves the
+ * number it saves the draft with). The client refuses a request whose declared tier does not
+ * cover it (`tierCovers`), so a `write` tool can never finalize, book, cancel, accept an offer,
+ * create a bank transaction, create or delete a private-transaction rule, save a recurring
+ * template or send.
  *
  * It sees path, query, body and form, not the HTTP method. Both callers (the HTTP client and
  * `tierScopedClient`) ask only for requests that change data, so a rule by path covers every
- * such method: `/CheckAccountTransaction` is also the list path, but a list `GET` never gets
- * here. A rule by body leaves a request without a body, query or form (a `DELETE`) at the tier of
- * its path, so deleting a document or a contact needs `write` here; the tools that delete them
- * declare `commit` themselves (`sevdesk_voucher_delete_draft`), while the probes still delete
- * their own test records with `write`.
+ * such method: `/CheckAccountTransaction` and `/PrivateTransactionRule` are also list paths, but
+ * a list `GET` never gets here. A rule by body leaves a request without a body, query or form (a
+ * `DELETE`) at the tier of its path, so deleting a document or a contact needs `write` here
+ * (deleting a rule needs `commit` by its path); the tools that delete them declare `commit`
+ * themselves (`sevdesk_voucher_delete_draft`), while the probes still delete their own test
+ * documents and contacts with `write`.
  *
  * A listed endpoint or `getPdf` before the last path segment (`/Invoice/1/sendBy/2`, see
  * {@link resolveGetSafety}) raises the minimum to its tier as well.
@@ -280,6 +286,7 @@ function endpointTier(
   if (listed !== undefined) return listed;
   if (endpoint === "getpdf" || enshrineFlagSet(query)) return "commit";
   if (TRANSACTION_RECORD.test(path) || TRANSACTION_COLLECTION.test(path)) return "commit";
+  if (PRIVATE_RULE_PATH.test(path)) return "commit";
   const save = FACTORY_SAVES.get(endpoint);
   if (save !== undefined) return savesBindingDocument(save, query, body, form) ? "commit" : "write";
   const record = DOCUMENT_RECORD.exec(path);
@@ -380,6 +387,17 @@ const TRANSACTION_RECORD = /^\/checkaccounttransaction\/[^/]+$/i;
  * payment can change again (D-098).
  */
 const TRANSACTION_COLLECTION = /^\/checkaccounttransaction$/i;
+
+/**
+ * `/PrivateTransactionRule` and everything below it (case-insensitive): a request that changes
+ * data there creates a rule (`POST`) or deletes one (`DELETE /PrivateTransactionRule/{id}`); the
+ * list `GET` never reaches {@link minimumWriteTier}. A rule makes sevDesk mark matching bank
+ * imports as private on its own, the step `PUT /CheckAccountTransaction/{id}` takes by hand
+ * ({@link TRANSACTION_RECORD}), on every later import (D-099), so creating or deleting one needs
+ * `commit`, the tier of the rule tools (#131). Unlike {@link TRANSACTION_RECORD}, sub-resources
+ * count too: sevDesk documents none, and an unknown one errs towards the stricter tier.
+ */
+const PRIVATE_RULE_PATH = /^\/privatetransactionrule(?:\/.*)?$/i;
 
 /**
  * Whether a `saveInvoice` body may save a recurring invoice template (`invoiceType` `WKR`,
