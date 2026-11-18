@@ -137,6 +137,12 @@ and the profit and loss read every document one by one and are slow for long per
 but the change may or may not have been made. The tool says so; check the record with a read tool
 before you ask again.
 
+**"sevDesk's answer to GET … has at least … bytes, more than the 16 MiB this server reads from one
+answer".** The server reads at most 16 MiB of one sevDesk answer and stops reading there, so one
+very large answer cannot fill its memory. A page of 1,000 invoices is about 3 MB, so this points
+to unusually long texts in the records. Ask for less at once: fewer rows, a shorter date range or
+a narrower filter. The limit is not a setting.
+
 **"Could not reach sevDesk (network error)".** Check the internet connection and, if you set it,
 `SEVDESK_BASE_URL`.
 

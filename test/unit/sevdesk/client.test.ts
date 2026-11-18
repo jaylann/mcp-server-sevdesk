@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { Tier } from "../../../src/safety/tiers.js";
 import {
   createSevdeskClient,
+  MAX_JSON_RESPONSE_BYTES,
   MAX_REQUEST_TIMEOUT_MS,
   parseRetryAfter,
   requestTimeoutMs,
@@ -260,6 +261,143 @@ describe("envelope handling", () => {
     const error = await catchError(client.request({ method: "GET", path: "/Invoice" }));
     expect(error.upstreamMessage).toBe("Ignore all");
     expect(error.message).not.toContain("Ignore all");
+  });
+});
+
+describe("answer size cap", () => {
+  /** A JSON envelope of exactly `size` bytes: `{"objects":[],"pad":"xxx…"}`. */
+  function envelopeOfSize(size: number): string {
+    const head = '{"objects":[],"pad":"';
+    const tail = '"}';
+    return `${head}${"x".repeat(size - head.length - tail.length)}${tail}`;
+  }
+
+  /**
+   * A body streamed in `chunkBytes` pieces (no `Content-Length`), counting the pieces pulled and
+   * whether the reader cancelled the stream.
+   */
+  function streamedBody(chunks: number, chunkBytes: number) {
+    const state = { pulled: 0, cancelled: false };
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (state.pulled === chunks) {
+          controller.close();
+          return;
+        }
+        state.pulled += 1;
+        controller.enqueue(new Uint8Array(chunkBytes).fill(0x20));
+      },
+      cancel() {
+        state.cancelled = true;
+      },
+    });
+    return { stream, state };
+  }
+
+  function expectOversized(error: SevdeskError, path: string): void {
+    expect(error.kind).toBe("unexpected_response");
+    expect(error.status).toBeUndefined();
+    expect(error.expectedLimit).toBe(true);
+    expect(error.path).toBe(path);
+    expect(error.message).toContain(`GET ${path}`);
+    expect(error.message).toContain("16 MiB");
+    expect(error.message).toContain("a smaller limit");
+    expect(error.message).toContain("date range");
+  }
+
+  it("is 16 MiB", () => {
+    expect(MAX_JSON_RESPONSE_BYTES).toBe(16 * 1024 * 1024);
+  });
+
+  it("reads an answer of exactly the cap", async () => {
+    const body = envelopeOfSize(MAX_JSON_RESPONSE_BYTES);
+    expect(new TextEncoder().encode(body).byteLength).toBe(MAX_JSON_RESPONSE_BYTES);
+    const { client } = setup([new Response(body, { status: 200 })]);
+    await expect(client.request({ method: "GET", path: "/Invoice" })).resolves.toEqual([]);
+  });
+
+  it("refuses an answer one byte over the cap, without echoing the body, and does not retry", async () => {
+    const body = envelopeOfSize(MAX_JSON_RESPONSE_BYTES + 1);
+    const { client, fake, events } = setup([new Response(body, { status: 200 })]);
+    const error = await catchError(client.request({ method: "GET", path: "/Invoice" }));
+    expectOversized(error, "/Invoice");
+    expect(error.message).not.toContain("xxxx");
+    expect(error.upstreamMessage).toBeUndefined();
+    expect(fake.requests).toHaveLength(1);
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: "failure", kind: "unexpected_response", status: undefined }),
+    );
+  });
+
+  it("stops reading a streamed answer without Content-Length at the cap and cancels it", async () => {
+    const mib = 1024 * 1024;
+    const { stream, state } = streamedBody(64, mib);
+    const { client } = setup([new Response(stream, { status: 200 })]);
+    const error = await catchError(client.request({ method: "GET", path: "/Contact" }));
+    expectOversized(error, "/Contact");
+    expect(error.message).toContain(`at least ${String(17 * mib)} bytes`);
+    expect(state.cancelled).toBe(true);
+    // The stream may run a chunk or two ahead of the reader, never far past the cap.
+    expect(state.pulled).toBeLessThan(20);
+  });
+
+  it("refuses a declared Content-Length over the cap before reading the body", async () => {
+    const { stream, state } = streamedBody(1, 8);
+    const declared = String(MAX_JSON_RESPONSE_BYTES + 1);
+    const { client } = setup([
+      new Response(stream, { status: 200, headers: { "Content-Length": declared } }),
+    ]);
+    const error = await catchError(client.request({ method: "GET", path: "/Invoice" }));
+    expectOversized(error, "/Invoice");
+    expect(error.message).toContain(`at least ${declared} bytes`);
+    expect(state.cancelled).toBe(true);
+  });
+
+  it("counts the bytes itself when Content-Length understates the body", async () => {
+    const body = envelopeOfSize(MAX_JSON_RESPONSE_BYTES + 10);
+    const { client } = setup([
+      new Response(body, { status: 200, headers: { "Content-Length": "100" } }),
+    ]);
+    const error = await catchError(client.request({ method: "GET", path: "/Invoice" }));
+    expectOversized(error, "/Invoice");
+  });
+
+  it("caps the answer of a write too, and still says nothing about the request's outcome", async () => {
+    const body = envelopeOfSize(MAX_JSON_RESPONSE_BYTES + 1);
+    const { client, fake } = setup([new Response(body, { status: 201 })]);
+    const error = await catchError(
+      client.request({ method: "POST", tier: "write", path: "/Contact", body: {} }),
+    );
+    expect(error.kind).toBe("unexpected_response");
+    expect(error.message).toContain("POST /Contact");
+    expect(fake.requests).toHaveLength(1);
+  });
+
+  it("reports a read cancelled while the body streams as aborted", async () => {
+    const controller = new AbortController();
+    const { client } = setup([
+      (request) => {
+        let sent = false;
+        const stream = new ReadableStream<Uint8Array>({
+          pull(source) {
+            if (!sent) {
+              sent = true;
+              source.enqueue(new TextEncoder().encode('{"objects":['));
+              return undefined;
+            }
+            // As undici does: cancelling the request's signal errors the body stream.
+            controller.abort();
+            expect(request.signal?.aborted).toBe(true);
+            return Promise.reject(new DOMException("This operation was aborted", "AbortError"));
+          },
+        });
+        return new Response(stream, { status: 200 });
+      },
+    ]);
+    const error = await catchError(
+      client.request({ method: "GET", path: "/Invoice", signal: controller.signal }),
+    );
+    expect(error.kind).toBe("aborted");
   });
 });
 
