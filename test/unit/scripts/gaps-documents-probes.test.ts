@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import { ALL_PROBES } from "../../../scripts/lib/probes/catalog.js";
-import { GAPS_DOCUMENTS_PROBES } from "../../../scripts/lib/probes/gaps-documents-probes.js";
+import {
+  allowanceFacts,
+  GAPS_DOCUMENTS_PROBES,
+} from "../../../scripts/lib/probes/gaps-documents-probes.js";
 import { renderReport } from "../../../scripts/lib/probes/report.js";
 import { type RunOptions, runProbes } from "../../../scripts/lib/probes/runner.js";
 import { assertNoSecrets, createScrubber } from "../../../scripts/lib/scrub.js";
@@ -116,9 +119,36 @@ interface AccountSettings {
   readonly discountAsObject?: boolean;
   /** No input stores a schedule date, not even an update (the case "the API cannot"). */
   readonly ignoreScheduleDates?: boolean;
+  /**
+   * Discounts as recorded on 2026-11-16/17 (D-116): `getDiscounts` answers on invoices, orders and
+   * credit notes, `sumDiscounts`, `sumDiscountNet` and `sumDiscountGross` are negative, and
+   * `createInvoiceFromOrder` copies the order's discount. Synthetic (not recorded): sums per tax
+   * rate and for gross prices, a fixed value read as gross when sent with `isNet: false`, AB
+   * copies the discount and LI does not, partial invoices take `amount` % of each position,
+   * `calculateInvoicingRange` takes dd.mm.yyyy only, the e-invoice XML carries one
+   * document-level allowance. Off: the earlier synthetic variant (getDiscounts on orders only).
+   */
+  readonly discountsAsRecorded?: boolean;
+  /** Synthetic (not recorded): saving a gross document (showNet false) is refused. */
+  readonly refuseGrossDocuments?: boolean;
+  /** Synthetic (not recorded): createInvoiceFromOrder is refused. */
+  readonly refuseInvoiceFromOrder?: boolean;
 }
 
 const DOC_ID = "d4605b19248ad176443b7cb382679b1f";
+
+/** A CII e-invoice with one line and a 10 % allowance on the document (synthetic). */
+const EINVOICE_XML = [
+  '<rsm:CrossIndustryInvoice xmlns:rsm="urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100">',
+  "<rsm:ExchangedDocumentContext><ram:GuidelineSpecifiedDocumentContextParameter><ram:ID>urn:cen.eu:en16931:2017</ram:ID></ram:GuidelineSpecifiedDocumentContextParameter></rsm:ExchangedDocumentContext>",
+  "<rsm:SupplyChainTradeTransaction>",
+  "<ram:IncludedSupplyChainTradeLineItem><ram:SpecifiedLineTradeSettlement><ram:SpecifiedTradeSettlementLineMonetarySummation><ram:LineTotalAmount>100.00</ram:LineTotalAmount></ram:SpecifiedTradeSettlementLineMonetarySummation></ram:SpecifiedLineTradeSettlement></ram:IncludedSupplyChainTradeLineItem>",
+  "<ram:ApplicableHeaderTradeAgreement><ram:BuyerTradeParty><ram:Name>Huber Rabatt GmbH</ram:Name></ram:BuyerTradeParty></ram:ApplicableHeaderTradeAgreement>",
+  "<ram:ApplicableHeaderTradeSettlement>",
+  "<ram:SpecifiedTradeAllowanceCharge><ram:ChargeIndicator><udt:Indicator>false</udt:Indicator></ram:ChargeIndicator><ram:CalculationPercent>10.00</ram:CalculationPercent><ram:BasisAmount>100.00</ram:BasisAmount><ram:ActualAmount>10.00</ram:ActualAmount><ram:Reason>Rabatt Huber</ram:Reason></ram:SpecifiedTradeAllowanceCharge>",
+  "<ram:SpecifiedTradeSettlementHeaderMonetarySummation><ram:AllowanceTotalAmount>10.00</ram:AllowanceTotalAmount><ram:TaxBasisTotalAmount>90.00</ram:TaxBasisTotalAmount></ram:SpecifiedTradeSettlementHeaderMonetarySummation>",
+  "</ram:ApplicableHeaderTradeSettlement></rsm:SupplyChainTradeTransaction></rsm:CrossIndustryInvoice>",
+].join("");
 
 const SCHEDULE_DATES: readonly string[] = [
   "accountNextInvoice",
@@ -212,7 +242,49 @@ function gapsAccount(settings: AccountSettings = {}) {
       return target?.["id"] === String(id) && target["objectName"] === kind;
     });
 
+  /** Sums per tax rate, gross prices and fixed gross values (see `discountsAsRecorded`). */
+  function recomputeAsRecorded(kind: Kind, doc: Rec): void {
+    const gross = doc["showNet"] === false;
+    const byRate = new Map<number, number>();
+    for (const row of ofDoc(positions, kind, doc["id"], KIND_KEY[kind])) {
+      const rate = Number(row["taxRate"] ?? 19);
+      const price = Number(row["price"]) * Number(row["quantity"] ?? 1);
+      const net = gross ? price / (1 + rate / 100) : price;
+      Object.assign(row, {
+        sumNet: net.toFixed(2),
+        sumTax: ((net * rate) / 100).toFixed(2),
+        sumGross: (net * (1 + rate / 100)).toFixed(2),
+      });
+      byRate.set(rate, (byRate.get(rate) ?? 0) + net);
+    }
+    const net = [...byRate.values()].reduce((sum, value) => sum + value, 0);
+    const grossTotal = [...byRate].reduce(
+      (sum, [rate, value]) => sum + value * (1 + rate / 100),
+      0,
+    );
+    // The share of the net taken off: a percentage, or a fixed value (net, or gross with isNet 0).
+    const share = ofDoc(discounts, kind, doc["id"], "object").reduce((sum, row) => {
+      const value = Number(row["value"]);
+      if (row["percentage"] === "1") return sum + value / 100;
+      return sum + value / (row["isNet"] === "0" ? grossTotal : net);
+    }, 0);
+    const sumNet = net * (1 - share);
+    const sumGross = grossTotal * (1 - share);
+    Object.assign(doc, {
+      sumNet: sumNet.toFixed(2),
+      sumTax: (sumGross - sumNet).toFixed(2),
+      sumGross: sumGross.toFixed(2),
+      sumDiscounts: (-net * share).toFixed(2),
+      sumDiscountNet: (-net * share).toFixed(2),
+      sumDiscountGross: (-grossTotal * share).toFixed(2),
+    });
+  }
+
   function recompute(kind: Kind, doc: Rec): void {
+    if (settings.discountsAsRecorded === true) {
+      recomputeAsRecorded(kind, doc);
+      return;
+    }
     const net = ofDoc(positions, kind, doc["id"], KIND_KEY[kind]).reduce(
       (sum, row) => sum + Number(row["price"]) * Number(row["quantity"] ?? 1),
       0,
@@ -246,6 +318,9 @@ function gapsAccount(settings: AccountSettings = {}) {
       rawDiscounts !== null && typeof rawDiscounts === "object" && !Array.isArray(rawDiscounts)
         ? [rawDiscounts]
         : rawDiscounts;
+    if (settings.refuseGrossDocuments === true && header["showNet"] === false) {
+      refuse(422, "Gross documents are not allowed");
+    }
     let doc: Rec;
     if (header["id"] !== undefined) {
       const found = docs.get(`${kind}/${idOf(header["id"])}`);
@@ -310,7 +385,7 @@ function gapsAccount(settings: AccountSettings = {}) {
         text: item["text"],
         percentage: item["percentage"] === true ? "1" : "0",
         value: String(item["value"]),
-        isNet: "1",
+        isNet: settings.discountsAsRecorded === true && item["isNet"] === false ? "0" : "1",
       });
     }
     const discountDelete = body["discountDelete"];
@@ -352,8 +427,49 @@ function gapsAccount(settings: AccountSettings = {}) {
     for (const row of ofDoc(positions, "Order", sourceId, "order")) {
       positions.push({ ...row, id: String(nextId++), order: ref("Order", id) });
     }
+    if (settings.discountsAsRecorded === true && type === "AB")
+      copyDiscounts("Order", sourceId, "Order", id);
     recompute("Order", doc);
     return { objects: doc };
+  }
+
+  function copyDiscounts(fromKind: Kind, fromId: string, toKind: Kind, toId: string): void {
+    for (const row of ofDoc(discounts, fromKind, fromId, "object")) {
+      discounts.push({ ...row, id: String(nextId++), object: ref(toKind, toId) });
+    }
+  }
+
+  /** Recorded (D-116): the invoice copies the order's discount; partial shares synthetic. */
+  function invoiceFromOrder(body: Rec): unknown {
+    if (settings.refuseInvoiceFromOrder === true) refuse(422, "Order cannot be invoiced");
+    const sourceId = idOf(body["order"]);
+    const source = docs.get(`Order/${sourceId}`);
+    if (source === undefined) return refuse(400, "Order not found");
+    const share = body["type"] === "percentage" ? Number(body["amount"]) / 100 : 1;
+    const id = String(nextId++);
+    const doc: Rec = {
+      id,
+      objectName: "Invoice",
+      invoiceType: typeof body["partialType"] === "string" ? body["partialType"] : "RE",
+      status: "100",
+      showNet: source["showNet"],
+      origin: ref("Order", sourceId),
+      contact: source["contact"],
+      header: source["header"],
+    };
+    docs.set(`Invoice/${id}`, doc);
+    for (const row of ofDoc(positions, "Order", sourceId, "order")) {
+      const { order: _order, ...rest } = row;
+      positions.push({
+        ...rest,
+        id: String(nextId++),
+        price: Number(row["price"]) * share,
+        invoice: ref("Invoice", id),
+      });
+    }
+    if (settings.discountsAsRecorded === true) copyDiscounts("Order", sourceId, "Invoice", id);
+    recompute("Invoice", doc);
+    return { objects: { invoice: doc, invoicePos: ofDoc(positions, "Invoice", id, "invoice") } };
   }
 
   function list(rows: readonly Rec[]): unknown {
@@ -464,8 +580,24 @@ function gapsAccount(settings: AccountSettings = {}) {
     }
     const discountsOf = /^\/(Invoice|CreditNote|Order)\/(\d+)\/getDiscounts$/.exec(path);
     if (discountsOf !== null) {
-      if (discountsOf[1] !== "Order") refuse(404, "not found");
-      return list(ofDoc(discounts, "Order", discountsOf[2], "object"));
+      const kind = discountsOf[1] as Kind;
+      if (kind !== "Order" && settings.discountsAsRecorded !== true) refuse(404, "not found");
+      return list(ofDoc(discounts, kind, discountsOf[2], "object"));
+    }
+    if (path === "/Invoice/Factory/createInvoiceFromOrder") return invoiceFromOrder(body);
+    if (settings.discountsAsRecorded === true) {
+      if (path === "/Invoice/Factory/calculateInvoicingRange") {
+        if (typeof body["startDate"] !== "string") refuse(400, "Invalid date");
+        return { objects: { startDate: "2027-01-31", endDate: "2027-02-27" } };
+      }
+      if (path === "/PaymentMethod") {
+        return list([{ id: "21919", objectName: "PaymentMethod", electronicInvoiceId: "58" }]);
+      }
+      if (method === "POST" && path === "/CommunicationWay") {
+        return { objects: { id: String(nextId++), objectName: "CommunicationWay" } };
+      }
+      const xml = /^\/Invoice\/(\d+)\/getXml$/.exec(path);
+      if (xml !== null) return { objects: EINVOICE_XML };
     }
     if (path === "/Discounts") return list(discounts);
     if (path === "/DocServer/getLetterpapersWithThumb") {
@@ -545,7 +677,7 @@ function gapsAccount(settings: AccountSettings = {}) {
     if (method !== "GET") refuse(422, "not simulated");
     return list([]);
   };
-  return { client: new ScriptedClient(handler), handler, docs, counters };
+  return { client: new ScriptedClient(handler), handler, docs, counters, discounts };
 }
 
 async function run(client: ScriptedClient, overrides: Partial<RunOptions> = {}) {
@@ -578,6 +710,7 @@ describe("gaps-documents probe catalog", () => {
     expect(GAPS_DOCUMENTS_PROBES.filter((probe) => probe.optIn === true).map((p) => p.id)).toEqual([
       "write-reserved-number-delete-draft",
       "write-recurring-template-due",
+      "write-einvoice-discount",
     ]);
     for (const probe of GAPS_DOCUMENTS_PROBES.filter((item) => item.optIn === true)) {
       expect(probe.question).toMatch(/^OPT-IN/);
@@ -712,8 +845,10 @@ describe("gaps-documents probes on a simulated trial account", () => {
     expect(skipped.map((result) => result.id)).toEqual([
       "write-reserved-number-delete-draft",
       "write-recurring-template-due",
+      "write-einvoice-discount",
     ]);
     expect(client.calls.some((call) => call.query["useNextNumber"] === "true")).toBe(false);
+    expect(client.calls.some((call) => call.path.endsWith("/getXml"))).toBe(false);
   });
 
   it("updates credit note drafts in place, replaces positions and keeps the invoice link", async () => {
@@ -797,8 +932,19 @@ describe("gaps-documents probes on a simulated trial account", () => {
     // D-111: accountStartDate stores the schedule on create, so the first input is kept.
     const due = finding("write-recurring-template-due");
     expect(due).toMatch(
-      /^Kept template (\d+): status 100.*accountNextInvoice 2026-11-19T00:00:00\+01:00, accountStartDate 2026-11-19T00:00:00\+01:00.*stored dates: accountNextInvoice, accountStartDate \(made with: accountStartDate as Unix seconds, run 2026-11-19\)/,
+      /^Kept template (\d+): status 100.*accountNextInvoice 2026-11-19T00:00:00\+01:00, accountStartDate 2026-11-19T00:00:00\+01:00.*stored dates: accountNextInvoice, accountStartDate \(made with: accountStartDate as Unix seconds, run 2026-11-19; getDiscounts refused \(404/,
     );
+    // The due template carries a 10 % discount (#124), sent with its first save.
+    const firstDue = client
+      .writes()
+      .find(
+        (call) =>
+          call.path === "/Invoice/Factory/saveInvoice" &&
+          ((call.body as Rec)["invoice"] as Rec)["accountStartDate"] !== undefined,
+      );
+    expect((firstDue?.body as Rec | undefined)?.["discountSave"]).toEqual([
+      expect.objectContaining({ percentage: true, value: 10 }),
+    ]);
     expect(due).toMatch(/Run read-recurring-generated tomorrow\. Tried before: nothing\.$/);
     const saves = client
       .writes()
@@ -1107,6 +1253,269 @@ describe("gaps-documents probes on accounts that lack what they need", () => {
     ).toBe(true);
     expect(report.results.find((result) => result.id === "read-recurring-generated")?.status).toBe(
       "inconclusive",
+    );
+  });
+});
+
+describe("gaps-documents probes for the open discount and template questions (#114, #124, #134)", () => {
+  /** Documents of a kind still in the simulated account. */
+  const left = (docs: ReadonlyMap<string, Rec>, kind: string) =>
+    [...docs.keys()].filter((key) => key.startsWith(`${kind}/`));
+
+  it("reads isNet, value and the sums on net and gross documents of every kind, deleting every draft", async () => {
+    const { client, docs } = gapsAccount({ discountsAsRecorded: true });
+    const { report, finding } = await run(client, { only: ["write-discount-net-gross"] });
+    expect(report.results[0]?.status).toBe("observed");
+    const text = finding("write-discount-net-gross");
+    expect(text).toMatch(/^isNet values seen: 1, 0\./);
+    for (const kind of ["Invoice", "Order", "CreditNote"]) {
+      expect(text).toMatch(
+        new RegExp(
+          `${kind} net \\(showNet true, price 100\\), fixed 10\\.00 \\(\\w+ \\d+, showNet stored true\\): sumNet 90\\.00, sumTax 17\\.10, sumGross 107\\.10, sumDiscounts -10\\.00, sumDiscountNet -10\\.00, sumDiscountGross -11\\.90; getDiscounts 1 row\\(s\\) \\(id \\d+: discount 1, percentage 0, value 10, isNet 1`,
+        ),
+      );
+      expect(text).toMatch(
+        new RegExp(`${kind} gross \\(showNet false, price 119\\), fixed 10\\.00`),
+      );
+    }
+    expect(text).toMatch(
+      /Invoice gross \(showNet false, price 119\), fixed 10\.00, isNet false sent \(invoice \d+, showNet stored false\): .*sumDiscountGross -10\.00; getDiscounts 1 row\(s\) \(id \d+: discount 1, percentage 0, value 10, isNet 0/,
+    );
+    expect(text).toMatch(
+      /Cleanup: (Invoice|Order|CreditNote) \d+ deleted(; (Invoice|Order|CreditNote) \d+ deleted){7}\.$/,
+    );
+    for (const kind of ["Invoice", "Order", "CreditNote"]) expect(left(docs, kind)).toEqual([]);
+    // Only the last case sends isNet; gross documents send the gross price.
+    const saves = client.writes().filter((call) => /\/Factory\/save/.test(call.path));
+    expect(saves).toHaveLength(8);
+    const sent = saves.map((call) => ((call.body as Rec)["discountSave"] as Rec[])[0] ?? {});
+    expect(sent.filter((item) => "isNet" in item)).toEqual([
+      expect.objectContaining({ isNet: false, percentage: false, value: 10 }),
+    ]);
+    // The discount text carries the run tag; it is never shown.
+    expect(renderReport(report)).not.toContain(`${TAG} discount`);
+  });
+
+  it("deletes the drafts it made also when sevDesk refuses a later step", async () => {
+    const account = gapsAccount({ discountsAsRecorded: true, refuseGrossDocuments: true });
+    const { report, finding } = await run(account.client, { only: ["write-discount-net-gross"] });
+    expect(report.results[0]?.status).toBe("observed");
+    const text = finding("write-discount-net-gross");
+    expect(text).toMatch(
+      /Order gross \(showNet false, price 119\), fixed 10\.00: refused \(422: Gross documents are not allowed\)/,
+    );
+    expect(text).toMatch(
+      /Cleanup: CreditNote \d+ deleted; Order \d+ deleted; Invoice \d+ deleted\.$/,
+    );
+    for (const kind of ["Invoice", "Order", "CreditNote"])
+      expect(left(account.docs, kind)).toEqual([]);
+  });
+
+  it("reads the split of a discount over 19 % and 7 % and a fixed discount on a CHF invoice", async () => {
+    const { client, docs } = gapsAccount({ discountsAsRecorded: true });
+    const { finding } = await run(client, {
+      only: ["write-discount-mixed-tax", "write-discount-foreign-currency"],
+    });
+    const mixed = finding("write-discount-mixed-tax");
+    expect(mixed).toMatch(
+      /^Without a discount the sums would be net 200\.00, tax 26\.00, gross 226\.00\./,
+    );
+    expect(mixed).toMatch(
+      /10 % on 100 at 19 % \+ 100 at 7 % \(invoice \d+\): sumNet 180\.00, sumTax 23\.40, sumGross 203\.40, sumDiscounts -20\.00, sumDiscountNet -20\.00, sumDiscountGross -22\.60;.*positions: 19 %: sumGross 119\.00, sumNet 100\.00, sumTax 19\.00; 7 %: sumGross 107\.00/,
+    );
+    expect(mixed).toMatch(
+      /fixed 10\.00 on 100 at 19 % \+ 100 at 7 % \(invoice \d+\): sumNet 190\.00/,
+    );
+    const chf = finding("write-discount-foreign-currency");
+    expect(chf).toMatch(
+      /^CHF invoice \d+, one position of 100\.00 net at 19 %, fixed 10\.00: sumNet 90\.00, .*; currency fields: currency CHF; getDiscounts 1 row\(s\)/,
+    );
+    expect(chf).toMatch(/Cleanup: Invoice \d+ deleted\.$/);
+    const header = client
+      .writes()
+      .map((call) => (call.body as Rec | undefined)?.["invoice"] as Rec | undefined)
+      .find((item) => item?.["currency"] === "CHF");
+    expect(header).toBeDefined();
+    expect(left(docs, "Invoice")).toEqual([]);
+  });
+
+  it("follows an offer's discount to its AB, LI, partial and advance invoice, leaving only the sent offers", async () => {
+    const { client, docs } = gapsAccount({ discountsAsRecorded: true });
+    const { report, finding } = await run(client, { only: ["write-discount-order-derived"] });
+    expect(report.results[0]?.status).toBe("observed");
+    const text = finding("write-discount-order-derived");
+    expect(text).toMatch(/^Sent offer \d+ \(150\.00 net, 10 %\): sumNet 135\.00/);
+    expect(text).toMatch(/AB \d+ from it: sumNet 135\.00.*getDiscounts 1 row\(s\)/);
+    expect(text).toMatch(/LI \d+ from it: sumNet 150\.00.*getDiscounts 0 row\(s\)/);
+    for (const type of ["TR", "AR"]) {
+      expect(text).toMatch(
+        new RegExp(
+          `${type} 50 % \\(type percentage, amount 50\\) from offer \\d+ \\(.*\\): invoice \\d+, type ${type}, status 100: sumNet 67\\.50.*getDiscounts 1 row\\(s\\)`,
+        ),
+      );
+    }
+    expect(text).toMatch(
+      /Cleanup: Invoice \d+ deleted; Order \d+ stays \(status 200, not a draft\); Invoice \d+ deleted; Order \d+ stays \(status 200, not a draft\); Order \d+ deleted; Order \d+ deleted; Order \d+ stays \(status 200, not a draft\)\.$/,
+    );
+    expect(left(docs, "Invoice")).toEqual([]);
+    expect(left(docs, "Order").map((key) => docs.get(key)?.["status"])).toEqual([
+      "200",
+      "200",
+      "200",
+    ]);
+    const fromOrder = client
+      .writes()
+      .filter((call) => call.path === "/Invoice/Factory/createInvoiceFromOrder");
+    expect(fromOrder.map((call) => (call.body as Rec)["partialType"])).toEqual(["TR", "AR"]);
+    for (const call of fromOrder) {
+      expect(call.body).toMatchObject({ type: "percentage", amount: 50 });
+    }
+  });
+
+  it("still deletes the order copies when the invoices from an order are refused", async () => {
+    const { docs, client } = gapsAccount({
+      discountsAsRecorded: true,
+      refuseInvoiceFromOrder: true,
+    });
+    const { report, finding } = await run(client, { only: ["write-discount-order-derived"] });
+    expect(report.results[0]?.status).toBe("observed");
+    const text = finding("write-discount-order-derived");
+    expect(text).toMatch(/TR 50 % from offer \d+: refused \(422: Order cannot be invoiced\)/);
+    expect(text).toMatch(/AR 50 % from offer \d+: refused \(422: Order cannot be invoiced\)/);
+    expect(left(docs, "Order").map((key) => docs.get(key)?.["status"])).toEqual([
+      "200",
+      "200",
+      "200",
+    ]);
+  });
+
+  it("keeps a template's discount through a replacement of every position, then deletes the template", async () => {
+    const { client, docs } = gapsAccount({ discountsAsRecorded: true });
+    const { report, finding } = await run(client, {
+      only: ["write-recurring-template-discount"],
+    });
+    expect(report.results[0]?.status).toBe("observed");
+    const text = finding("write-recurring-template-discount");
+    expect(text).toMatch(
+      /^Template \d+ \(start 2026-12-20, 100\.00 net, 10 %\): status 100, sumNet 90\.00.*getDiscounts 1 row\(s\)/,
+    );
+    expect(text).toMatch(
+      /Replacing all 1 position\(s\) by one of 2 × 40\.00 \(no discount keys\): ok; 1 position\(s\) \(2 × 40 at 19 %\); sumNet 72\.00.*discount rows kept: 1 of 1\./,
+    );
+    expect(text).toMatch(
+      /read-recurring-generated-discounts the next day\. Cleanup: template \d+ deleted\.$/,
+    );
+    expect(left(docs, "Invoice")).toEqual([]);
+    const replace = client
+      .writes()
+      .find(
+        (call) =>
+          call.path === "/Invoice/Factory/saveInvoice" &&
+          ((call.body as Rec)["invoice"] as Rec)["id"] !== undefined &&
+          Array.isArray((call.body as Rec)["invoicePosDelete"]),
+      );
+    expect(replace?.tier).toBe("commit");
+    expect(Object.keys(replace?.body as Rec)).toEqual([
+      "invoice",
+      "invoicePosSave",
+      "invoicePosDelete",
+    ]);
+    expect((replace?.body as Rec)["invoicePosDelete"]).toEqual([
+      { id: expect.any(Number) as unknown, objectName: "InvoicePos" },
+    ]);
+  });
+
+  it("stores month-end start dates, asks for the invoicing range and deletes every template", async () => {
+    const { client, docs } = gapsAccount({ discountsAsRecorded: true });
+    const { report, finding } = await run(client, { only: ["write-recurring-month-end"] });
+    expect(report.results[0]?.status).toBe("observed");
+    const text = finding("write-recurring-month-end");
+    for (const day of ["29", "30", "31"]) {
+      expect(text).toMatch(
+        new RegExp(
+          `start 2027-01-${day} \\(template \\d+\\): status 100; accountIntervall P0Y1M0W, accountNextInvoice 2027-01-${day}T00:00:00\\+01:00, accountStartDate 2027-01-${day}T00:00:00\\+01:00`,
+        ),
+      );
+    }
+    expect(text).toMatch(
+      /start 2027-01-31, end 2027-02-28 \(template \d+\): .*accountEndDate 2027-02-28T00:00:00\+01:00/,
+    );
+    expect(text).toMatch(
+      /startDate 31 January as Unix seconds: refused \(400: Invalid date\); startDate 31 January as dd\.mm\.yyyy: startDate 2027-01-31, endDate 2027-02-27\./,
+    );
+    expect(text).toMatch(/Not answerable on a trial within days/);
+    expect(text).toMatch(/Cleanup: (template \d+ deleted(; |\.$)){4}/);
+    expect(left(docs, "Invoice")).toEqual([]);
+    // Without the computation the templates are still read and deleted.
+    const plain = gapsAccount();
+    const { finding: plainFinding } = await run(plain.client, {
+      only: ["write-recurring-month-end"],
+    });
+    expect(plainFinding("write-recurring-month-end")).toMatch(
+      /dd\.mm\.yyyy: refused \(422: not simulated\)/,
+    );
+    expect(left(plain.docs, "Invoice")).toEqual([]);
+  });
+
+  it("reads the allowance of an e-invoice with a discount, only when selected (opt-in)", async () => {
+    const { client, docs } = gapsAccount({ discountsAsRecorded: true });
+    const { report, finding } = await run(client, { only: ["write-einvoice-discount"] });
+    const result = report.results[0];
+    expect(result?.status).toBe("observed");
+    const text = finding("write-einvoice-discount");
+    expect(text).toMatch(
+      /^E-invoice \d+ with 10 % on 100\.00 net finalized \(sumNet 90\.00.*\)\. getXml: CII, profile "urn:cen\.eu:en16931:2017"; 1 allowance\/charge element\(s\) \(document level, charge false, amount 10\.00, percent 10\.00, basis 100\.00\); AllowanceTotalAmount 10\.00, TaxBasisTotalAmount 90\.00\./,
+    );
+    expect(text).toMatch(/Cleanup: Invoice \d+ stays \(status 200, not a draft\)\.$/);
+    expect(left(docs, "Invoice").map((key) => docs.get(key)?.["status"])).toEqual(["200"]);
+    const markdown = renderReport(report);
+    expect(markdown).toContain("Fixture candidate: getXml of e-invoice");
+    expect(markdown).not.toContain("Huber");
+    expect(markdown).not.toContain(`${TAG} discount`);
+  });
+
+  it("reads the discounts of tagged templates and of the invoices generated from them", async () => {
+    const { client, docs } = gapsAccount({ discountsAsRecorded: true });
+    await run(client, { only: ["write-recurring-template-due"] });
+    const [templateKey = ""] = left(docs, "Invoice");
+    const template = docs.get(templateKey) ?? {};
+    // What sevDesk generated on the run date (D-111): a draft with the template as origin.
+    docs.set("Invoice/990", {
+      id: "990",
+      objectName: "Invoice",
+      invoiceType: "RE",
+      status: "100",
+      header: template["header"],
+      origin: ref("Invoice", template["id"]),
+      sumNet: "100.00",
+    });
+    const { report, finding } = await run(client, {
+      allowWrites: false,
+      only: ["read-recurring-generated-discounts"],
+    });
+    expect(report.results[0]?.status).toBe("observed");
+    expect(finding("read-recurring-generated-discounts")).toMatch(
+      /^1 tagged template\(s\), 1 generated invoice\(s\)\. Template \d+ \(status 100\): sumNet 90\.00.*getDiscounts 1 row\(s\) \(id \d+: discount 1, percentage 1, value 10.*generated: 990 \(type RE, status 100\): sumNet 100\.00.*getDiscounts 0 row\(s\)\.$/,
+    );
+    const empty = gapsAccount();
+    const none = await run(empty.client, {
+      allowWrites: false,
+      only: ["read-recurring-generated-discounts"],
+    });
+    expect(none.report.results[0]?.status).toBe("inconclusive");
+  });
+
+  it("tells document allowances from line allowances in UBL and CII", () => {
+    const ubl = [
+      "<Invoice><cac:AllowanceCharge><cbc:ChargeIndicator>false</cbc:ChargeIndicator><cbc:MultiplierFactorNumeric>5</cbc:MultiplierFactorNumeric><cbc:Amount>5.00</cbc:Amount><cbc:BaseAmount>100.00</cbc:BaseAmount></cac:AllowanceCharge>",
+      "<cac:InvoiceLine><cac:AllowanceCharge><cbc:ChargeIndicator>true</cbc:ChargeIndicator><cbc:Amount>1.00</cbc:Amount></cac:AllowanceCharge></cac:InvoiceLine>",
+      "<cac:LegalMonetaryTotal><cbc:AllowanceTotalAmount>5.00</cbc:AllowanceTotalAmount><cbc:TaxExclusiveAmount>96.00</cbc:TaxExclusiveAmount></cac:LegalMonetaryTotal></Invoice>",
+    ].join("");
+    expect(allowanceFacts(ubl)).toBe(
+      "2 allowance/charge element(s) (document level, charge false, amount 5.00, percent 5, basis 100.00; line level, charge true, amount 1.00, percent -, basis -); AllowanceTotalAmount 5.00, TaxBasisTotalAmount 96.00",
+    );
+    expect(allowanceFacts("<rsm:CrossIndustryInvoice/>")).toBe(
+      "0 allowance/charge element(s); AllowanceTotalAmount absent, TaxBasisTotalAmount absent",
     );
   });
 });

@@ -663,6 +663,9 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   default. `entryDate` is an optional second date (the import date per the request model); a range
   applies to it with `dateField: "entry"` (D-047).
 - **Test:** `test/unit/tools/banking/transactions.test.ts` (both dates, `entryDate` missing).
+  Live: probes `write-transaction-entry-date` (what a row sent without `entryDate` holds) and
+  `read-transaction-entry-dates` (the account's rows per kind of account, imported ones if any;
+  `test/unit/scripts/gaps-banking-probes.test.ts`, #136).
 
 ### D-017: `origin.objectName` only allowed `Invoice`
 
@@ -3259,8 +3262,11 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   last and says what is left", "warns when the billing address goes and nothing replaces it",
   "adds a new billing address when the billing address goes, and leaves the delivery address
   alone", "adds a new main e-mail when the main one goes, and leaves the other e-mail alone",
-  "counts an entry sevDesk no longer has as already gone"). Live: the four probes above;
-  the contact-person cascade has no probe yet.
+  "counts an entry sevDesk no longer has as already gone"). Live: the four probes above, and
+  `write-contact-delete-cascade` for the contact-person cascade (an organisation with persons
+  under it, and one whose person a draft invoice names; #134,
+  `test/unit/scripts/gaps-contacts-probes.test.ts`, "reports what deleting an organisation does
+  to its contact persons (#134)").
 
 ### D-085: Refused deletes of referenced contacts and cost centres arrive as HTTP 200
 
@@ -3451,7 +3457,12 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   tagCreated out when sevDesk used a tag beyond the tags read"),
   `test/unit/tools/documents/tags-list.test.ts`
   ("pages the recorded tags with an explicit limit and counts uses per kind from the relations",
-  "says when the cap cut the counts short"). Live: the three probes above.
+  "says when the cap cut the counts short"). Live: the three probes above, and
+  `write-tag-name-matching` for ß/ss, the fi ligature, invisible characters and inner spaces,
+  and `write-tag-relation-paging` for the unfiltered relation list across offsets (#136;
+  `test/unit/scripts/gaps-contacts-probes.test.ts`, "tells reused tags from new ones per
+  spelling, and the rule of two tag filters (#105)", "compares the paged relation list with one
+  read of 1000 (#119)").
 
 ### D-089: `DELETE /TagRelation/{id}` removes a tag from a document, the last one the tag
 
@@ -3516,7 +3527,8 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   group and says the groups overlap", "marks the breakdown incomplete when the account has more
   relations than were read"); `test/unit/domain/reports/pnl-tags-cost-centres.test.ts` ("limits
   the figures to the documents of every kind that carry the tag", "reports the figures as
-  truncated when the tag has more uses than were read"). Live: probe `write-tag-list-filters`.
+  truncated when the tag has more uses than were read"). Live: probe `write-tag-list-filters`,
+  and `write-tag-name-matching` for a filter by two tags (`tags[0]` and `tags[1]`, #136).
 
 ### D-091: Cost centres are managed through the undocumented `/CostCentre` endpoints
 
@@ -3631,7 +3643,10 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   each row's own cost centre"); `test/unit/domain/reports/pnl-tags-cost-centres.test.ts` ("breaks
   the result down per cost centre; the groups, none included, add up", "answers through the tool
   with costCentre by name"). Live: the two probes above; the removal, the credit-note list rows
-  and the credit-note list filter by the 2026-11-17 one-off checks (no probe).
+  and the credit-note list filter by the 2026-11-17 one-off checks (no probe); cost centres on
+  voucher positions: probe `write-voucher-position-cost-centre` (#136;
+  `test/unit/scripts/gaps-contacts-probes.test.ts`, "says which cost centre a voucher position
+  keeps and deletes vouchers and cost centres (#119)").
 
 ### D-095: On a cash register `resetToOpen` books a counter-entry instead of deleting
 
@@ -3725,7 +3740,8 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   live one"); `test/regressions/manual-transactions.test.ts` ("a soft-deleted row is reported as
   deleted and never as live"). Live: probes `write-transaction-delete`,
   `read-transaction-soft-delete`, `write-transaction-create-answer` (the `[null]` answer and the
-  read-back with `deletedAt` of the 2026-11-17 check).
+  read-back with `deletedAt` of the 2026-11-17 check), `write-transaction-delete-archived-account`
+  (a row of an archived file-import account, #136).
 
 ### D-097: Check accounts come only from two factories, and `DELETE` archives them
 
@@ -3840,7 +3856,10 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   `test/regressions/manual-transactions.test.ts` ("no enshrine below status 200");
   `test/unit/tools/lifecycle/reset.test.ts` ("explains sevDesk's 400 refusal when a payment
   transaction is enshrined", the same for 422); `test/unit/tools/tool-errors.test.ts` ("shows our
-  own explanation of a known sevDesk refusal, without sevDesk's text").
+  own explanation of a known sevDesk refusal, without sevDesk's text"). Live: probes
+  `write-transaction-enshrine` (opt-in, status 400) and `write-transaction-enshrine-statuses`
+  (opt-in, #136: 300, 200 and 350, where a trial can reach them; `gaps-banking-probes.test.ts`,
+  "enshrines its own rows at 300 and 200 only when named…").
 
 ### D-099: Private-transaction rules did not mark hand-made transactions
 
@@ -3911,7 +3930,9 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   private-transaction rules": both requests need `commit`, the list stays a read). The recorded
   list was empty, so no fixture was kept; the tests build rows with the recorded keys. Live:
   probes `write-private-transaction-rule` and `write-private-transaction-rule-storage` (spaces
-  kept, duplicates stored, the cut of D-130).
+  kept, duplicates stored, the cut of D-130), and `write-private-transaction-rule-order` for the
+  order of the list (#136; `test/unit/scripts/gaps-banking-probes.test.ts`, "asks the #136
+  list-order, account, entryDate and image questions…").
 
 ### D-100: A receipt's `contentHash` is the SHA-256 of the file; rendered PDFs have none
 
@@ -3967,6 +3988,9 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   upload, and the same file recognised before not found). Handling: done,
   `sevdesk_receipt_folder_check` and the `duplicates` check of `sevdesk_records_audit` (#92), and
   the checksum check of `sevdesk_voucher_recognize_receipt` before its upload (#127, see D-103).
+  Live: probes `write-receipt-hash`, `read-document-hash`, and `write-receipt-image-reencode`
+  (whether a PNG and a JPEG come back as uploaded, and `embed=document` paged by one; #136,
+  `test/unit/scripts/gaps-banking-probes.test.ts`).
 
 ### D-101: The ZIP exports answer files only with `download=true` and change no document
 
@@ -4487,7 +4511,10 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   (D-132)"), `test/unit/tools/invoices/recurring-status.test.ts` ("ends a template made in the web
   app (an interval this server does not offer)", "a template made in the web app: runs at its
   stored time, the later runs not listed", "names the stored run time of a next run today that is
-  later than now (web app)").
+  later than now (web app)"). Live (#136): probe `write-recurring-month-end` stores start dates
+  on the 29th, 30th and 31st and an end date (`test/unit/scripts/gaps-documents-probes.test.ts`,
+  "stores month-end start dates, asks for the invoicing range and deletes every template"); the
+  run day in a shorter month and the effect of the end date need a template that runs for weeks.
 
 ### D-112: Recurring templates: status 50 ends, status 200 blocks `DELETE`, lists hide them
 
@@ -4758,7 +4785,15 @@ pdf, sevClient, name, default, img}]}`, `GET /DocServer/getTemplatesWithThumb?ty
   flag"), `test/unit/tools/orders/create-confirmation.test.ts` ("shows
   and binds the offer's document discounts in both languages (review of #112, L5)"),
   `test/unit/tools/invoices/recurring-update.test.ts` ("a discount on the whole template (D-116;
-  review of #124, M2)"). Live: probes `write-document-discount`, `read-order-get-discounts`.
+  review of #124, M2)"). Live: probes `write-document-discount`, `read-order-get-discounts`. The
+  open questions above have probes (#136, #134; `test/unit/scripts/gaps-documents-probes.test.ts`):
+  `write-discount-net-gross` (`isNet` and `value` on net and gross invoices, orders and credit
+  notes), `write-discount-mixed-tax` (19 % and 7 %), `write-discount-foreign-currency` (a fixed
+  discount on CHF), `write-discount-order-derived` (AB, LI, partial and advance invoice of a
+  discounted offer), `write-recurring-template-discount` (a template's discount through a
+  replacement of every position), `read-recurring-generated-discounts` (invoices generated from
+  the discounted template of `write-recurring-template-due`, the day after) and
+  `write-einvoice-discount` (opt-in: the allowance in the e-invoice XML).
 
 ### D-119: The account factories refuse an `accountingNumber` in use or not allowed (422)
 
@@ -4785,7 +4820,8 @@ pdf, sevClient, name, default, img}]}`, `GET /DocServer/getTemplatesWithThumb?ty
   - Without a number, `fileImportAccount` took `"1807"`, the next free number of the 18xx range;
     it skipped 1803 and 1804, which the archived accounts hold, so an archived account keeps its
     number (D-097: archived accounts are not listed).
-  - Whether `MT940` and `iban` are taken is still not recorded.
+  - Whether `MT940` and `iban` are taken is still not recorded (`MT940`: probe
+    `write-transaction-mt940-account`, #136).
 - **Sources:** spec (`createFileImportAccount`, `createClearingAccount`); recorded 2026-11-16,
   trial account, Update 2.0 (one-off checks by the orchestrator, run tags
   `MCP-E2E 20261116-2324-hg4n` and `MCP-E2E 20261116-2325-tgpq`; every account created was

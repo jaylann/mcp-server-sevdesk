@@ -44,6 +44,7 @@ import {
   str,
   type TestData,
 } from "./core.js";
+import { eInvoiceSyntax, scrubEInvoiceXml, xmlFromAnswer } from "./m4-einvoice-probes.js";
 import {
   changedFields,
   data,
@@ -52,6 +53,8 @@ import {
   isGone,
   outcomeOf,
   shapeOf,
+  slug,
+  withCleanup,
 } from "./m4-shared-probes.js";
 
 type DraftOptions = NonNullable<Parameters<TestData["draft"]>[1]>;
@@ -616,15 +619,17 @@ async function scheduledTemplate(
   ctx: ProbeContext,
   variant: ScheduleVariant,
   next: string,
+  body?: Readonly<Record<string, unknown>>,
 ): Promise<{
   readonly id: number | undefined;
   readonly row: Row | undefined;
   readonly text: string;
 }> {
-  const draft = await templateDraft(ctx, {
-    accountIntervall: "P0Y1M0W",
-    ...variant.create(next),
-  });
+  const draft = await templateDraft(
+    ctx,
+    { accountIntervall: "P0Y1M0W", ...variant.create(next) },
+    body,
+  );
   if (draft.id === undefined) {
     return { id: undefined, row: undefined, text: `create ${outcomeOf(draft.result)}` };
   }
@@ -657,12 +662,15 @@ function schedule(ctx: ProbeContext, row: Row | undefined): string {
   );
 }
 
+/** A WKR template with these header fields; `body` adds top-level keys (e.g. `discountSave`). */
 async function templateDraft(
   ctx: ProbeContext,
   fields: Readonly<Record<string, unknown>>,
+  body?: Readonly<Record<string, unknown>>,
 ): Promise<{ readonly id: number | undefined; readonly result: HttpResult }> {
   return data(ctx).draft("Invoice", {
     fields: { invoiceType: "WKR", header: `${data(ctx).tag} Abo`, ...fields },
+    ...(body === undefined ? {} : { body }),
   });
 }
 
@@ -1186,6 +1194,650 @@ function answerDiscounts(objects: unknown): Row[] {
   if (!isRecord(objects)) return [];
   const value = objects["discount"];
   return value === undefined || value === null ? [] : rowsOf(value);
+}
+
+// ---------------------------------------------------------------------------------------------
+// #114, #124, #134: discounts on gross, mixed-rate, foreign, derived and recurring documents
+// ---------------------------------------------------------------------------------------------
+
+/** The sums a document carries for its discount (D-116), as sevDesk stored them. */
+const DISCOUNT_SUMS: readonly string[] = [
+  "sumNet",
+  "sumTax",
+  "sumGross",
+  "sumDiscounts",
+  "sumDiscountNet",
+  "sumDiscountGross",
+];
+
+function discountSums(row: Row | undefined): string {
+  return DISCOUNT_SUMS.map((key) => `${key} ${str(row, key) || "-"}`).join(", ");
+}
+
+/** A document a probe made, for its cleanup. */
+interface OwnDocument {
+  readonly kind: DocumentKind;
+  readonly id: number;
+}
+
+/** One discount row for `discountSave`: 10 % or a fixed `value`, `isNet` only when given. */
+function discountRow(
+  tag: string,
+  options: { readonly percentage: boolean; readonly value?: number; readonly isNet?: boolean },
+): Record<string, unknown> {
+  return {
+    ...discountBody(tag, options.percentage),
+    value: options.value ?? 10,
+    ...(options.isNet === undefined ? {} : { isNet: options.isNet }),
+  };
+}
+
+/** `GET /<kind>/{id}/getDiscounts`: its rows, and a description without texts. */
+async function discountRows(
+  ctx: ProbeContext,
+  kind: DocumentKind,
+  id: number,
+): Promise<{ readonly rows: Row[]; readonly text: string }> {
+  const result = await ctx.http.get(`/${kind}/${id}/getDiscounts`, { limit: 100, offset: 0 });
+  const rows = result.ok && Array.isArray(result.objects) ? result.objects.filter(isRecord) : [];
+  return {
+    rows,
+    text: result.ok
+      ? `getDiscounts ${rows.length} row(s)${rows.length === 0 ? "" : ` (${rows.map(describeDiscount).join("; ")})`}`
+      : `getDiscounts ${outcomeOf(result)}`,
+  };
+}
+
+/** The sums and discount rows of a stored document, in one line. */
+async function discountState(ctx: ProbeContext, kind: DocumentKind, id: number): Promise<string> {
+  const row = await ctx.read.byId(kind, id);
+  const rows = await discountRows(ctx, kind, id);
+  return `${discountSums(row)}; ${rows.text}`;
+}
+
+/** The `sum…` fields of each position, with its tax rate (no names). */
+function positionSums(rows: readonly Row[]): string {
+  return (
+    rows
+      .map(
+        (row) =>
+          `${str(row, "taxRate")} %: ${
+            Object.keys(row)
+              .filter((key) => /^sum/i.test(key))
+              .sort()
+              .map((key) => `${key} ${str(row, key) || "-"}`)
+              .join(", ") || "no sum fields"
+          }`,
+      )
+      .join("; ") || "no positions"
+  );
+}
+
+/**
+ * Deletes the drafts of `own` that are still there and still drafts (status 100); sent ones stay,
+ * since sevDesk deletes drafts only (D-109). One note per document the cleanup touched.
+ */
+async function deleteOwnDocuments(
+  ctx: ProbeContext,
+  own: readonly OwnDocument[],
+): Promise<string[]> {
+  const notes: string[] = [];
+  for (const { kind, id } of [...own].reverse()) {
+    const before = await ctx.http.get(`/${kind}/${id}`);
+    if (isGone(before)) {
+      data(ctx).mark(kind, id, "deleted by the probe");
+      continue;
+    }
+    const status = str(firstRow(before.objects), "status");
+    if (before.ok && status !== "100") {
+      notes.push(`${kind} ${id} stays (status ${status || "?"}, not a draft)`);
+      continue;
+    }
+    const deleted = await deleteAndCheck(ctx, kind, id);
+    notes.push(`${kind} ${id} ${deleted.gone ? "deleted" : `left (${deleted.text})`}`);
+  }
+  return notes;
+}
+
+/** A draft of `kind` with one discount; registered in `own` the moment it has an id. */
+async function discountedDraft(
+  ctx: ProbeContext,
+  own: OwnDocument[],
+  kind: DocumentKind,
+  discount: Readonly<Record<string, unknown>>,
+  options: DraftOptions = {},
+): Promise<{ readonly id: number | undefined; readonly result: HttpResult }> {
+  const draft = await documentDraft(ctx, kind, {
+    ...options,
+    body: { discountSave: [discount], discountDelete: null },
+  });
+  if (draft.id !== undefined) own.push({ kind, id: draft.id });
+  return draft;
+}
+
+/** One case of `write-discount-net-gross`. */
+interface NetGrossCase {
+  readonly kind: DocumentKind;
+  readonly showNet: boolean;
+  readonly percentage: boolean;
+  readonly isNet?: boolean;
+}
+
+const NET_GROSS_CASES: readonly NetGrossCase[] = [
+  ...KINDS.flatMap((kind) =>
+    [true, false].map((showNet) => ({ kind, showNet, percentage: false })),
+  ),
+  { kind: "Invoice", showNet: false, percentage: true },
+  { kind: "Invoice", showNet: false, percentage: false, isNet: false },
+];
+
+function caseLabel(item: NetGrossCase): string {
+  return (
+    `${item.kind} ${item.showNet ? "net (showNet true, price 100)" : "gross (showNet false, price 119)"}, ` +
+    `${item.percentage ? "10 %" : "fixed 10.00"}${item.isNet === undefined ? "" : `, isNet ${String(item.isNet)} sent`}`
+  );
+}
+
+async function discountNetGross(ctx: ProbeContext, own: OwnDocument[]): Promise<ProbeOutcome> {
+  const tag = data(ctx).tag;
+  const lines: string[] = [];
+  const isNetSeen = new Set<string>();
+  let saved = 0;
+  for (const item of NET_GROSS_CASES) {
+    const draft = await discountedDraft(
+      ctx,
+      own,
+      item.kind,
+      discountRow(tag, {
+        percentage: item.percentage,
+        ...(item.isNet === undefined ? {} : { isNet: item.isNet }),
+      }),
+      { showNet: item.showNet, positions: [{ price: item.showNet ? 100 : 119 }] },
+    );
+    if (draft.id === undefined) {
+      lines.push(`${caseLabel(item)}: ${outcomeOf(draft.result)}`);
+      continue;
+    }
+    saved += 1;
+    const row = await ctx.read.byId(item.kind, draft.id);
+    const rows = await discountRows(ctx, item.kind, draft.id);
+    for (const discount of rows.rows) isNetSeen.add(str(discount, "isNet") || "-");
+    lines.push(
+      `${caseLabel(item)} (${item.kind.toLowerCase()} ${draft.id}, showNet stored ${str(row, "showNet") || "-"}): ${discountSums(row)}; ${rows.text}`,
+    );
+  }
+  if (saved === 0) return inconclusive(`No discounted draft was saved. ${lines.join(". ")}.`);
+  return {
+    verdict: "observed",
+    finding: `isNet values seen: ${[...isNetSeen].join(", ") || "none"}. ${lines.join(". ")}.`,
+    deviations: { "D-050": "informs" },
+  };
+}
+
+async function discountMixedTax(ctx: ProbeContext, own: OwnDocument[]): Promise<ProbeOutcome> {
+  const tag = data(ctx).tag;
+  const lines: string[] = [];
+  let saved = 0;
+  for (const percentage of [true, false]) {
+    const label = percentage ? "10 %" : "fixed 10.00";
+    const draft = await discountedDraft(ctx, own, "Invoice", discountRow(tag, { percentage }), {
+      positions: [
+        { price: 100, taxRate: 19 },
+        { price: 100, taxRate: 7 },
+      ],
+    });
+    if (draft.id === undefined) {
+      lines.push(`${label}: ${outcomeOf(draft.result)}`);
+      continue;
+    }
+    saved += 1;
+    const positions = await positionsOf(ctx, "Invoice", draft.id);
+    lines.push(
+      `${label} on 100 at 19 % + 100 at 7 % (invoice ${draft.id}): ${await discountState(ctx, "Invoice", draft.id)}; positions: ${positionSums(positions)}`,
+    );
+  }
+  if (saved === 0) return inconclusive(`No discounted draft was saved. ${lines.join(". ")}.`);
+  return {
+    verdict: "observed",
+    finding: `Without a discount the sums would be net 200.00, tax 26.00, gross 226.00. ${lines.join(". ")}.`,
+  };
+}
+
+/** Header keys that tell a foreign-currency document's own amounts. */
+const CURRENCY_KEY = /currency|ForeignCurrency/i;
+
+async function discountForeignCurrency(
+  ctx: ProbeContext,
+  own: OwnDocument[],
+): Promise<ProbeOutcome> {
+  const tag = data(ctx).tag;
+  const draft = await discountedDraft(
+    ctx,
+    own,
+    "Invoice",
+    discountRow(tag, { percentage: false }),
+    { currency: "CHF" },
+  );
+  if (draft.id === undefined) {
+    return {
+      verdict: "observed",
+      finding: `A CHF invoice draft with a fixed 10.00 discount was ${outcomeOf(draft.result)}.`,
+    };
+  }
+  const row = await ctx.read.byId("Invoice", draft.id);
+  const currencyFields = Object.keys(row ?? {})
+    .filter((key) => CURRENCY_KEY.test(key))
+    .sort()
+    .map((key) => `${key} ${str(row, key) || "-"}`)
+    .join(", ");
+  const rows = await discountRows(ctx, "Invoice", draft.id);
+  return {
+    verdict: "observed",
+    finding:
+      `CHF invoice ${draft.id}, one position of 100.00 net at 19 %, fixed 10.00: ${discountSums(row)}; ` +
+      `currency fields: ${currencyFields || "none"}; ${rows.text}. If the fixed 10 is CHF, sumNet is 90 in CHF ` +
+      `(the foreign sums); if EUR, the CHF sums differ from 90 by the rate.`,
+    deviations: { "D-043": "informs" },
+  };
+}
+
+/** A sent offer (AN) with a 10 % discount, the source of the derived documents. */
+async function discountedSentOffer(
+  ctx: ProbeContext,
+  own: OwnDocument[],
+): Promise<{ readonly id: number; readonly text: string } | { readonly failure: string }> {
+  const draft = await discountedDraft(
+    ctx,
+    own,
+    "Order",
+    discountRow(data(ctx).tag, { percentage: true }),
+    { positions: [{ price: 100 }, { price: 25, quantity: 2 }] },
+  );
+  if (draft.id === undefined) return { failure: `offer ${outcomeOf(draft.result)}` };
+  const sent = await data(ctx).finalize("Order", draft.id);
+  if (!sent.ok) return { failure: `sendBy of offer ${draft.id} ${outcomeOf(sent)}` };
+  data(ctx).mark("Order", draft.id, "marked as sent with sendBy (orders are not enshrined)");
+  return { id: draft.id, text: await discountState(ctx, "Order", draft.id) };
+}
+
+async function discountOrderDerived(ctx: ProbeContext, own: OwnDocument[]): Promise<ProbeOutcome> {
+  const lines: string[] = [];
+  let derived = 0;
+  // AB and LI from one sent offer (the confirmation accepts it, D-107).
+  const copies = await discountedSentOffer(ctx, own);
+  if ("failure" in copies) {
+    lines.push(`AB/LI: ${copies.failure}`);
+  } else {
+    lines.push(`Sent offer ${copies.id} (150.00 net, 10 %): ${copies.text}`);
+    for (const [factory, range] of [
+      ["createContractNoteFromOrder", "AB"],
+      ["createPackingListFromOrder", "LI"],
+    ] as const) {
+      const result = await ctx.http.write("POST", `/Order/Factory/${factory}`, {
+        tier: factory === "createContractNoteFromOrder" ? "commit" : "write",
+        query: { "order[id]": copies.id, "order[objectName]": "Order" },
+        body: { id: copies.id, objectName: "Order" },
+      });
+      const id = createdId(result.objects, "order");
+      if (!result.ok || id === undefined || id === copies.id) {
+        lines.push(`${range} from it: ${answerOf(result)}`);
+        continue;
+      }
+      derived += 1;
+      own.push({ kind: "Order", id });
+      data(ctx).register("Order", id, `${range} from order ${copies.id} (deleted by the probe)`);
+      lines.push(`${range} ${id} from it: ${await discountState(ctx, "Order", id)}`);
+    }
+  }
+  // A partial (TR) and an advance (AR) invoice of 50 %, each from its own sent offer.
+  for (const partialType of ["TR", "AR"] as const) {
+    const source = await discountedSentOffer(ctx, own);
+    if ("failure" in source) {
+      lines.push(`${partialType} 50 %: ${source.failure}`);
+      continue;
+    }
+    const result = await ctx.http.write("POST", "/Invoice/Factory/createInvoiceFromOrder", {
+      tier: "write",
+      body: {
+        order: { id: source.id, objectName: "Order" },
+        partialType,
+        type: "percentage",
+        amount: 50,
+      },
+    });
+    const id = createdId(result.objects, "invoice");
+    if (!result.ok || id === undefined) {
+      lines.push(`${partialType} 50 % from offer ${source.id}: ${answerOf(result)}`);
+      continue;
+    }
+    derived += 1;
+    own.push({ kind: "Invoice", id });
+    data(ctx).register(
+      "Invoice",
+      id,
+      `${partialType} invoice from an order (deleted by the probe)`,
+    );
+    const invoice = await ctx.read.byId("Invoice", id);
+    lines.push(
+      `${partialType} 50 % (type percentage, amount 50) from offer ${source.id} (${source.text}): invoice ${id}, ` +
+        `type ${str(invoice, "invoiceType")}, status ${str(invoice, "status")}: ${await discountState(ctx, "Invoice", id)}`,
+    );
+  }
+  if (derived === 0) return inconclusive(`No document was derived. ${lines.join(". ")}.`);
+  return {
+    verdict: "observed",
+    finding: `${lines.join(". ")}.`,
+    deviations: { "D-107": "informs", "D-064": "informs" },
+  };
+}
+
+/** The ids of a document's positions. */
+function rowIds(rows: readonly Row[]): number[] {
+  return rows.map((row) => Number(row["id"])).filter((id) => Number.isSafeInteger(id) && id > 0);
+}
+
+async function templateDiscount(ctx: ProbeContext, own: number[]): Promise<ProbeOutcome> {
+  const tag = data(ctx).tag;
+  const start = addDays(ctx.today, 30);
+  const draft = await templateDraft(
+    ctx,
+    { accountIntervall: "P0Y1M0W", accountStartDate: berlinMidnight(start) },
+    { discountSave: [discountRow(tag, { percentage: true })], discountDelete: null },
+  );
+  if (draft.id === undefined) {
+    return {
+      verdict: "observed",
+      finding: `A WKR template with a 10 % discountSave was ${outcomeOf(draft.result)}.`,
+    };
+  }
+  const id = draft.id;
+  own.push(id);
+  data(ctx).mark("Invoice", id, "recurring template (WKR): deleted by the probe");
+  const before = await discountRows(ctx, "Invoice", id);
+  const beforeRow = await ctx.read.byId("Invoice", id);
+  const oldPositions = await positionsOf(ctx, "Invoice", id);
+  const replaced = await ctx.http.write("POST", "/Invoice/Factory/saveInvoice", {
+    // A template change: commit (the client cannot tell it from a draft without the type).
+    tier: "commit",
+    body: {
+      invoice: { id, objectName: "Invoice", mapAll: true },
+      invoicePosSave: [
+        {
+          objectName: "InvoicePos",
+          mapAll: true,
+          quantity: 2,
+          price: 40,
+          name: `${tag} position replaced`,
+          unity: { id: 1, objectName: "Unity" },
+          taxRate: 19,
+        },
+      ],
+      invoicePosDelete: rowIds(oldPositions).map((item) => ({
+        id: item,
+        objectName: "InvoicePos",
+      })),
+    },
+  });
+  const after = await discountRows(ctx, "Invoice", id);
+  const afterRow = await ctx.read.byId("Invoice", id);
+  const newPositions = await positionsOf(ctx, "Invoice", id);
+  const kept = rowIds(before.rows).filter((item) => rowIds(after.rows).includes(item)).length;
+  return {
+    verdict: "observed",
+    finding:
+      `Template ${id} (start ${start}, 100.00 net, 10 %): status ${str(beforeRow, "status")}, ${discountSums(beforeRow)}; ${before.text}. ` +
+      `Replacing all ${oldPositions.length} position(s) by one of 2 × 40.00 (no discount keys): ${outcomeOf(replaced)}; ` +
+      `${describePositions(newPositions)}; ${discountSums(afterRow)}; ${after.text}; discount rows kept: ${kept} of ${before.rows.length}. ` +
+      "Whether generated invoices carry the discount: write-recurring-template-due (its template has a 10 % discount) and read-recurring-generated-discounts the next day.",
+    deviations: { "D-111": "informs" },
+  };
+}
+
+/** The January days of `write-recurring-month-end` and the end date of the last case. */
+function monthEndCases(
+  today: string,
+): readonly { readonly label: string; readonly fields: Record<string, unknown> }[] {
+  const year = Number(today.slice(0, 4)) + 1;
+  const day = (date: string) => `${year}-${date}`;
+  return [
+    ...["29", "30", "31"].map((dd) => ({
+      label: `start ${day(`01-${dd}`)}`,
+      fields: { accountStartDate: berlinMidnight(day(`01-${dd}`)) },
+    })),
+    {
+      label: `start ${day("01-31")}, end ${day("02-28")}`,
+      fields: {
+        accountStartDate: berlinMidnight(day("01-31")),
+        accountEndDate: berlinMidnight(day("02-28")),
+      },
+    },
+  ];
+}
+
+/** A flat answer as `key value` pairs (scrubbed), else its shape. */
+function flatAnswer(ctx: ProbeContext, objects: unknown): string {
+  const row = firstRow(objects);
+  if (row === undefined || (Array.isArray(objects) && objects.length !== 1)) {
+    return shapeOf(objects);
+  }
+  return (
+    Object.entries(row)
+      .map(([key, value]) =>
+        isRecord(value) || Array.isArray(value)
+          ? `${key} ${shapeOf(value)}`
+          : `${key} ${shown(ctx, key, value)}`,
+      )
+      .join(", ") || "an empty object"
+  );
+}
+
+async function recurringMonthEnd(ctx: ProbeContext, own: number[]): Promise<ProbeOutcome> {
+  const lines: string[] = [];
+  let saved = 0;
+  for (const item of monthEndCases(ctx.today)) {
+    const draft = await templateDraft(ctx, { accountIntervall: "P0Y1M0W", ...item.fields });
+    if (draft.id === undefined) {
+      lines.push(`${item.label}: ${outcomeOf(draft.result)}`);
+      continue;
+    }
+    saved += 1;
+    own.push(draft.id);
+    data(ctx).mark("Invoice", draft.id, "recurring template (WKR): deleted by the probe");
+    const row = await ctx.read.byId("Invoice", draft.id);
+    lines.push(
+      `${item.label} (template ${draft.id}): status ${str(row, "status")}; ${schedule(ctx, row)}`,
+    );
+  }
+  // The web app's form asks this computation for the period it shows (D-111); no record.
+  const start = monthEndCases(ctx.today)[2];
+  const ranges: string[] = [];
+  for (const [form, value] of [
+    ["Unix seconds", start?.fields["accountStartDate"]],
+    ["dd.mm.yyyy", germanDate(`${Number(ctx.today.slice(0, 4)) + 1}-01-31`)],
+  ] as const) {
+    const result = await ctx.http.write("POST", "/Invoice/Factory/calculateInvoicingRange", {
+      tier: "write",
+      body: { startDate: value, interval: "P0Y1M0W", isDeferred: false },
+    });
+    ranges.push(
+      `startDate 31 January as ${form}: ${result.ok ? flatAnswer(ctx, result.objects) : outcomeOf(result)}`,
+    );
+    if (result.ok) break;
+  }
+  if (saved === 0) return inconclusive(`No template was saved. ${lines.join(". ")}.`);
+  return {
+    verdict: "observed",
+    finding:
+      `${lines.join(". ")}. calculateInvoicingRange (monthly): ${ranges.join("; ")}. ` +
+      "Not answerable on a trial within days: on which day sevDesk runs a template of the 29th to 31st in February " +
+      "(and whether it returns to the 31st in March), and what it does at the end date; both need a template that runs into those months.",
+    deviations: { "D-112": "informs" },
+  };
+}
+
+/** A tagged e-invoice contact with buyer reference and e-mail, as write-einvoice-xml makes one. */
+async function eInvoiceContact(ctx: ProbeContext): Promise<number | undefined> {
+  const tag = data(ctx).tag;
+  const contact = await ctx.http.write("POST", "/Contact", {
+    tier: "write",
+    body: {
+      name: `${tag} E-Rechnung Rabatt`,
+      category: { id: 3, objectName: "Category" },
+      status: 1000,
+      buyerReference: `${slug(tag)}-REF`,
+    },
+  });
+  const id = createdId(contact.objects);
+  if (id === undefined) return undefined;
+  data(ctx).register("Contact", id, "active (can be deleted in the web app)");
+  await ctx.http.write("POST", "/CommunicationWay", {
+    tier: "write",
+    body: {
+      contact: { id, objectName: "Contact" },
+      type: "EMAIL",
+      value: "einvoice-probe@example.org",
+      key: { id: 2, objectName: "CommunicationWayKey" },
+      main: true,
+    },
+  });
+  return id;
+}
+
+/** The text of the first `<local>` element (any prefix) inside `xml`, trimmed. */
+function elementText(xml: string, local: string): string | undefined {
+  return new RegExp(`<(?:[\\w-]+:)?${local}\\b[^>]*>([^<]*)<`).exec(xml)?.[1]?.trim();
+}
+
+/**
+ * The allowances of an e-invoice without texts: per CII `SpecifiedTradeAllowanceCharge` or UBL
+ * `AllowanceCharge` its level (document or line), charge indicator, amount, percent and basis;
+ * plus the `AllowanceTotalAmount` of the totals.
+ */
+export function allowanceFacts(xml: string): string {
+  const blocks = [
+    ...xml.matchAll(
+      /<((?:[\w-]+:)?(?:SpecifiedTradeAllowanceCharge|AllowanceCharge))\b[^>]*>([\s\S]*?)<\/\1>/g,
+    ),
+  ];
+  const lines = [
+    ...xml.matchAll(
+      /<((?:[\w-]+:)?(?:IncludedSupplyChainTradeLineItem|InvoiceLine))\b[^>]*>[\s\S]*?<\/\1>/g,
+    ),
+  ].map((match) => [match.index, match.index + match[0].length] as const);
+  const described = blocks.map((match) => {
+    const block = match[2] ?? "";
+    const line = lines.some(([from, to]) => match.index > from && match.index < to);
+    const indicator =
+      elementText(block, "Indicator") ?? elementText(block, "ChargeIndicator") ?? "-";
+    return (
+      `${line ? "line" : "document"} level, charge ${indicator}, amount ${elementText(block, "ActualAmount") ?? elementText(block, "Amount") ?? "-"}, ` +
+      `percent ${elementText(block, "CalculationPercent") ?? elementText(block, "MultiplierFactorNumeric") ?? "-"}, ` +
+      `basis ${elementText(block, "BasisAmount") ?? elementText(block, "BaseAmount") ?? "-"}`
+    );
+  });
+  return (
+    `${blocks.length} allowance/charge element(s)${described.length === 0 ? "" : ` (${described.join("; ")})`}; ` +
+    `AllowanceTotalAmount ${elementText(xml, "AllowanceTotalAmount") ?? "absent"}, ` +
+    `TaxBasisTotalAmount ${elementText(xml, "TaxBasisTotalAmount") ?? elementText(xml, "TaxExclusiveAmount") ?? "absent"}`
+  );
+}
+
+async function eInvoiceDiscount(ctx: ProbeContext, own: OwnDocument[]): Promise<ProbeOutcome> {
+  const methods = await ctx.read.page("/PaymentMethod", undefined, 100);
+  const method =
+    methods.rows.find((row) => str(row, "electronicInvoiceId") === "58") ?? methods.rows[0];
+  const methodId = Number(method?.["id"]);
+  if (!Number.isSafeInteger(methodId)) return inconclusive("No payment method.");
+  const contact = await eInvoiceContact(ctx);
+  if (contact === undefined) return inconclusive("The e-invoice contact could not be created.");
+  const tag = data(ctx).tag;
+  const draft = await discountedDraft(ctx, own, "Invoice", discountRow(tag, { percentage: true }), {
+    fields: {
+      contact: { id: contact, objectName: "Contact" },
+      propertyIsEInvoice: true,
+      paymentMethod: { id: methodId, objectName: "PaymentMethod" },
+      addressName: `${tag} E-Rechnung Kunde`,
+      addressStreet: "Musterstraße 1",
+      addressZip: "10115",
+      addressCity: "Berlin",
+    },
+  });
+  if (draft.id === undefined) {
+    return {
+      verdict: "observed",
+      finding: `The e-invoice draft with 10 % was ${outcomeOf(draft.result)}.`,
+    };
+  }
+  const id = draft.id;
+  const state = await discountState(ctx, "Invoice", id);
+  const finalized = await data(ctx).finalize("Invoice", id);
+  if (!finalized.ok) {
+    return {
+      verdict: "observed",
+      finding: `E-invoice draft ${id} with 10 % (${state}); sendBy ${outcomeOf(finalized)}.`,
+    };
+  }
+  const xml = await ctx.http.get(`/Invoice/${id}/getXml`);
+  const text = xml.ok ? xmlFromAnswer(xml.bytes) : undefined;
+  if (text === undefined) {
+    return {
+      verdict: "observed",
+      finding: `E-invoice ${id} with 10 % finalized (${state}); getXml ${xml.ok ? `answered no XML (${shapeOf(xml.objects)})` : outcomeOf(xml)}.`,
+    };
+  }
+  const syntax = eInvoiceSyntax(text);
+  return {
+    verdict: "observed",
+    finding:
+      `E-invoice ${id} with 10 % on 100.00 net finalized (${state}). getXml: ${syntax.syntax}, profile ${JSON.stringify(syntax.profile ?? null)}; ` +
+      `${allowanceFacts(text)}.`,
+    deviations: { "D-033": "informs", "D-034": "informs" },
+    attachments: [
+      {
+        label: `Fixture candidate: getXml of e-invoice ${id} with a 10 % discount (${syntax.syntax}, scrubbed)`,
+        language: "xml",
+        content: scrubEInvoiceXml(text, ctx.scrubber),
+      },
+    ],
+  };
+}
+
+/** Tagged WKR templates, the invoices generated from them, and the discounts of both. */
+async function generatedDiscounts(ctx: ProbeContext): Promise<ProbeOutcome> {
+  const templates = (await ctx.read.page("/Invoice", { showWkr: "all" }, 1000)).rows.filter(
+    (row) => str(row, "invoiceType") === "WKR" && isTagged(row),
+  );
+  if (templates.length === 0) {
+    return inconclusive("No tagged recurring template (WKR) on the account.");
+  }
+  const lines: string[] = [];
+  let generatedCount = 0;
+  for (const template of templates.slice(0, 10)) {
+    const id = Number(template["id"]);
+    const own = await discountRows(ctx, "Invoice", id);
+    const generated = (
+      await ctx.read.page(
+        "/Invoice",
+        { showAll: "true", "origin[id]": id, "origin[objectName]": "Invoice" },
+        1000,
+      )
+    ).rows.filter((row) => refId(row, "origin") === id);
+    generatedCount += generated.length;
+    const described: string[] = [];
+    for (const row of generated.slice(0, 5)) {
+      const invoiceId = Number(row["id"]);
+      described.push(
+        `${invoiceId} (type ${str(row, "invoiceType")}, status ${str(row, "status")}): ${discountSums(row)}; ${(await discountRows(ctx, "Invoice", invoiceId)).text}`,
+      );
+    }
+    lines.push(
+      `Template ${id} (status ${str(template, "status")}): ${discountSums(template)}; ${own.text}; generated: ${described.length === 0 ? "none" : described.join("; ")}`,
+    );
+  }
+  return {
+    verdict: "observed",
+    finding: `${templates.length} tagged template(s), ${generatedCount} generated invoice(s). ${lines.join(". ")}.`,
+  };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1929,13 +2581,22 @@ export const GAPS_DOCUMENTS_PROBES: readonly ProbeDefinition[] = [
       "OPT-IN, leaves ONE ACTIVE recurring template on the trial for a day: a monthly WKR template for the tagged contact (no e-mail address, so nothing can be e-mailed) " +
       "whose start or next run is yesterday, or today if a past date is refused. It tries the schedule inputs of write-recurring-schedule-fields in turn, keeps the first " +
       "template that reads back with accountNextInvoice or accountStartDate and deletes the others. What does sevDesk store, and does it generate an invoice at once? " +
-      "Run read-recurring-generated the next day to see what sevDesk generated (a draft or a finalized invoice; sent or not).",
-    deviations: ["D-111", "D-014"],
+      "The template carries a 10 % discount (#124; saved without one if sevDesk refuses it). " +
+      "Run read-recurring-generated and read-recurring-generated-discounts the next day to see what sevDesk generated (a draft or a finalized invoice; sent or not; with the discount or not).",
+    deviations: ["D-111", "D-014", "D-116"],
     async run(ctx) {
       const tried: string[] = [];
+      const discount = {
+        discountSave: [discountRow(data(ctx).tag, { percentage: true })],
+        discountDelete: null,
+      };
       for (const variant of SCHEDULE_VARIANTS) {
         for (const next of [addDays(ctx.today, -1), ctx.today]) {
-          const made = await scheduledTemplate(ctx, variant, next);
+          let made = await scheduledTemplate(ctx, variant, next, discount);
+          if (made.id === undefined) {
+            tried.push(`${variant.label}, run ${next}, with the discount: ${made.text}`);
+            made = await scheduledTemplate(ctx, variant, next);
+          }
           if (made.id === undefined) {
             tried.push(`${variant.label}, run ${next}: ${made.text}`);
             continue;
@@ -1960,10 +2621,11 @@ export const GAPS_DOCUMENTS_PROBES: readonly ProbeDefinition[] = [
               1000,
             )
           ).rows.filter((item) => refId(item, "origin") === made.id);
+          const discounts = await discountRows(ctx, "Invoice", made.id);
           return {
             verdict: "observed",
             finding:
-              `Kept ${made.text} (made with: ${variant.label}, run ${next}). Invoices with this template as origin right after saving: ` +
+              `Kept ${made.text} (made with: ${variant.label}, run ${next}; ${discounts.text}). Invoices with this template as origin right after saving: ` +
               `${generated.length}. Run read-recurring-generated tomorrow. Tried before: ${tried.join(". ") || "nothing"}.`,
           };
         }
@@ -2094,6 +2756,160 @@ export const GAPS_DOCUMENTS_PROBES: readonly ProbeDefinition[] = [
         finding: `${templates.length} tagged template(s), ${generated.size} generated invoice(s) found. ${lines.join(". ")}.`,
         deviations: { "D-049": "informs", "D-014": "informs" },
       };
+    },
+  },
+
+  // --- #114, #124, #134: discounts in the cases D-116 left open -------------------------------
+  {
+    id: "write-discount-net-gross",
+    title: "Discounts on net and gross documents: isNet, value and the sums",
+    mode: "write",
+    question:
+      "What do isNet and value mean on a document discount (#114, #134)? Invoice, order (AN) and credit note drafts, each once net (showNet true, one position of " +
+      "100.00 at 19 %) and once gross (showNet false, price 119.00, D-050), each with a fixed 10.00 in discountSave; plus a gross invoice with 10 % and one with a fixed " +
+      "10.00 sent with isNet false. For each: the getDiscounts row (discount, percentage, value, isNet) and the sums (sumNet, sumTax, sumGross, sumDiscounts, " +
+      "sumDiscountNet, sumDiscountGross). Every draft is deleted at the end, also when a step fails.",
+    deviations: ["D-116", "D-050"],
+    async run(ctx) {
+      const own: OwnDocument[] = [];
+      return withCleanup(
+        () => discountNetGross(ctx, own),
+        () => deleteOwnDocuments(ctx, own),
+      );
+    },
+  },
+  {
+    id: "write-discount-mixed-tax",
+    title: "A discount on a document with 19 % and 7 % positions",
+    mode: "write",
+    question:
+      "How does sevDesk split a document discount across tax rates (#114)? An invoice draft with 100.00 at 19 % and 100.00 at 7 % (net), once with 10 % and once " +
+      "with a fixed 10.00: sumNet, sumTax, sumGross, sumDiscounts, sumDiscountNet, sumDiscountGross, the getDiscounts row and the sum fields of each position. " +
+      "Both drafts are deleted at the end, also when a step fails.",
+    deviations: ["D-116"],
+    async run(ctx) {
+      const own: OwnDocument[] = [];
+      return withCleanup(
+        () => discountMixedTax(ctx, own),
+        () => deleteOwnDocuments(ctx, own),
+      );
+    },
+  },
+  {
+    id: "write-discount-foreign-currency",
+    title: "A fixed discount on a CHF invoice",
+    mode: "write",
+    question:
+      "Is a fixed discount on a document in another currency an amount in that currency or in EUR (#114)? A CHF invoice draft (one position of 100.00 net at " +
+      "19 %) with a fixed 10.00: the sums, every currency field of the header (currency, currencyFactor, sum…ForeignCurrency) and the getDiscounts row. The draft is " +
+      "deleted at the end, also when a step fails.",
+    deviations: ["D-116", "D-043"],
+    async run(ctx) {
+      const own: OwnDocument[] = [];
+      return withCleanup(
+        () => discountForeignCurrency(ctx, own),
+        () => deleteOwnDocuments(ctx, own),
+      );
+    },
+  },
+  {
+    id: "write-discount-order-derived",
+    title: "The discount of an offer on its AB, LI, partial and advance invoice",
+    mode: "write",
+    question:
+      "Which documents derived from an offer with a 10 % discount carry it (#114, #112)? A sent offer (AN, 100.00 + 2 × 25.00 net at 19 %, marked sent with sendBy: " +
+      "orders are not enshrined) gives an order confirmation (createContractNoteFromOrder, commit) and a delivery note (createPackingListFromOrder); two more such " +
+      "offers give a partial invoice (createInvoiceFromOrder, partialType TR) and an advance invoice (partialType AR), each with type percentage and amount 50. " +
+      "For each: getDiscounts and the sums, and the invoices' type and status. The derived drafts are deleted at the end, also when a step fails; the three sent " +
+      "offers stay (sevDesk deletes drafts only, D-109).",
+    deviations: ["D-116", "D-107", "D-064"],
+    async run(ctx) {
+      const own: OwnDocument[] = [];
+      return withCleanup(
+        () => discountOrderDerived(ctx, own),
+        () => deleteOwnDocuments(ctx, own),
+      );
+    },
+  },
+  {
+    id: "write-recurring-template-discount",
+    title: "A discount on a recurring template, and replacing all its positions",
+    mode: "write",
+    question:
+      "Does a recurring template (WKR, commit, monthly, start in 30 days) take a 10 % discountSave, can getDiscounts read it, and does sevDesk keep it when an " +
+      "update with the template's id replaces every position (invoicePosSave a new one, invoicePosDelete the old ids, no discount keys) (#124)? The sums and " +
+      "getDiscounts before and after. Whether generated invoices carry the discount needs write-recurring-template-due (opt-in, its template has a 10 % discount) " +
+      "and read-recurring-generated-discounts the next day. The template is deleted at the end (ended with status 50 first if DELETE is refused, D-112), also when " +
+      "a step fails.",
+    deviations: ["D-116", "D-111"],
+    async run(ctx) {
+      const own: number[] = [];
+      return withCleanup(
+        () => templateDiscount(ctx, own),
+        async () => {
+          const notes: string[] = [];
+          for (const id of own) {
+            const deleted = await deleteTemplate(ctx, id);
+            notes.push(`template ${id} ${deleted.gone ? "deleted" : `left (${deleted.text})`}`);
+          }
+          return notes;
+        },
+      );
+    },
+  },
+  {
+    id: "write-recurring-month-end",
+    title: "Recurring templates starting on the 29th, 30th and 31st, and an end date",
+    mode: "write",
+    question:
+      "What does a monthly template (WKR) store when it starts on 29, 30 or 31 January of next year (accountStartDate as Unix seconds, D-111), and with an end date " +
+      "(start 31 January, end 28 February)? Every account… field is read back. What does POST /Invoice/Factory/calculateInvoicingRange (the web app's period " +
+      "computation; startDate 31 January, monthly, not deferred) answer? Which day sevDesk runs such a template in February and what it does at the end date need " +
+      "a template that runs into those months, so a trial cannot answer them. Every template is deleted at the end, also when a step fails.",
+    deviations: ["D-111", "D-112"],
+    async run(ctx) {
+      const own: number[] = [];
+      return withCleanup(
+        () => recurringMonthEnd(ctx, own),
+        async () => {
+          const notes: string[] = [];
+          for (const id of own) {
+            const deleted = await deleteTemplate(ctx, id);
+            notes.push(`template ${id} ${deleted.gone ? "deleted" : `left (${deleted.text})`}`);
+          }
+          return notes;
+        },
+      );
+    },
+  },
+  {
+    id: "read-recurring-generated-discounts",
+    title: "Discounts of the tagged recurring templates and the invoices they generated",
+    mode: "read",
+    question:
+      "Do invoices sevDesk generated from a tagged recurring template carry the template's discount (#124)? For up to 10 tagged templates (WKR, run tag): their " +
+      "getDiscounts and sums, and for up to 5 invoices generated from each (origin the template): getDiscounts and sums. Run it the day after " +
+      "write-recurring-template-due, whose template has a 10 % discount.",
+    deviations: ["D-116", "D-111"],
+    run: generatedDiscounts,
+  },
+  {
+    id: "write-einvoice-discount",
+    title: "An e-invoice with a 10 % discount: the AllowanceCharge in getXml (opt-in)",
+    mode: "write",
+    optIn: true,
+    question:
+      "OPT-IN, finalizes ONE invoice (it cannot be deleted afterwards): does an e-invoice draft (propertyIsEInvoice, contact with buyer reference and e-mail, payment " +
+      "method, address, as write-einvoice-xml) with a 10 % discount on 100.00 net finalize with sendBy, and does GET /Invoice/{id}/getXml carry the discount as an " +
+      "allowance (CII SpecifiedTradeAllowanceCharge, UBL AllowanceCharge): document or line level, charge indicator, amount, percent, basis, and the " +
+      "AllowanceTotalAmount (#114)? Element facts only; the scrubbed XML is attached as a fixture candidate. A draft left by a refused sendBy is deleted.",
+    deviations: ["D-116", "D-033", "D-034"],
+    async run(ctx) {
+      const own: OwnDocument[] = [];
+      return withCleanup(
+        () => eInvoiceDiscount(ctx, own),
+        () => deleteOwnDocuments(ctx, own),
+      );
     },
   },
 ];

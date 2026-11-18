@@ -16,7 +16,9 @@ import {
   GAPS_BANKING_PROBES,
   hashesOf,
   hashMatch,
+  orderOf,
   RECOGNITION_POLL,
+  runOf,
   sevQuery,
   snapshotChanges,
 } from "../../../scripts/lib/probes/gaps-banking-probes.js";
@@ -39,6 +41,7 @@ const OPT_IN = [
   "write-cash-register-transaction",
   "write-export-datev-xml",
   "write-transaction-enshrine",
+  "write-transaction-enshrine-statuses",
   "write-voucher-from-file",
 ];
 const PERSONAL = /Huber|5621913|deadbeefsecret|X-Amz|1042/;
@@ -126,6 +129,16 @@ function gapsAccount(
     existingRules?: number;
     /** Synthetic (not recorded): DELETE /PrivateTransactionRule/{id} is refused. */
     ruleDeleteRefused?: boolean;
+    /** Synthetic (failure test): the transaction list answers 500. */
+    transactionListRefused?: boolean;
+    /** Synthetic (failure test): DELETE /CheckAccount/{id} answers 500 and archives nothing. */
+    accountArchiveRefused?: boolean;
+    /** Synthetic (not recorded): fileImportAccount refuses importType MT940. */
+    mt940Refused?: boolean;
+    /** Synthetic (failure test): the voucher list answers 500. */
+    voucherListRefused?: boolean;
+    /** Synthetic (not recorded): a part booked with type N moves the row to 400, not 200. */
+    partialBookingFull?: boolean;
   } = {},
 ) {
   // Far from the digits PERSONAL looks for, so a generated id never matches it.
@@ -285,6 +298,9 @@ function gapsAccount(
       }
     }
     if (path === "/CheckAccount/Factory/fileImportAccount") {
+      if (settings.mt940Refused === true && body["importType"] === "MT940") {
+        refused(422, "Invalid importType");
+      }
       const accountId = nextId++;
       // Without a number: the next free one of the 18xx range (D-119).
       let free = 1807;
@@ -334,6 +350,7 @@ function gapsAccount(
         return { objects: row };
       }
       if (method === "DELETE") {
+        if (settings.accountArchiveRefused === true) refused(500, "Internal error");
         // Archives the account and soft-deletes its transactions (D-097).
         if (row !== undefined) row["status"] = "0";
         for (const transaction of onAccount(id)) softDelete(transaction);
@@ -353,12 +370,16 @@ function gapsAccount(
       const transactionId = nextId++;
       const { mapAll: _mapAll, ...fields } = body;
       // Recorded 2026-11-17 (D-071): the row itself, dates at noon Berlin, purpose null if unsent.
+      // Without an entryDate the simulation picks the run's day (not recorded, #136).
+      const noonOf = (value: unknown) =>
+        typeof value === "string" ? `${value.slice(0, 10)}T12:00:00+01:00` : undefined;
       const row: Rec = {
         ...fields,
         id: String(transactionId),
         objectName: "CheckAccountTransaction",
-        valueDate: `${TODAY}T12:00:00+01:00`,
-        entryDate: `${TODAY}T12:00:00+01:00`,
+        valueDate: noonOf(body["valueDate"]) ?? `${TODAY}T12:00:00+01:00`,
+        entryDate: noonOf(body["entryDate"]) ?? `${TODAY}T12:00:00+01:00`,
+        create: `${TODAY}T10:00:${String(transactionId % 60).padStart(2, "0")}+01:00`,
         amount: String(body["amount"]),
         paymtPurpose: body["paymtPurpose"] ?? null,
         status: "100",
@@ -393,6 +414,8 @@ function gapsAccount(
             "Cannot set or change property 'enshrined'. Please use the dedicated endpoint instead.",
           );
         }
+        // Synthetic (not recorded): 350 is set by sevDesk's own booking, not by hand.
+        if (body["status"] === 350) refused(422, "Invalid status");
         row["status"] = String(body["status"]);
         return { objects: row };
       }
@@ -409,9 +432,19 @@ function gapsAccount(
       return { objects: [row] };
     }
     if (path === "/CheckAccountTransaction") {
+      if (settings.transactionListRefused === true) refused(500, "Internal error");
       const filter = query["checkAccount[id]"];
-      const rows = filter === undefined ? [...transactions.values()] : onAccount(Number(filter));
-      return { total: String(rows.length), objects: rows };
+      const rows = (
+        filter === undefined ? [...transactions.values()] : onAccount(Number(filter))
+      ).filter(
+        (row) => query["status"] === undefined || Number(row["status"]) === Number(query["status"]),
+      );
+      // Ascending ids, paged by limit and offset (the order is not recorded, #136).
+      const offset = Number(query["offset"] ?? 0);
+      return {
+        total: String(rows.length),
+        objects: rows.slice(offset, offset + Number(query["limit"] ?? rows.length)),
+      };
     }
     // --- private transaction rules (hand-made rows never turned private, D-099) -------------
     if (path === "/PrivateTransactionRule") {
@@ -548,7 +581,11 @@ function gapsAccount(
         if (transaction["enshrined"] !== null || transaction["status"] === "400") {
           refused(422, "Voucher is not bookable with given payment information");
         }
-        transaction["status"] = "400";
+        // Synthetic (not recorded): a part booked with type N leaves the row linked (200), D-075.
+        const part =
+          body["type"] === "N" &&
+          Math.abs(Number(body["amount"])) < Math.abs(Number(transaction["amount"]));
+        transaction["status"] = part && settings.partialBookingFull !== true ? "200" : "400";
         links.set(Number(linked), id);
       } else {
         const transactionId = nextId++;
@@ -634,8 +671,22 @@ function gapsAccount(
       }
       return record === undefined ? refused(404, "not found") : { objects: [record] };
     }
-    if (path === "/Voucher")
-      return { total: String(vouchers.size), objects: [...vouchers.values()] };
+    if (path === "/Voucher") {
+      if (settings.voucherListRefused === true) refused(500, "Internal error");
+      // embed=document puts the whole Document in place of the reference (D-100).
+      const rows = [...vouchers.values()].map((row) => {
+        const documentId = Number((row["document"] as Rec | undefined)?.["id"]);
+        const document = documents.get(documentId);
+        return query["embed"] === "document" && document !== undefined
+          ? { ...row, document: { ...document.row } }
+          : row;
+      });
+      const offset = Number(query["offset"] ?? 0);
+      return {
+        total: String(rows.length),
+        objects: rows.slice(offset, offset + Number(query["limit"] ?? rows.length)),
+      };
+    }
     if (path === "/VoucherPos") {
       const voucherId = Number(query["voucher[id]"]);
       return recognition.has(voucherId) && (recognition.get(voucherId) ?? 0) >= 2
@@ -822,6 +873,15 @@ const RECHECKS = [
   "write-transaction-create-answer",
   "write-private-transaction-rule-storage",
 ];
+/** The write probes of the open live questions a trial can answer (#136), opt-in left out. */
+const TRIAL_136 = [
+  "write-transaction-list-order",
+  "write-private-transaction-rule-order",
+  "write-transaction-delete-archived-account",
+  "write-transaction-mt940-account",
+  "write-transaction-entry-date",
+  "write-receipt-image-reencode",
+];
 const saved = { export: EXPORT_POLL.delayMs, recognition: RECOGNITION_POLL.delayMs };
 
 beforeEach(() => {
@@ -835,7 +895,7 @@ afterEach(() => {
 });
 
 describe("gap probe catalog", () => {
-  it("registers every probe once, keeps exactly the four irreversible ones opt-in", () => {
+  it("registers every probe once, keeps exactly the five irreversible ones opt-in", () => {
     const ids = ALL_PROBES.map((probe) => probe.id);
     for (const probe of GAPS_BANKING_PROBES) {
       expect(
@@ -1003,10 +1063,11 @@ describe("gap probes on a simulated trial account", () => {
     expect(rules).toMatch(/cleanup back to 100: nothing private/);
 
     // The follow-up for D-096/D-097: counts only, the simulation lists soft-deleted rows (four of
-    // the delete probes, two of write-transaction-create-answer).
+    // the delete probes, two of write-transaction-create-answer, seven of the #136 probes) and the
+    // rows of the three archived accounts.
     const soft = finding(report, "read-transaction-soft-delete");
     expect(soft).toMatch(
-      /without a filter: \d+ rows \(total \d+\), 6 with deletedAt \(\d+ status 100(, \d+ status 100){5}\), 1 of accounts not in GET \/CheckAccount/,
+      /without a filter: \d+ rows \(total \d+\), 13 with deletedAt \(\d+ status 100(, \d+ status 100){12}\), 3 of accounts not in GET \/CheckAccount/,
     );
     // Bookings and counter-entries cancel out on the register.
     expect(soft).toMatch(/account 6333723: 4 rows, 0 with deletedAt; sum of all 0\.00/);
@@ -1200,6 +1261,216 @@ describe("gap probes on a simulated trial account", () => {
     ).toEqual(Array<string>(4).fill("rule (deleted at the end of the probe)"));
   });
 
+  it("asks the #136 list-order, account, entryDate and image questions and cleans up", async () => {
+    // A rule list that pages (no rules of the account's own).
+    const account = gapsAccount({ existingRules: 0 });
+    const report = await run(account, TRIAL_136);
+    for (const id of TRIAL_136) {
+      expect(report.results.find((result) => result.id === id)?.status, finding(report, id)).toBe(
+        "observed",
+      );
+    }
+
+    const order = finding(report, "write-transaction-list-order");
+    expect(order).toMatch(
+      /checkAccount\[id\]: 3 rows, id ascending, valueDate mixed \(1 steps up, 1 down\), entryDate mixed \(1 steps up, 1 down\), create ascending; own rows listed as A \(value day -2\), B \(value day 0\), C \(value day -1\)/,
+    );
+    expect(order).toMatch(/checkAccount\[id\] and status=100: 3 rows, id ascending/);
+    expect(order).toMatch(/no filter: \d+ rows, id ascending/);
+    expect(order).toMatch(
+      /checkAccount\[id\] paged: pages of 1 at offsets 0 to 2 give the same rows in the same order as one page/,
+    );
+    const orderRows = report.created.filter(
+      (record) =>
+        record.probe === "write-transaction-list-order" &&
+        record.objectName === "CheckAccountTransaction",
+    );
+    expect(orderRows.map((record) => record.state)).toEqual(
+      Array<string>(3).fill("deleted by the probe (soft delete)"),
+    );
+
+    const rules = finding(report, "write-private-transaction-rule-order");
+    expect(rules).toMatch(
+      /ascending ids: ascending\)\. The list \(total 3\): 3 rows, id ascending, create no values; own rows listed as R1, R2, R3; pages of 1 at offsets 0 to 2 give the same rows/,
+    );
+    expect(account.rules.size).toBe(0);
+
+    const archived = finding(report, "write-transaction-delete-archived-account");
+    expect(archived).toMatch(
+      /DELETE \/CheckAccount ok, then status 0 \(archived\)\. Row \d+ after the archive: status 100, soft-deleted \(deletedAt set\)\. DELETE of the row: DELETE ok, answer a list of 1; afterwards status 100, soft-deleted/,
+    );
+    expect(
+      report.created
+        .filter((record) => record.probe === "write-transaction-delete-archived-account")
+        .map((record) => `${record.objectName}: ${record.state}`),
+    ).toEqual([
+      "CheckAccount: archived by the probe (DELETE, D-097; delete it in the web app)",
+      "CheckAccountTransaction: deleted by the probe (soft delete)",
+    ]);
+
+    const mt940 = finding(report, "write-transaction-mt940-account");
+    expect(mt940).toMatch(
+      /importType MT940: created \d+ \(type="online", importType="MT940", .*accountingNumber "18\d\d"\)\. POST \/CheckAccountTransaction on it: created \d+ \(amount -7, status 100/,
+    );
+    expect(mt940).toMatch(/Cleanup: transaction \d+: DELETE ok.*; account \d+ archived\.$/);
+
+    const entry = finding(report, "write-transaction-entry-date");
+    for (const variant of ["without entryDate", "with entryDate null"]) {
+      expect(entry).toMatch(
+        new RegExp(
+          `${variant}: row \\d+, entryDate the run's day \\(time 12:00 as sent back\\), valueDate the day sent; create the run's day`,
+        ),
+      );
+    }
+    const entryPosts = account.client
+      .writes()
+      .filter(
+        (call) =>
+          call.path === "/CheckAccountTransaction" &&
+          String((call.body as Rec)["paymtPurpose"]).endsWith("Buchungstag"),
+      );
+    expect(entryPosts.map((call) => Object.hasOwn(call.body as Rec, "entryDate"))).toEqual([
+      false,
+      true,
+    ]);
+    expect(entryPosts.every((call) => call.tier === "commit")).toBe(true);
+
+    const images = finding(report, "write-receipt-image-reencode");
+    for (const kind of ["PNG", "JPEG"]) {
+      expect(images).toMatch(
+        new RegExp(
+          `${kind} \\(\\d+ bytes\\): upload contentHash is the SHA-256 of the uploaded bytes.*download \\d+ bytes, ${kind}, the uploaded bytes \\(not re-encoded\\)`,
+        ),
+      );
+      expect(images).toMatch(
+        new RegExp(`${kind} voucher embeds its document, contentHash is the SHA-256`),
+      );
+    }
+    expect(images).toMatch(
+      /pages of 1 at offsets 0 to 2 give the same rows in the same order as one page; the embedded document as on the one page in every row/,
+    );
+    expect(images).toMatch(
+      /Cleanup: voucher \d+ deleted, its Document gone; voucher \d+ deleted, its Document gone\.$/,
+    );
+    expect([...account.vouchers.keys()]).toEqual([8001]);
+
+    // Every list read names its limit; hashes and the account's own texts never reach the report.
+    for (const call of account.client.calls.filter(
+      (item) =>
+        item.method === "GET" &&
+        /^\/(CheckAccountTransaction|PrivateTransactionRule|Voucher|CheckAccount)$/.test(item.path),
+    )) {
+      expect(call.query["limit"], call.path).toEqual(expect.any(Number));
+    }
+    const markdown = renderReport(report);
+    expect(markdown).not.toMatch(PERSONAL);
+    expect(markdown).not.toMatch(/[0-9a-f]{64}/);
+  });
+
+  it("cleans up the #136 probes when a read or a step is refused", async () => {
+    const account = gapsAccount({
+      existingRules: 0,
+      transactionListRefused: true,
+      voucherListRefused: true,
+      accountArchiveRefused: true,
+      mt940Refused: true,
+    });
+    const report = await run(account, TRIAL_136);
+    expect(finding(report, "write-transaction-list-order")).toMatch(
+      /checkAccount\[id\]: refused \(500: Internal error\).*checkAccount\[id\] paged: no rows to page through/,
+    );
+    expect(
+      report.created
+        .filter(
+          (record) =>
+            record.probe === "write-transaction-list-order" &&
+            record.objectName === "CheckAccountTransaction",
+        )
+        .map((record) => record.state),
+    ).toEqual(Array<string>(3).fill("deleted by the probe (soft delete)"));
+
+    const archived = report.results.find(
+      (result) => result.id === "write-transaction-delete-archived-account",
+    );
+    expect(archived?.status).toBe("inconclusive");
+    expect(archived?.finding).toMatch(
+      /DELETE \/CheckAccount refused \(500: Internal error\), then status 100 \(not archived, so the question stays open\)/,
+    );
+    expect(archived?.finding).toMatch(
+      /Cleanup: account \d+ left \(DELETE refused \(500: Internal error\)\)\.$/,
+    );
+
+    expect(finding(report, "write-transaction-mt940-account")).toBe(
+      "fileImportAccount with importType MT940: refused (422: Invalid importType).",
+    );
+    expect(
+      report.created.filter((record) => record.probe === "write-transaction-mt940-account"),
+    ).toEqual([]);
+
+    expect(finding(report, "write-receipt-image-reencode")).toMatch(
+      /GET \/Voucher\?embed=document refused \(500: Internal error\)\. Cleanup: voucher \d+ deleted, its Document gone; voucher \d+ deleted, its Document gone\.$/,
+    );
+    expect([...account.vouchers.keys()]).toEqual([8001]);
+  });
+
+  it("enshrines its own rows at 300 and 200 only when named, and reports 350 as out of reach (#136)", async () => {
+    const id = "write-transaction-enshrine-statuses";
+    const skipped = await run(gapsAccount(), ["write-transaction-list-order"]);
+    expect(skipped.results.find((result) => result.id === id)).toBeUndefined();
+
+    const account = gapsAccount();
+    const report = await run(account, [id]);
+    const result = finding(report, id);
+    expect(result).toMatch(
+      /300: PUT status 300 ok, status 300; enshrine ok, answer null, enshrined 9999-99-99T99:99:99\+99:99, status 300; PUT status 100 afterwards refused \(422: Cannot set or change property 'enshrined'.*DELETE refused \(409: CheckAccountTransaction can only be deleted in status 100 but is status 300\); status now 300/,
+    );
+    expect(result).toMatch(
+      /200: bookAmount of 10 of the row's 22 \(type N\) ok, status 200; enshrine ok, answer null/,
+    );
+    expect(result).toMatch(
+      /350: PUT status 350 refused \(422: Invalid status\), status 100; 350 not reachable by hand on this account, not enshrined/,
+    );
+    expect(result).toMatch(
+      /Cleanup: transaction \d+ stays \(enshrined\); transaction \d+ stays \(enshrined\); transaction \d+: DELETE ok, answer a list of 1; afterwards status 100, soft-deleted \(deletedAt set\)\.$/,
+    );
+    // Only the probe's own rows are enshrined, each once.
+    const own = report.created
+      .filter((record) => record.probe === id && record.objectName === "CheckAccountTransaction")
+      .map((record) => String(record.id));
+    const enshrined = account.client.calls
+      .filter((call) => call.path.endsWith("/enshrine"))
+      .map((call) => /\/(\d+)\/enshrine$/.exec(call.path)?.[1]);
+    expect(enshrined).toHaveLength(2);
+    for (const item of enshrined) expect(own).toContain(item);
+    expect(
+      [...account.transactions.values()].filter((row) => row["enshrined"] !== null),
+    ).toHaveLength(2);
+    for (const call of account.client.writes()) expect(call.tier).toMatch(/^(write|commit)$/);
+
+    // A part booking that moves the row to 400: 200 not reached, the row released and deleted.
+    const full = gapsAccount({ partialBookingFull: true });
+    const fullReport = await run(full, [id]);
+    const fullResult = finding(fullReport, id);
+    expect(fullResult).toMatch(/status 400; 200 not reached, not enshrined/);
+    expect(fullResult).toMatch(
+      /transaction \d+: resetToOpen on voucher \d+ ok, DELETE ok, answer a list of 1; afterwards status 100, soft-deleted/,
+    );
+    expect([...full.transactions.values()].filter((row) => row["enshrined"] !== null)).toHaveLength(
+      1,
+    );
+  });
+
+  it("counts entryDate against valueDate per kind of account, read only (#136)", async () => {
+    const account = gapsAccount();
+    await run(account, ["write-transaction-entry-date"]);
+    const writes = account.client.writes().length;
+    const report = await run(account, ["read-transaction-entry-dates"]);
+    expect(finding(report, "read-transaction-entry-dates")).toBe(
+      '2 rows (total 2) on 1 kinds of account: online "CSV": 2 entry later.',
+    );
+    expect(account.client.writes()).toHaveLength(writes);
+  });
+
   it("compares receipt hashes without showing them", async () => {
     const account = gapsAccount();
     const report = await run(account);
@@ -1256,7 +1527,11 @@ describe("gap probes on a simulated trial account", () => {
 
   it("runs the opt-in probes only when named: one own transaction enshrined, XML job, recognition", async () => {
     const account = gapsAccount();
-    const report = await run(account, ALL_IDS);
+    // The enshrine-statuses probe enshrines more rows of its own; it has a test of its own below.
+    const report = await run(
+      account,
+      ALL_IDS.filter((id) => id !== "write-transaction-enshrine-statuses"),
+    );
     expect(report.results.filter((result) => result.status === "error")).toEqual([]);
 
     // Enshrine: only the probe's own transaction, never anything else.
@@ -1449,6 +1724,24 @@ describe("gap probe helpers", () => {
       () => Promise.resolve([]),
     );
     expect(quiet.finding).toBe("Nothing made.");
+  });
+
+  it("tells the direction of a list's ids and dates, ties allowed (#136)", () => {
+    expect(runOf([])).toBe("no values");
+    expect(runOf([5])).toBe("one value");
+    expect(runOf([3, 3])).toBe("all equal");
+    expect(runOf([1, 2, 2, 7])).toBe("ascending");
+    expect(runOf([7, 7, 2])).toBe("descending");
+    expect(runOf([1, 3, 2, 4])).toBe("mixed (2 steps up, 1 down)");
+    const rows = [
+      { id: "3", valueDate: "2026-11-18T12:00:00+01:00", create: "not a date" },
+      { id: "2", valueDate: "2026-11-20T12:00:00+01:00", create: null },
+      { id: "1", valueDate: "2026-11-19T12:00:00+01:00" },
+    ];
+    expect(orderOf(rows, ["valueDate", "create"])).toBe(
+      "3 rows, id descending, valueDate mixed (1 steps up, 1 down), create no values",
+    );
+    expect(orderOf([], ["create"])).toBe("0 rows, id no values, create no values");
   });
 
   it("confirms only when every recorded fact holds", () => {

@@ -106,9 +106,9 @@ describe("probe catalog", () => {
 
   it("never probes irreversible endpoints, and e-mails only from the e-mail probe", () => {
     // Every probe module (`*-probes.ts`), including the M4 ones. Export jobs may be probed (they
-    // only start a job), but never with an enshrine flag. The one exception: the opt-in probe
-    // write-transaction-enshrine enshrines a transaction it created itself, through exactly one
-    // call site in gaps-banking-probes.ts.
+    // only start a job), but never with an enshrine flag. The one exception: the opt-in probes
+    // write-transaction-enshrine and write-transaction-enshrine-statuses enshrine transactions they
+    // created themselves, through exactly one request site in gaps-banking-probes.ts.
     const directory = new URL("../../../scripts/lib/probes/", import.meta.url);
     const files = readdirSync(directory).filter((file) => file.endsWith("-probes.ts"));
     expect(files).toEqual(expect.arrayContaining(["read-probes.ts", "write-probes.ts"]));
@@ -120,8 +120,11 @@ describe("probe catalog", () => {
     const documented = "/CheckAccountTransaction/{id}/enshrine";
     const gaps = sources.get("gaps-banking-probes.ts") ?? "";
     expect(gaps.split(allowed)).toHaveLength(2);
-    expect(gaps.match(/enshrineOwnTransaction\(/g)).toHaveLength(4);
+    expect(gaps.match(/enshrineOwnTransaction\(/g)).toHaveLength(5);
     expect(ALL_PROBES.find((probe) => probe.id === "write-transaction-enshrine")?.optIn).toBe(true);
+    expect(
+      ALL_PROBES.find((probe) => probe.id === "write-transaction-enshrine-statuses")?.optIn,
+    ).toBe(true);
     const source = [...sources]
       .map(([file, text]) =>
         file === "gaps-banking-probes.ts"
