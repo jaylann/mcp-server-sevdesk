@@ -172,7 +172,7 @@ describe("sevdesk_contact_delete", () => {
         { label: "Category", value: "Kunde (customer)" },
         { label: "Addresses (deleted with it)", value: "2" },
         { label: "Communication ways (deleted with it)", value: "3" },
-        { label: "Custom field values (Zusatzfelder, deleted with it)", value: "2" },
+        { label: "Custom field values (Kontaktfelder, deleted with it)", value: "2" },
         { label: "Contact persons (deleted with it)", value: "1" },
         { label: "Contact person (deleted with it)", value: "Dr. Max Mustermann (contact 1002)" },
       ],
@@ -181,7 +181,7 @@ describe("sevdesk_contact_delete", () => {
           "this cannot be undone.",
         "sevDesk deletes the organisation's 1 contact person (Ansprechpartner) with it; this " +
           "cannot be undone either.",
-        "Any custom field values (Zusatzfelder) of the contact and of its contact person are " +
+        "Any custom field values (Kontaktfelder) of the contact and of its contact person are " +
           "deleted with them.",
       ],
       irreversible: true,
@@ -194,7 +194,7 @@ describe("sevdesk_contact_delete", () => {
         { label: "Kategorie", value: "Kunde" },
         { label: "Adressen (werden mitgelöscht)", value: "2" },
         { label: "Kommunikationswege (werden mitgelöscht)", value: "3" },
-        { label: "Werte von Zusatzfeldern (werden mitgelöscht)", value: "2" },
+        { label: "Werte von Kontaktfeldern (werden mitgelöscht)", value: "2" },
         { label: "Ansprechpartner (werden mitgelöscht)", value: "1" },
         {
           label: "Ansprechpartner (wird mitgelöscht)",
@@ -206,7 +206,7 @@ describe("sevdesk_contact_delete", () => {
           "gelöscht; das lässt sich nicht rückgängig machen.",
         "sevDesk löscht den Ansprechpartner der Organisation mit; das lässt sich ebenfalls nicht " +
           "rückgängig machen.",
-        "Auch die Werte von Zusatzfeldern des Kontakts und seines Ansprechpartners werden " +
+        "Auch die Werte von Kontaktfeldern des Kontakts und seines Ansprechpartners werden " +
           "mitgelöscht.",
       ],
       irreversible: true,
@@ -246,7 +246,7 @@ describe("sevdesk_contact_delete", () => {
       { label: "Contact person of", value: "contact 1001" },
       { label: "Addresses (deleted with it)", value: "0" },
       { label: "Communication ways (deleted with it)", value: "0" },
-      { label: "Custom field values (Zusatzfelder, deleted with it)", value: "0" },
+      { label: "Custom field values (Kontaktfelder, deleted with it)", value: "0" },
     ]);
     expect(preview.warnings).toHaveLength(1);
     expect(previewDe.action).toBe("Kontakt 1002 (Person) aus sevDesk löschen.");
@@ -296,11 +296,11 @@ describe("sevdesk_contact_delete", () => {
     );
     // The custom field values: the person's own, and those of a contact sevDesk may take along.
     expect(plan.preview.warnings[2]).toBe(
-      "Its custom field values (Zusatzfelder) are deleted with it, and so are those of any " +
+      "Its custom field values (Kontaktfelder) are deleted with it, and so are those of any " +
         "contact sevDesk deletes with it.",
     );
     expect(plan.previewDe.warnings[2]).toBe(
-      "Auch die Werte seiner Zusatzfelder werden mitgelöscht, ebenso die jedes Kontakts, den " +
+      "Auch die Werte seiner Kontaktfelder werden mitgelöscht, ebenso die jedes Kontakts, den " +
         "sevDesk mitlöscht.",
     );
     // A contact stored under the person after the human was asked asks again.
@@ -324,18 +324,18 @@ describe("sevdesk_contact_delete", () => {
     );
     const { preview, previewDe } = await prepareWrite(tool, { id: 1001 }, client);
     expect(preview.facts).toContainEqual({
-      label: "Custom field values (Zusatzfelder, deleted with it)",
+      label: "Custom field values (Kontaktfelder, deleted with it)",
       value: "could not be read",
     });
     expect(previewDe.facts).toContainEqual({
-      label: "Werte von Zusatzfeldern (werden mitgelöscht)",
+      label: "Werte von Kontaktfeldern (werden mitgelöscht)",
       value: "nicht lesbar",
     });
     // Unread values may exist, so the warning names them all the same.
     expect(preview.warnings).toContain(
-      "Its custom field values (Zusatzfelder) are deleted with it.",
+      "Its custom field values (Kontaktfelder) are deleted with it.",
     );
-    expect(previewDe.warnings).toContain("Auch die Werte seiner Zusatzfelder werden mitgelöscht.");
+    expect(previewDe.warnings).toContain("Auch die Werte seiner Kontaktfelder werden mitgelöscht.");
     expect(client.writes()).toEqual([]);
     expect(client.callsTo("/ContactCustomField").every((call) => call.method === "GET")).toBe(true);
   });
@@ -394,9 +394,9 @@ describe("sevdesk_contact_delete", () => {
     expect(preview.warnings).toEqual([
       "The contact, its at least 10000 addresses and its 3 communication ways are deleted from " +
         "sevDesk; this cannot be undone.",
-      "Its custom field values (Zusatzfelder) are deleted with it.",
+      "Its custom field values (Kontaktfelder) are deleted with it.",
     ]);
-    expect(previewDe.warnings).toContain("Auch die Werte seiner Zusatzfelder werden mitgelöscht.");
+    expect(previewDe.warnings).toContain("Auch die Werte seiner Kontaktfelder werden mitgelöscht.");
     expect(previewDe.facts).toContainEqual({
       label: "Ansprechpartner (werden mitgelöscht)",
       value: "keine",

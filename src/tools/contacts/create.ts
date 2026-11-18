@@ -25,7 +25,7 @@ export const contactCreateTool = defineWriteTool({
     "free one), USt-IdNr., Steuernummer, Leitweg-ID, billing address (Rechnungsanschrift) and " +
     "e-mail, phone, website; a person can belong to an organisation as its contact person " +
     "(Ansprechpartner, parentOrganisationId), and customFields sets custom field values " +
-    "(Zusatzfelder) by field id or name. Tier write. Checks first that no contact with the " +
+    "(Kontaktfelder) by field id or name. Tier write. Checks first that no contact with the " +
     "same name or e-mail exists (allowDuplicate: true creates one anyway), that the customer " +
     "number is free, that parentOrganisationId is an organisation and that each custom field " +
     "exists. Search with sevdesk_contacts_search before; change it later with " +

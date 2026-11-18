@@ -226,7 +226,7 @@ const output = z.object({
   contactCustomFields: z
     .array(customFieldSettingDtoSchema)
     .optional()
-    .describe("Kind contact_custom_fields: the account's custom contact fields (Zusatzfelder)."),
+    .describe("Kind contact_custom_fields: the account's custom contact fields (Kontaktfelder)."),
   receiptGuidance: z
     .array(receiptGuidanceItem)
     .optional()
@@ -264,7 +264,7 @@ export const referenceLookupTool = defineTool({
     "revenue receipts (Belege); filter with accountNumber, taxRuleId and receiptType, paged " +
     "with limit/offset), letterpapers (Briefpapiere), templates (Vorlagen, with documentType), " +
     "text_templates (Textvorlagen: head and foot texts, documentType optional) and " +
-    "contact_custom_fields (the custom contact fields, Zusatzfelder, defined in the sevDesk web " +
+    "contact_custom_fields (the custom contact fields, Kontaktfelder, defined in the sevDesk web " +
     "app; their ids go into customFields of the contact tools). Use query to filter by a " +
     "case-insensitive substring of names, codes or ids.",
   toolset: "meta",

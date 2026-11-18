@@ -96,10 +96,16 @@ jeder Begriff wichtig ist. Die Begriffe des Servers selbst stehen am Ende.
 | Kunde, Lieferant        | customer, supplier | Die Kategorie des Kontakts; daneben auch Partner und Interessent.                                                              | `category` der Kontaktwerkzeuge                                                           |
 | Kundennummer            | customer number    | Die Nummer des Kontakts; standardmäßig die nächste freie, die sevDesk vergibt.                                                 | [`sevdesk_contacts_next_customer_number`](tools.md#sevdesk_contacts_next_customer_number) |
 | USt-IdNr., Steuernummer | VAT ID, tax number | Die steuerlichen Kennungen des Kontakts; die USt-IdNr. zählt bei EU- und Reverse-Charge-Umsätzen.                              | [`sevdesk_contact_create`](tools.md#sevdesk_contact_create)                               |
-| Zusatzfeld              | custom field       | Ein Kontaktfeld, das man in der sevDesk-Weboberfläche für das Konto anlegt; ein Kontakt hat höchstens einen Wert davon.        | `customFields` der Kontaktwerkzeuge                                                       |
+| Kontaktfeld             | custom field       | Ein Feld, das man in der sevDesk-Weboberfläche anlegt; ein Kontakt hat höchstens einen Wert davon, unter „Eigene Felder“.      | `customFields` der Kontaktwerkzeuge                                                       |
 | Artikel (API: Part)     | part               | Ein Produkt oder eine Dienstleistung mit Nummer, Preis, Steuersatz und optionalem Bestand.                                     | `sevdesk_part_*`, [`sevdesk_parts_list`](tools.md#sevdesk_parts_list)                     |
 | Artikelnummer           | part number        | Die eindeutige Nummer des Artikels.                                                                                            | [`sevdesk_part_create`](tools.md#sevdesk_part_create)                                     |
 | Lagerbestand            | stock              | Die Menge auf Lager, wenn die Bestandsführung aktiv ist.                                                                       | [`sevdesk_part_get`](tools.md#sevdesk_part_get)                                           |
+
+Kontaktfelder und Eigene Felder sind die Namen aus der sevDesk-Hilfe: Die Felder legst du unter
+Einstellungen → System → Kontaktfelder an
+([Kontaktfelder anlegen](https://hilfe.sevdesk.de/de/articles/9382263-kontaktfelder-anlegen)), die
+Werte eines Kontakts trägst du unter Eigene Felder ein
+([Kontakte anlegen](https://hilfe.sevdesk.de/de/articles/9064553-kontakte-anlegen-v1)).
 
 ## Begriffe des Servers
 

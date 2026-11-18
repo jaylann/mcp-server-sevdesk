@@ -1,6 +1,6 @@
 /**
- * Custom contact fields (Zusatzfelder): reading a contact's values, planning and sending the
- * values `sevdesk_contact_create` and `sevdesk_contact_update` set or remove, the account's field
+ * Custom contact fields (Kontaktfelder in the sevDesk web app, where a contact's values are filled
+ * in under "Eigene Felder"): reading a contact's values, planning and sending the values `sevdesk_contact_create` and `sevdesk_contact_update` set or remove, the account's field
  * definitions for `sevdesk_reference_lookup`, and the search behind `sevdesk_contacts_search`.
  *
  * sevDesk keeps a custom field in two resources (recorded on a trial account, Update 2.0,
