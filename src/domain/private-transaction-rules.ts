@@ -1,6 +1,6 @@
 /**
- * Private-transaction rules (`PrivateTransactionRule`): the texts by which sevDesk marks bank
- * transactions private on its own. The reads, checks, plans and requests behind
+ * Private-transaction rules (`PrivateTransactionRule`): the texts by which sevDesk is expected to
+ * mark bank transactions private on its own (not measured, see below). The reads, checks, plans and requests behind
  * `sevdesk_private_transaction_rules_list`, `sevdesk_private_transaction_rule_create` and
  * `sevdesk_private_transaction_rule_delete`.
  *
@@ -61,8 +61,8 @@ const RULES_PAGE_SIZE = 1000;
 const RULE_SEARCH_PAGES = 5;
 
 /**
- * Fewest letters or digits a rule text needs. A rule marks every bank import it matches private,
- * and if sevDesk matches by "contains", a text of one to three characters ("AG", "dm", "EUR",
+ * Fewest letters or digits a rule text needs. sevDesk is expected to mark every bank import a rule
+ * matches private, and if it matches by "contains", a text of one to three characters ("AG", "dm", "EUR",
  * "Re") occurs inside a great many unrelated counterparties and purposes. Four still allows short
  * real names such as "REWE", "ALDI", "Lohn" or "Miete". Spaces and punctuation do not count.
  */
@@ -294,9 +294,9 @@ export async function planPrivateRuleCreate(
   if (significantLength(text) < RULE_TEXT_MIN) {
     refuse(
       `The rule's text is too short: it needs at least ${String(RULE_TEXT_MIN)} letters or ` +
-        "digits. A rule marks every bank import it matches as private, and a short text such as " +
-        '"AG" or "dm" occurs in a great many unrelated counterparties and purposes. Nothing was ' +
-        "sent.",
+        "digits. sevDesk is expected to mark every bank import a rule matches as private, and a " +
+        'short text such as "AG" or "dm" occurs in a great many unrelated counterparties and ' +
+        "purposes. Nothing was sent.",
     );
   }
 

@@ -300,7 +300,13 @@ describe("sevdesk_private_transaction_rule_create", () => {
       "sevDesk would store a rule with both, but whether it then needs both texts to match or " +
         "only one is not known",
     ],
-    ["a two-letter text", { counterparty: "AG" }, "too short"],
+    // Where rules act was never measured (D-099): the reason is hedged, not stated as a fact.
+    [
+      "a two-letter text",
+      { counterparty: "AG" },
+      "too short: it needs at least 4 letters or digits. sevDesk is expected to mark every bank " +
+        "import a rule matches as private",
+    ],
     ["three letters with spaces and dots", { purpose: "d. m. x" }, "at least 4 letters or digits"],
     ["an equal counterparty rule", { counterparty: "  vermieter   HUBER " }, "rule 951 already"],
     [

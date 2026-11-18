@@ -5,7 +5,8 @@
  * `src/domain/private-transaction-rules.ts`.
  *
  * Tiers: marking one transaction private is `commit` (`sevdesk_transaction_mark_private`), and a
- * rule makes sevDesk do that on its own for future bank imports, so creating and deleting rules is
+ * rule is meant to make sevDesk do that on its own for future bank imports (not measured, D-099),
+ * so creating and deleting rules is
  * `commit` too: a human confirms the preview.
  */
 import { z } from "zod";

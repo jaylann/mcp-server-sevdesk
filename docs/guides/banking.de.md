@@ -142,12 +142,12 @@ passt.
 [`sevdesk_private_transaction_rule_create`](../tools.md#sevdesk_private_transaction_rule_create)
 (`commit`) legt eine Regel mit einem Text an, `counterparty` oder `purpose`, und
 [`sevdesk_private_transaction_rule_delete`](../tools.md#sevdesk_private_transaction_rule_delete)
-(`commit`) löscht eine. Beide sind `commit`, weil eine Regel von selbst tut, was
+(`commit`) löscht eine. Beide sind `commit`, weil eine Regel von selbst tun soll, was
 [`sevdesk_transaction_mark_private`](../tools.md#sevdesk_transaction_mark_private) von Hand tut.
 
 **Wo Regeln wirken, und was sich nicht testen ließ.** sevDesk soll eine Regel anwenden, wenn es
-Umsätze von der Bank importiert. Ein Testkonto importiert nichts: Dort änderten zwei Regeln keinen der
-vorhandenen offenen Umsätze, auch keinen, der nach den Regeln von Hand erfasst wurde, und das
+Umsätze von der Bank importiert. Ein Testkonto importiert nichts: Dort änderten zwei Regeln keinen
+der vorhandenen offenen Umsätze, auch keinen, der nach den Regeln von Hand erfasst wurde, und das
 Löschen der Regeln änderte ebenfalls nichts. Wie sevDesk eine Regel abgleicht (ganzer Text oder ein
 Teil davon, Groß- und Kleinschreibung) und ob auch ein CSV-Dateiimport Regeln anwendet, ist daher
 nicht bekannt.
@@ -164,8 +164,8 @@ Das Werkzeug zum Anlegen lehnt ab, bevor etwas gesendet wird:
 - eine Regel mit beiden Texten: Ob sevDesk dann beide Texte oder nur einen verlangt, wurde nicht
   getestet. Lege eine Regel je Text an, wenn jeder davon einen Umsatz privat machen soll;
 - einen Text mit weniger als vier Buchstaben oder Ziffern: Ein kurzer Text wie „AG“ oder „dm“ kommt
-  in sehr vielen fremden Auftraggebern und Verwendungszwecken vor, und eine Regel markiert jeden
-  Import, zu dem sie passt;
+  in sehr vielen fremden Auftraggebern und Verwendungszwecken vor, und sevDesk soll jeden Import,
+  zu dem eine Regel passt, als privat markieren;
 - einen Text, den eine vorhandene Regel schon hat (ohne Rücksicht auf Groß- und Kleinschreibung und
   zusätzliche Leerzeichen); die Ablehnung nennt diese Regel.
 

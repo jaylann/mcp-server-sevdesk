@@ -135,12 +135,12 @@ rule: a text that a transaction's counterparty (Auftraggeber/Empfänger) or purp
 [`sevdesk_private_transaction_rule_create`](../tools.md#sevdesk_private_transaction_rule_create)
 (`commit`) creates a rule with one text, `counterparty` or `purpose`, and
 [`sevdesk_private_transaction_rule_delete`](../tools.md#sevdesk_private_transaction_rule_delete)
-(`commit`) deletes one. Both are `commit` because a rule does on its own what
+(`commit`) deletes one. Both are `commit` because a rule is meant to do on its own what
 [`sevdesk_transaction_mark_private`](../tools.md#sevdesk_transaction_mark_private) does by hand.
 
 **Where rules act, and what could not be tested.** sevDesk is expected to apply a rule when it
-imports transactions from the bank. A trial account imports nothing: there, two rules changed none of the
-existing open transactions, not even one entered by hand after the rules were created, and
+imports transactions from the bank. A trial account imports nothing: there, two rules changed none
+of the existing open transactions, not even one entered by hand after the rules were created, and
 deleting the rules changed nothing either. So how sevDesk matches a rule (the whole text or a part
 of it, upper and lower case), and whether a CSV file import applies rules too, is not known.
 
@@ -155,7 +155,8 @@ The create tool refuses, before anything is sent:
 - a rule with both texts: whether sevDesk then needs both to match or only one was not tested.
   Create one rule per text if either should mark a transaction private;
 - a text with fewer than four letters or digits: a short text such as "AG" or "dm" occurs in a
-  great many unrelated counterparties and purposes, and a rule marks every import it matches;
+  great many unrelated counterparties and purposes, and sevDesk is expected to mark every import
+  a rule matches;
 - a text that an existing rule already has (upper and lower case and extra spaces ignored); the
   refusal names that rule.
 
