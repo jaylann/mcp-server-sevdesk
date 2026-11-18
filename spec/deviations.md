@@ -763,12 +763,14 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   2026-11-18, trial account, Update 2.0 (probe `write-contact-name-search`).
 - **Impact:** The client serializes booleans as `1`/`0` and always sends `depth=1` for contact
   lists, so `sevdesk_contacts_search` `query` and the contact name suggestions of the prompts
-  find persons too, by any part of the name, in any letter case. `sevdesk_transactions_list`
+  find persons too, by any part of the name, in any letter case. The suggestions answer a typed
+  name from a complete search for its beginning, without a new request. `sevdesk_transactions_list`
   never sends `isBooked`. With exactly one status (for example
   `created`) it sends `status=<code>` to narrow the read; several statuses cannot go into one
   filter and are not sent. Either way it checks every row's status itself, so a server that
   ignores the filter changes nothing, and its output says that it filtered locally.
 - **Test:** `test/unit/tools/contacts/search.test.ts` (`depth=1`),
+  `test/unit/prompts/completions.test.ts` ("contact searches reused for a longer typed name"),
   `test/regressions/b16-zero-values.test.ts` (booleans as `1`/`0`),
   `test/unit/tools/banking/transactions.test.ts` ("filters unbooked (created) transactions locally
   and counts sevDesk rows, not matches", "combines several statuses and a direction"). Live:

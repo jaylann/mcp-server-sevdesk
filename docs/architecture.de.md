@@ -224,7 +224,10 @@ Vervollständiger einer Serverinstanz an eine Kopie des Argumentschemas, weil `c
 SDK ein Schema dauerhaft markiert und die Schemas des Katalogs von allen Konten geteilt werden.
 Monate, Quartale und Jahre ergeben sich aus der Uhr. Namen von Kontakten und Konten (`completions.ts`) kommen aus
 einer Listenabfrage je Art, dazu einer Namenssuche (Limit 100) je getipptem Namen, wenn das Konto
-mehr Kontakte hat, als eine Abfrage liefert, immer nur lesend und mit ausdrücklichem Limit.
+mehr Kontakte hat, als eine Abfrage liefert, immer nur lesend und mit ausdrücklichem Limit. Ein
+getippter Name, der mit einem beginnt, dessen Suche vollständig zurückkam, wird ohne Abfrage aus
+dieser Suche beantwortet, denn die Namenssuche von sevDesk findet jeden Teil des Namens
+(spec/deviations.md D-020).
 Gelesen werden sie nur, wenn `sevdesk_contacts_search` oder `sevdesk_bank_accounts_list`
 registriert ist, und eine Minute je `Config` eines Kontos zwischengespeichert (über HTTP ist jede
 Anfrage eine neue Instanz). Ein fehlgeschlagener Lesevorgang schlägt einige Sekunden lang nichts

@@ -2,7 +2,7 @@
  * Argument suggestions (`src/prompts/completions.ts`): months, periods and years from the clock, contact
  * and payment account names from the account (gated by the registered read tools, read-only,
  * with an explicit limit, cached per account, failures kept briefly, searches stopped when nobody
- * waits for them), and how `completableArgs` attaches them without touching the shared catalog
+ * waits for them, a longer typed name answered from a complete search), and how `completableArgs` attaches them without touching the shared catalog
  * schemas.
  */
 import { isCompletable } from "@modelcontextprotocol/server";
@@ -64,6 +64,33 @@ function clock(start = Date.UTC(2026, 10, 16, 12)): {
 } {
   let at = start;
   return { now: () => at, advance: (ms) => (at += ms) };
+}
+
+/**
+ * An account with more contacts than one read returns (1,500, of which a read gets the first
+ * 1,000, all named `Kunde …`), whose name search behaves as recorded (spec/deviations.md D-020):
+ * the contacts of `named` whose name contains the searched text in any letter case, up to the
+ * limit, with the count of all of them. `searches` records every searched name.
+ */
+function searchableAccount(named: readonly string[]): {
+  client: SevdeskClient;
+  searches: string[];
+} {
+  const searches: string[] = [];
+  const firstPage = Array.from({ length: 1000 }, (_, index) => ({
+    id: String(index + 1),
+    name: `Kunde ${String(index + 1).padStart(4, "0")}`,
+  }));
+  const client = withList(new FakeSevdeskClient([]), (_path, query, options) => {
+    const name = query?.["name"];
+    if (typeof name !== "string") return Promise.resolve({ items: firstPage, total: 1500 });
+    searches.push(name);
+    const found = named
+      .filter((contact) => contact.toLocaleLowerCase("de").includes(name.toLocaleLowerCase("de")))
+      .map((contact, index) => ({ id: String(5000 + index), name: contact }));
+    return Promise.resolve({ items: found.slice(0, options?.limit), total: found.length });
+  });
+  return { client, searches };
 }
 
 /** Lets every pending promise settle (one macrotask). */
@@ -379,22 +406,23 @@ describe("account completers", () => {
       client: account.client,
       tools: BOTH_TOOLS,
     });
+    // Of equal length, so that no typed name starts with another (which would reuse its search).
     const typed = Array.from(
       { length: MAX_CACHED_SEARCHES },
-      (_, index) => `suche ${String(index)}`,
+      (_, index) => `suche ${String(index).padStart(2, "0")}`,
     );
 
     for (const value of typed) await completers.contact?.(value);
-    expect(await completers.contact?.("suche 0")).toEqual(["suche 0 GmbH"]);
+    expect(await completers.contact?.("suche 00")).toEqual(["suche 00 GmbH"]);
     await completers.contact?.("eine mehr");
-    await completers.contact?.("suche 0");
-    await completers.contact?.("suche 1");
+    await completers.contact?.("suche 00");
+    await completers.contact?.("suche 01");
 
     expect(account.calls.filter((name) => name === undefined)).toHaveLength(1);
     expect(account.calls.filter((name) => name !== undefined)).toEqual([
       ...typed,
       "eine mehr",
-      "suche 1",
+      "suche 01",
     ]);
   });
 
@@ -558,6 +586,162 @@ describe("account completers", () => {
     expect(searches.map((call) => call.query)).toEqual([
       { depth: "1", name: "Zebra", limit: 100, offset: 0, countAll: true },
     ]);
+  });
+});
+
+describe("contact searches reused for a longer typed name", () => {
+  const MUELLER = [
+    "Müller GmbH",
+    "Gebr. Müller KG",
+    "Hans Müllermann",
+    "Mülheim Stadtwerke",
+    "Zahnarzt Mülhausen",
+  ];
+
+  function completersOf(
+    client: SevdeskClient,
+    now?: () => number,
+  ): ReturnType<typeof accountCompleters> {
+    return accountCompleters({
+      config: testConfig(),
+      client,
+      tools: BOTH_TOOLS,
+      ...(now === undefined ? {} : { now }),
+    });
+  }
+
+  it("answers a longer typed name from a complete search, ranked, without a request", async () => {
+    const account = searchableAccount(MUELLER);
+    const completers = completersOf(account.client);
+
+    expect(await completers.contact?.("mül")).toEqual([
+      "Mülheim Stadtwerke",
+      "Müller GmbH",
+      "Gebr. Müller KG",
+      "Hans Müllermann",
+      "Zahnarzt Mülhausen",
+    ]);
+    expect(await completers.contact?.("müll")).toEqual([
+      "Müller GmbH",
+      "Gebr. Müller KG",
+      "Hans Müllermann",
+    ]);
+    expect(await completers.contact?.(" Müller G ")).toEqual(["Müller GmbH"]);
+    expect(await completers.contact?.("müllerx")).toEqual([]);
+    expect(account.searches).toEqual(["mül"]);
+  });
+
+  it("compares the typed names in any letter case", async () => {
+    const account = searchableAccount(MUELLER);
+    const completers = completersOf(account.client);
+
+    await completers.contact?.("Mül");
+    expect(await completers.contact?.("müll")).toEqual([
+      "Müller GmbH",
+      "Gebr. Müller KG",
+      "Hans Müllermann",
+    ]);
+    expect(await completers.contact?.("MÜLLERM")).toEqual(["Hans Müllermann"]);
+    expect(account.searches).toEqual(["Mül"]);
+  });
+
+  it("reuses only a search for a beginning of the typed name", async () => {
+    const account = searchableAccount(MUELLER);
+    const completers = completersOf(account.client);
+
+    await completers.contact?.("hans");
+    await completers.contact?.("mül");
+    expect(await completers.contact?.("hansi")).toEqual([]);
+    expect(await completers.contact?.("müll")).toHaveLength(3);
+    // Contained in "hans" but not its beginning: "ans" finds more than "hans" did.
+    expect(await completers.contact?.("ans")).toEqual(["Hans Müllermann"]);
+    expect(await completers.contact?.("ller")).toEqual([
+      "Gebr. Müller KG",
+      "Hans Müllermann",
+      "Müller GmbH",
+    ]);
+    expect(account.searches).toEqual(["hans", "mül", "ans", "ller"]);
+  });
+
+  it("searches again when the search for the shorter name was cut at its limit", async () => {
+    const many = Array.from(
+      { length: 150 },
+      (_, index) => `Mülltonne ${String(index).padStart(3, "0")}`,
+    );
+    const account = searchableAccount([...many, "Müller GmbH"]);
+    const completers = completersOf(account.client);
+
+    // Exactly the limit of 100 rows, of 151: the answer may leave out a longer name's contacts.
+    expect(await completers.contact?.("mül")).toHaveLength(100);
+    expect(await completers.contact?.("mülle")).toEqual(["Müller GmbH"]);
+    expect(account.searches).toEqual(["mül", "mülle"]);
+  });
+
+  it("searches again once the search for the shorter name has expired", async () => {
+    const account = searchableAccount(MUELLER);
+    const time = clock();
+    const completers = completersOf(account.client, time.now);
+
+    await completers.contact?.("mül");
+    time.advance(COMPLETION_CACHE_TTL_MS - 1);
+    expect(await completers.contact?.("müll")).toHaveLength(3);
+    expect(account.searches).toEqual(["mül"]);
+
+    time.advance(1);
+    expect(await completers.contact?.("mülle")).toHaveLength(3);
+    expect(account.searches).toEqual(["mül", "mülle"]);
+  });
+
+  it("counts a reuse as a use of the search it reuses, for the least recently used", async () => {
+    const account = searchableAccount(MUELLER);
+    const completers = completersOf(account.client);
+    const others = Array.from(
+      { length: MAX_CACHED_SEARCHES - 1 },
+      (_, index) => `anders ${String(index).padStart(2, "0")}`,
+    );
+
+    await completers.contact?.("mül");
+    for (const value of others) await completers.contact?.(value);
+    // Reused, "mül" is the most recently used: the next search pushes out "anders 00" instead.
+    await completers.contact?.("müll");
+    await completers.contact?.("eine mehr");
+    await completers.contact?.("mülle");
+    await completers.contact?.("anders 00");
+
+    expect(account.searches).toEqual(["mül", ...others, "eine mehr", "anders 00"]);
+  });
+
+  it("searches again while the search for the shorter name still runs", async () => {
+    const account = crowdedAccount({ hold: true });
+    const completers = completersOf(account.client);
+
+    const shorter = completers.contact?.("zeb");
+    await vi.waitFor(() => {
+      expect(account.held).toHaveLength(1);
+    });
+    const longer = completers.contact?.("zebra");
+    await vi.waitFor(() => {
+      expect(account.held).toHaveLength(2);
+    });
+    for (const search of account.held) search.release();
+
+    expect(await shorter).toEqual(["zeb GmbH"]);
+    expect(await longer).toEqual(["zebra GmbH"]);
+    expect(account.calls).toEqual([undefined, "zeb", "zebra"]);
+  });
+
+  it("searches again after the search for the shorter name failed", async () => {
+    const account = crowdedAccount({
+      failure: (name) =>
+        name === "kap"
+          ? new SevdeskError({ kind: "validation", message: "Invalid request.", status: 400 })
+          : undefined,
+    });
+    const completers = completersOf(account.client);
+
+    expect(await completers.contact?.("kap")).toEqual([]);
+    expect(await completers.contact?.("kaputt")).toEqual(["kaputt GmbH"]);
+    expect(account.calls).toEqual([undefined, "kap", "kaputt"]);
   });
 });
 

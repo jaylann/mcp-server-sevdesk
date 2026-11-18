@@ -10,7 +10,9 @@
  *   ({@link COMPLETION_TOOLS}), so never without the read tier or the toolset;
  * - through a client that refuses every request that changes data, always with an explicit
  *   `limit`: one list request per kind, plus a name search (limit 100) per typed name when the
- *   account has more contacts than one read returns;
+ *   account has more contacts than one read returns. A typed name that starts with one whose
+ *   search came back complete is answered from that search, without a request
+ *   ({@link completeSearchFor}), so typing on after a narrow search sends nothing more;
  * - cached for {@link COMPLETION_CACHE_TTL_MS} per account. Over HTTP each request builds a new
  *   server instance (ADR 0004), so the cache lives here, keyed by the account's `Config` object:
  *   the owner the domain caches use, one per OAuth context (`src/accounts/resolver.ts`). One
@@ -217,6 +219,8 @@ interface CachedRead {
    */
   expires: number;
   readonly names: Promise<NameList>;
+  /** The names once the read succeeded; undefined while it runs and after it failed. */
+  answer: NameList | undefined;
   /** Callers waiting that may still give up on the read; infinite once one never will. */
   waiting: number;
   /** Drops the read from the cache and stops it, unless it has settled. */
@@ -281,6 +285,7 @@ function cachedRead(
   const read: CachedRead = {
     expires: held?.until ?? at + COMPLETION_CACHE_TTL_MS,
     names: held === undefined ? load(controller.signal) : Promise.reject(held.error),
+    answer: undefined,
     waiting: 0,
     stop: () => {
       if (settled) return;
@@ -290,8 +295,9 @@ function cachedRead(
   };
   reads.set(key, read);
   void read.names.then(
-    () => {
+    (names) => {
       settled = true;
+      read.answer = names;
     },
     (error: unknown) => {
       settled = true;
@@ -336,6 +342,43 @@ function awaitReadUnless(
   return Promise.race([read.names, gaveUp]).finally(() => {
     signal.removeEventListener("abort", giveUp);
   });
+}
+
+/**
+ * The names of a cached search that already answers the typed name `key` (trimmed and in lower
+ * case, as the searches are keyed), so no request is needed: a search for `key` or for a beginning
+ * of it that is still reused, has succeeded and came back complete. sevDesk's `name` filter finds
+ * a part of the shown name in any letter case (spec/deviations.md D-020), so a complete answer
+ * for "mül" holds every contact whose name contains "müll". The longest such search is taken, and
+ * it counts as a hit: it moves last, as the most recently used.
+ *
+ * A search still running, failed or cut at its limit answers nothing here, and the caller sends
+ * its own as before. Waiting for a running one could end in a cut answer and a second request
+ * after it, one round trip later; a failed one holds no names.
+ *
+ * The caller keeps only the names that contain the typed text ({@link rankNames}), as it does
+ * with every search answer. sevDesk may match other fields as well (a customer number, `name2`;
+ * only the shown name was measured). A contact found only by such a field is dropped by that
+ * filter, from a reused answer as from a new search, so for suggestions the reuse loses nothing.
+ */
+function completeSearchFor(
+  searches: Map<string, CachedRead>,
+  key: string,
+  at: number,
+): NameList | undefined {
+  let best:
+    { readonly key: string; readonly read: CachedRead; readonly names: NameList } | undefined;
+  for (const [cachedKey, read] of searches) {
+    const names = read.answer;
+    if (names?.complete !== true || read.expires <= at || !key.startsWith(cachedKey)) continue;
+    if (best === undefined || cachedKey.length > best.key.length) {
+      best = { key: cachedKey, read, names };
+    }
+  }
+  if (best === undefined) return undefined;
+  searches.delete(best.key);
+  searches.set(best.key, best.read);
+  return best.names;
 }
 
 /**
@@ -404,10 +447,13 @@ export function accountCompleters(options: AccountCompleterOptions): Completers 
         if (all.complete || needle === "" || needle.length > MAX_SEARCH_LENGTH) {
           return rankNames(all.names, value);
         }
+        const key = needle.toLocaleLowerCase("de");
+        const known = completeSearchFor(reads.searches, key, now());
+        if (known !== undefined) return rankNames([...all.names, ...known.names], value);
         const search = cachedRead(
           reads,
           reads.searches,
-          needle.toLocaleLowerCase("de"),
+          key,
           now,
           (stop) => listContactNames(client, { query: needle, limit: CONTACT_SEARCH_LIMIT }, stop),
           MAX_CACHED_SEARCHES,
