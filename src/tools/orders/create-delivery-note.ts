@@ -38,9 +38,10 @@ export const orderCreateDeliveryNoteTool = defineWriteTool({
     "from offer drafts (send them first), rejected offers or delivery notes. Refuses when a " +
     "delivery note draft from the order exists (allowDuplicate overrides, e.g. a second partial " +
     "delivery); finalized ones from the order are named in the preview. Tier write. sevDesk " +
-    "gives it the next LI number without moving its counter, so the LI counter is moved past " +
-    "it afterwards (every real create advances it, also for a draft deleted later: a gap); " +
-    "such calls run one at a time per account. The result names other delivery notes with the " +
+    "gives it the next LI number without moving its counter, so it is reserved on the LI " +
+    "counter afterwards to move the counter past it (assumed to work for LI, not checked; every " +
+    "real create reserves one, also for a draft deleted later: a gap); such calls run one at a " +
+    "time per account. The result names other delivery notes with the " +
     "same number. Then check it with sevdesk_order_get and finalize it with " +
     "sevdesk_order_finalize.",
   toolset: "orders",
@@ -83,11 +84,12 @@ export const orderCreateDeliveryNoteTool = defineWriteTool({
         "positions as listed here; sevDesk leaves the order itself unchanged. Check it with " +
         "sevdesk_order_get and finalize it with sevdesk_order_finalize.",
       "sevDesk gives the delivery note the next number of the LI range without moving its " +
-        "counter, so the LI counter is moved past that number afterwards; otherwise the next " +
-        "delivery note could get the same number. That happens on every real create, also for a " +
-        "draft that is deleted later, which can leave a gap in the LI numbers. Calls that number " +
-        "delivery notes run one at a time per account. The result names other delivery notes " +
-        "with the same number.",
+        "counter, so that number is then reserved on the LI counter to move the counter past " +
+        "it; otherwise the next delivery note could get the same number. That a reservation " +
+        "moves the LI counter is assumed, not checked against sevDesk. A number is reserved on " +
+        "every real create, also for a draft that is deleted later, which can leave a gap in " +
+        "the LI numbers. Calls that number delivery notes run one at a time per account. The " +
+        "result names other delivery notes with the same number.",
     ];
     if (content.discountCount > 0) {
       // Only createInvoiceFromOrder was recorded with a discount (it copies it, D-116).

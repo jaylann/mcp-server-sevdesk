@@ -1144,7 +1144,9 @@ content}}` for invoices, credit notes and orders (recorded; key casing: D-072). 
   and `sevdesk_order_create_delivery_note` do the same for the `AB` and `LI` counters
   (`src/domain/order-follow-ups.ts`, #134): after the factory request, when the peek still offers
   the new order's number, it is reserved once, so consecutive confirmations or delivery notes no
-  longer share a number. Every real create therefore advances the counter, also for a draft that
+  longer share a number, provided the reservation advances the `AB` and `LI` counters (assumed,
+  not recorded: D-066; previews, descriptions and the result note say so). Every real create
+  therefore reserves a number, also for a draft that
   is deleted later, which can leave a gap in the range (D-066 recorded the number coming back only
   for the draft saved with the number reserved last; for a factory draft it is not recorded). The
   two tools, and `sevdesk_order_create_draft` for an `AB` or `LI` draft, hold the range's

@@ -184,10 +184,12 @@ und Aufschläge auf das ganze Dokument der Vorlage auf; ob sevDesk sie übernimm
 also vergleiche die Summen des neuen Entwurfs, bevor du ihn fertigstellst.
 
 sevDesk gibt dem neuen Dokument die nächste Nummer seines Nummernkreises, ohne den Zähler
-weiterzuschalten; deshalb schaltet das Werkzeug den Zähler gleich danach über diese Nummer hinaus,
-sonst bekäme die nächste Auftragsbestätigung oder der nächste Lieferschein dieselbe Nummer. Das
-geschieht bei jedem echten Aufruf (nicht bei einem Probelauf), auch für einen Entwurf, den du später
-löschst; dann kann eine Lücke in den AB- oder LI-Nummern bleiben. Aufrufe, die
+weiterzuschalten; deshalb reserviert das Werkzeug diese Nummer gleich danach am Zähler, um ihn über
+sie hinaus weiterzuschalten, sonst bekäme die nächste Auftragsbestätigung oder der nächste
+Lieferschein dieselbe Nummer. Dass die Reservierung den AB- und den LI-Zähler weiterschaltet, ist
+angenommen, aber nicht an sevDesk geprüft (geprüft ist das nur für Angebote und Gutschriften). Die
+Reservierung geschieht bei jedem echten Aufruf (nicht bei einem Probelauf), auch für einen
+Entwurf, den du später löschst; dann kann eine Lücke in den AB- oder LI-Nummern bleiben. Aufrufe, die
 Auftragsbestätigungen nummerieren, und Aufrufe, die Lieferscheine nummerieren (diese beiden Werkzeuge
 und [`sevdesk_order_create_draft`](../tools.md#sevdesk_order_create_draft) für einen solchen
 Entwurf), laufen je Konto nacheinander, damit zwei davon nicht dieselbe Nummer bekommen. Das

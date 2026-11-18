@@ -95,11 +95,12 @@ describe("sevdesk_order_create_delivery_note (D-107)", () => {
     expect(client.calls.filter((call) => call.path === NEXT_ORDER_NUMBER)).toEqual([]);
     expect(plan.preview.warnings[1]).toBe(
       "sevDesk gives the delivery note the next number of the LI range without moving its " +
-        "counter, so the LI counter is moved past that number afterwards; otherwise the next " +
-        "delivery note could get the same number. That happens on every real create, also for a " +
-        "draft that is deleted later, which can leave a gap in the LI numbers. Calls that number " +
-        "delivery notes run one at a time per account. The result names other delivery notes " +
-        "with the same number.",
+        "counter, so that number is then reserved on the LI counter to move the counter past " +
+        "it; otherwise the next delivery note could get the same number. That a reservation " +
+        "moves the LI counter is assumed, not checked against sevDesk. A number is reserved on " +
+        "every real create, also for a draft that is deleted later, which can leave a gap in " +
+        "the LI numbers. Calls that number delivery notes run one at a time per account. The " +
+        "result names other delivery notes with the same number.",
     );
     expect(plan.preview.action).toBe(
       "Create a delivery note (Lieferschein, LI) draft from order 3002 (Auftragsbestätigung).",
@@ -131,8 +132,10 @@ describe("sevdesk_order_create_delivery_note (D-107)", () => {
       ["GET", NEXT_ORDER_NUMBER, "write", { orderType: "LI", useNextNumber: "true" }, undefined],
     ]);
     expect(output.data.notes).toEqual([
-      "sevDesk's LI number counter was moved past LI-1001 (the new delivery note's number), so " +
-        "the next delivery note cannot get it again.",
+      "The new delivery note's number (LI-1001) was reserved on sevDesk's LI number counter, " +
+        "which should move the counter past it so that the next delivery note does not get it " +
+        "again. That a reservation moves the LI counter is assumed, not checked against " +
+        "sevDesk; if it did not, the next call names the delivery note with the same number.",
     ]);
     expect(output.data.order).toMatchObject({
       id: 3201,

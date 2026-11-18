@@ -172,9 +172,11 @@ or surcharges on the whole source document; whether sevDesk takes them over has 
 so compare the new draft's totals before finalizing it.
 
 sevDesk gives the new document the next number of its range without moving the counter, so the
-tool moves the counter past that number right afterwards; otherwise the next confirmation or
-delivery note would get the same number. This happens on every real call (not on a dry run), also
-for a draft you delete later, which can leave a gap in the AB or LI numbers. Calls that number
+tool reserves that number on the counter right afterwards to move the counter past it; otherwise
+the next confirmation or delivery note would get the same number. That a reservation moves the AB
+and LI counters is assumed, not checked against sevDesk (it was checked for offers and credit
+notes only). The reservation happens on every real call (not on a dry run), also for a draft you
+delete later, which can leave a gap in the AB or LI numbers. Calls that number
 order confirmations, and calls that number delivery notes (these two tools, and
 [`sevdesk_order_create_draft`](../tools.md#sevdesk_order_create_draft) for such a draft), run one
 at a time per account, so two of them cannot take the same number. The result says what happened

@@ -74,8 +74,10 @@ function staged(options: Options = {}): StagedClient {
 }
 
 const MOVED =
-  "sevDesk's AB number counter was moved past AB-1003 (the new order confirmation's number), " +
-  "so the next order confirmation cannot get it again.";
+  "The new order confirmation's number (AB-1003) was reserved on sevDesk's AB number counter, " +
+  "which should move the counter past it so that the next order confirmation does not get it " +
+  "again. That a reservation moves the AB counter is assumed, not checked against sevDesk; if " +
+  "it did not, the next call names the order confirmation with the same number.";
 
 /**
  * What the tool's execute throws after the request it sends (and, when the failure comes after
@@ -136,27 +138,29 @@ describe("sevdesk_order_create_confirmation (D-107)", () => {
     ]);
   });
 
-  it("says in both languages that the AB counter is moved on, with a possible gap and the lock (#134)", async () => {
+  it("says in both languages that the AB counter is moved on (assumed, not checked), with a possible gap and the lock (#134)", async () => {
     const client = staged();
     const plan = await prepareWrite(tool, { orderId: 3001 }, client);
     // The preview only reads: the counter is neither peeked nor reserved before the approval.
     expect(client.calls.filter((call) => call.path === NEXT_ORDER_NUMBER)).toEqual([]);
     expect(plan.preview.warnings[2]).toBe(
       "sevDesk gives the confirmation the next number of the AB range without moving its " +
-        "counter, so the AB counter is moved past that number afterwards; otherwise the next " +
-        "confirmation could get the same number. That happens on every real create, also for a " +
-        "draft that is deleted later, which can leave a gap in the AB numbers. Calls that number " +
-        "order confirmations run one at a time per account. The result names other " +
-        "confirmations with the same number.",
+        "counter, so that number is then reserved on the AB counter to move the counter past " +
+        "it; otherwise the next confirmation could get the same number. That a reservation " +
+        "moves the AB counter is assumed, not checked against sevDesk. A number is reserved on " +
+        "every real create, also for a draft that is deleted later, which can leave a gap in " +
+        "the AB numbers. Calls that number order confirmations run one at a time per account. " +
+        "The result names other confirmations with the same number.",
     );
     expect(plan.previewDe.warnings[2]).toBe(
       "sevDesk gibt der Auftragsbestätigung die nächste Nummer des AB-Nummernkreises, ohne den " +
-        "Zähler weiterzuschalten; danach wird der AB-Zähler über diese Nummer hinaus " +
-        "weitergeschaltet, sonst könnte die nächste Auftragsbestätigung dieselbe Nummer " +
-        "bekommen. Das geschieht bei jeder echten Erstellung, auch für einen Entwurf, der später " +
-        "gelöscht wird; dann kann eine Lücke in den AB-Nummern bleiben. Aufrufe, die " +
-        "Auftragsbestätigungen nummerieren, laufen je Konto nacheinander. Das Ergebnis nennt " +
-        "andere Auftragsbestätigungen mit derselben Nummer.",
+        "Zähler weiterzuschalten; danach wird diese Nummer am AB-Zähler reserviert, um den " +
+        "Zähler über sie hinaus weiterzuschalten, sonst könnte die nächste Auftragsbestätigung " +
+        "dieselbe Nummer bekommen. Dass die Reservierung den AB-Zähler weiterschaltet, ist " +
+        "angenommen, aber nicht an sevDesk geprüft. Reserviert wird bei jeder echten Erstellung, " +
+        "auch für einen Entwurf, der später gelöscht wird; dann kann eine Lücke in den " +
+        "AB-Nummern bleiben. Aufrufe, die Auftragsbestätigungen nummerieren, laufen je Konto " +
+        "nacheinander. Das Ergebnis nennt andere Auftragsbestätigungen mit derselben Nummer.",
     );
   });
 

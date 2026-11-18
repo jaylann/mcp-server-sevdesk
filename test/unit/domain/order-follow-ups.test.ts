@@ -98,9 +98,13 @@ describe("createOrderFromOrder: the number counter (#134)", () => {
       ["POST", ENDPOINTS.confirmation],
       ["GET", NEXT_ORDER_NUMBER],
     ]);
+    // Hedged: that the reservation moves the AB counter is assumed, not recorded (D-066).
     expect(result.notes).toEqual([
-      "sevDesk's AB number counter was moved past AB-1003 (the new order confirmation's " +
-        "number), so the next order confirmation cannot get it again.",
+      "The new order confirmation's number (AB-1003) was reserved on sevDesk's AB number " +
+        "counter, which should move the counter past it so that the next order confirmation " +
+        "does not get it again. That a reservation moves the AB counter is assumed, not checked " +
+        "against sevDesk; if it did not, the next call names the order confirmation with the " +
+        "same number.",
     ]);
   });
 
@@ -111,8 +115,10 @@ describe("createOrderFromOrder: the number counter (#134)", () => {
       ["LI", "true", true],
     ]);
     expect(result.notes).toEqual([
-      "sevDesk's LI number counter was moved past LI-1001 (the new delivery note's number), so " +
-        "the next delivery note cannot get it again.",
+      "The new delivery note's number (LI-1001) was reserved on sevDesk's LI number counter, " +
+        "which should move the counter past it so that the next delivery note does not get it " +
+        "again. That a reservation moves the LI counter is assumed, not checked against " +
+        "sevDesk; if it did not, the next call names the delivery note with the same number.",
     ]);
   });
 

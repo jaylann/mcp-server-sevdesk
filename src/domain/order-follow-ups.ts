@@ -370,9 +370,13 @@ async function advanceOrderCounter(client: SevdeskClient, target: NumberTarget):
           `${taken} instead, which is now skipped (a gap in the number range, Nummernkreis).`,
       ];
     }
+    // Hedged: that `useNextNumber=true` advances the AB and LI counters is assumed, not recorded
+    // (D-066 recorded AN and credit notes only).
     return [
-      `${counter} was moved past ${label} (the new ${info.noun}'s number), so the next ` +
-        `${info.noun} cannot get it again.`,
+      `The new ${info.noun}'s number (${label}) was reserved on ${counter}, which should move ` +
+        `the counter past it so that the next ${info.noun} does not get it again. That a ` +
+        `reservation moves the ${info.type} counter is assumed, not checked against sevDesk; ` +
+        `if it did not, the next call names the ${info.noun} with the same number.`,
     ];
   } catch (error) {
     if (!(error instanceof SevdeskError)) {
