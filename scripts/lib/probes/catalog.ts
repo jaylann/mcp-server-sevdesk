@@ -6,6 +6,7 @@ import type { ProbeDefinition } from "./core.js";
 import { GAPS_BANKING_PROBES } from "./gaps-banking-probes.js";
 import { GAPS_CONTACTS_PROBES } from "./gaps-contacts-probes.js";
 import { GAPS_DOCUMENTS_PROBES } from "./gaps-documents-probes.js";
+import { LIST_PAGING_PROBES } from "./list-paging-probes.js";
 import { M4_BANKING_PROBES } from "./m4-banking-probes.js";
 import { M4_EINVOICE_PROBES } from "./m4-einvoice-probes.js";
 import { M4_REPORT_PROBES } from "./m4-reports-probes.js";
@@ -13,7 +14,10 @@ import { M4_VOUCHER_PROBES } from "./m4-voucher-probes.js";
 import { READ_PROBES } from "./read-probes.js";
 import { WRITE_PROBES } from "./write-probes.js";
 
-/** M3 probes first, then the M4 ones (receipts, banking, reports, e-invoices). */
+/**
+ * M3 probes first, then the M4 ones (receipts, banking, reports, e-invoices), the competitor-gap
+ * ones, and the list paging ones (#162).
+ */
 export const ALL_PROBES: readonly ProbeDefinition[] = [
   ...WRITE_PROBES,
   ...READ_PROBES,
@@ -24,6 +28,7 @@ export const ALL_PROBES: readonly ProbeDefinition[] = [
   ...GAPS_CONTACTS_PROBES,
   ...GAPS_BANKING_PROBES,
   ...GAPS_DOCUMENTS_PROBES,
+  ...LIST_PAGING_PROBES,
 ];
 
 /** A question the probe never asks sevDesk; it belongs to a human, by hand, if at all. */
