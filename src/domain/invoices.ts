@@ -415,10 +415,10 @@ export async function listInvoices(
   };
   if (params.status !== undefined) query["status"] = INVOICE_STATUS_FILTERS[params.status];
   if (type !== undefined) query["invoiceType"] = type;
-  // The Invoice tag's filter table lists `showWkr=all` ("Retrieve all recurring invoices") and
-  // `showMa=all` ("… payment reminders"), which suggests sevDesk hides recurring templates and
-  // reminders unless asked. Unverified (no recording): sent only when that type is requested; the
-  // local type re-check below keeps the result exact either way.
+  // The default list leaves recurring templates and reminders out; `showWkr=all` and `showMa=all`
+  // (the Invoice tag's filter table) each list only their type (recorded, D-049, D-112). Sent only
+  // when that type is requested, together with `invoiceType`; that combination is not recorded on
+  // its own, and the local type re-check below keeps the result exact either way.
   if (type === "WKR") query["showWkr"] = "all";
   if (type === "MA") query["showMa"] = "all";
   if (params.contactId !== undefined) {

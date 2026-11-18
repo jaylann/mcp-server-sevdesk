@@ -1750,8 +1750,10 @@ content}}` for invoices, credit notes and orders (recorded; key casing: D-072). 
   `read-recurring-generated`; `test/fixtures/recorded/2026-11-16/invoices/recurring-templates.json`).
 - **Impact:** Templates and reminders are not documents of their own, so the tools keep them out
   of totals whatever the default is. `sevdesk_invoices_list` sends `showWkr=all` or `showMa=all`
-  only when the caller asks for type `recurring` or `reminder`, and re-checks the type on every
-  row (D-015). `sevdesk_records_summarize` leaves WKR and MA invoices out and counts them in its
+  only when the caller asks for type `recurring` or `reminder`, together with `invoiceType` (`WKR`
+  or `MA`), and re-checks the type on every row (D-015). Each parameter is recorded on its own;
+  their combination is not, which the re-check covers: rows of another type are dropped, and the
+  filter could at worst list too few. `sevdesk_records_summarize` leaves WKR and MA invoices out and counts them in its
   notes unless `invoiceType` asks for them. `sevdesk_receivables_aging` leaves them out and
   reports them under `excluded` (`recurringTemplates`, `reminders`). The summary and
   `sevdesk_payables_aging` read vouchers with `voucherType=VOU` (not `noRv`) and drop RV rows that
@@ -1762,7 +1764,8 @@ content}}` for invoices, credit notes and orders (recorded; key casing: D-072). 
 - **Test:** `test/regressions/changed-since-reminders.test.ts`,
   `test/unit/tools/reports/changed-since.test.ts` ("reports a reminder that sevDesk's default
   invoice list hides"), `test/unit/tools/invoices/list.test.ts` ("asks sevDesk to show
-  recurring templates and reminders when that type is requested"),
+  recurring templates and reminders when that type is requested", "re-checks the invoice type on
+  every row, so an ignored filter cannot leak (D-015)"),
   `test/unit/tools/reports/summarize.test.ts`
   ("leaves recurring templates (WKR) and reminders (MA) out unless asked for", "counts reminders
   when invoiceType asks for them", "totals expense and revenue in separate lines, foreign ones
