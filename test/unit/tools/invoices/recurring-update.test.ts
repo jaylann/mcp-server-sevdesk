@@ -734,8 +734,8 @@ describe("sevdesk_invoice_update_recurring", () => {
       expect(plan.previewDe.warnings).toHaveLength(plan.preview.warnings.length);
     });
 
-    it("counts a kept percentage on new gross prices like on net prices (recorded 2026-11-18)", async () => {
-      // 95.20 gross at 19 % is 80.00 net; 10 % off gives the same totals as on net prices (D-116).
+    it("counts a kept percentage on new gross prices off the gross total (recorded 2026-11-18)", async () => {
+      // 95.20 gross at 19 %: 10 % takes 9.52 off the gross, 85.68 / 1.19 = 72.00 net (D-116).
       const gross = [{ ...wartung[0], unitPrice: "95.20" }];
       const plan = await prepare(
         { positions: gross, priceMode: "gross" },
@@ -748,16 +748,28 @@ describe("sevdesk_invoice_update_recurring", () => {
       });
     });
 
-    it("leaves the total to sevDesk for a kept fixed amount on gross prices", async () => {
-      // On gross prices sevDesk takes a fixed amount off the gross total, which is not computed
-      // here (D-116, recorded 2026-11-18).
+    it("computes a kept fixed amount on gross prices (recorded 2026-11-18)", async () => {
+      // On gross prices sevDesk takes a fixed amount off the gross total: 95.20 − 5.00 = 90.20,
+      // 90.20 / 1.19 = 75.80 net (D-116).
       const gross = [{ ...wartung[0], unitPrice: "95.20" }];
       const fixed = discountRow("Invoice", 2301, { percentage: "0", value: "5" });
       const plan = await prepare({ positions: gross, priceMode: "gross" }, withDiscounts([fixed]));
-      expect(plan.state.positions?.expected).toBeUndefined();
+      expect(plan.state.positions?.expected).toEqual({
+        net: "75.80",
+        tax: "14.40",
+        gross: "90.20",
+      });
       expect(fact(plan.preview.facts, "Discount on the whole document (Rabatt)")).toBe(
         'unchanged: 5.00 EUR gross ("Rabatt")',
       );
+      expect(plan.preview.warnings.join(" ")).not.toContain("not computed here");
+    });
+
+    it("leaves the total to sevDesk for a kept fixed amount above the new total", async () => {
+      const gross = [{ ...wartung[0], unitPrice: "95.20" }];
+      const fixed = discountRow("Invoice", 2301, { percentage: "0", value: "100" });
+      const plan = await prepare({ positions: gross, priceMode: "gross" }, withDiscounts([fixed]));
+      expect(plan.state.positions?.expected).toBeUndefined();
       expect(plan.preview.warnings).toContainEqual(
         expect.stringMatching(/^The total per invoice with the kept discount is not computed here/),
       );

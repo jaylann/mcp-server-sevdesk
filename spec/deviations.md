@@ -4981,25 +4981,82 @@ pdf, sevClient, name, default, img}]}`, `GET /DocServer/getTemplatesWithThumb?ty
       | 32.47 at 0 %, 89.92 at 7 %, 102.48 at 19 % | 9.99     | 214.88, 24.62, 239.5  |
 
       `sumDiscountNet` is the fixed amount, or the percentage of the net total rounded to cents
-      (3 % of 103.46: -3.1). One rule gives all of these and the two even splits above: each rate
-      gives up its share of the net deduction by net, rounded half-up to cents, with the cent left
-      over on the rate with the largest net; its tax is the rest of its net times the rate,
-      rounded to cents; the document's tax is the sum. Of the 48 roundings the cases were chosen
-      to tell apart (share rounded or exact; tax rounded on the total, on the deduction, per rate
-      on the deduction or per rate on the rest; the leftover cent on the largest, first, last,
-      highest-rate or lowest-rate position; a percentage off the total or off each rate), no other
-      fits all 15. Four of them (26.92/76.54 with 3 % and three of the three-rate ones) rule out
-      the earlier one-rate formula, a rate's position tax less the tax of its share. No recorded
-      share or tax lands on a half cent, so half-up at a tie is assumed, not recorded.
+      (3 % of 103.46: -3.1). Of the 48 roundings these cases were chosen to tell apart (share
+      rounded or exact; tax rounded on the total, on the deduction, per rate on the deduction or
+      per rate on the rest; the leftover cent on the largest, first, last, highest-rate or
+      lowest-rate position; a percentage off the total or off each rate), only one fits all 15:
+      the share of the net deduction rounded half-up, the cent left over on the largest net, the
+      tax of the rest rounded. Four of them (26.92/76.54 with 3 % and three of the three-rate
+      ones) rule out the earlier one-rate formula, the positions' tax less the tax of the share.
+      These cases have one position per rate, so whether the split runs per rate or per position
+      was left open; `write-discount-rounding-edges` settled it (below): per position.
 
     - Gross prices, two rates: 119.00 at 19 % + 107.00 at 7 % with 10 % gave 180, 23.4, 203.4
-      (`sumDiscountNet` -20), as on net prices; with a fixed 10.00 it gave 191.15, 24.85, 216
+      (`sumDiscountNet` -20); with a fixed 10.00 it gave 191.15, 24.85, 216
       (`sumDiscountNet` -8.85, `sumDiscountGross` -10); 83.30 at 19 % + 32.10 at 7 % with a fixed
       9.99 gave 91.34, 14.07, 105.41 (-8.66, -9.99). A fixed amount on gross prices is a gross
-      amount and comes off the gross total exactly. How it is split into net and tax is not
-      settled: three rules give the three gross cases (net less the net total × amount / gross
-      total; or a gross share per rate, rounded, then each rate's net from its discounted gross;
-      or the net of each gross share) and disagree in about a fifth of other cases.
+      amount and comes off the gross total exactly. Three rules gave these three cases (F1: net
+      less the net total × amount / gross total; F2: a gross share per rate, rounded, then each
+      rate's net from its discounted gross; F3: the net of each gross share);
+      `write-discount-rounding-edges` settled it (below): F2.
+    - Rounding edges (recorded 2026-11-18, probe `write-discount-rounding-edges`, #158, 18
+      invoice drafts, all deleted). Each case was chosen so that the candidate rules give
+      different sums. `sumNet` / `sumTax` / `sumGross` as stored, and which candidate gave them
+      (GU: share per rate, tax of the rest, half-up, the rule fitted to the 15 cases above; GE:
+      the same half-to-even; PU, PE: the share per position, tax per position, half-up or
+      half-to-even; LU, LE: the positions' taxes less the tax of the share; N: the net rule on
+      the positions' nets; G1: the gross total less the rounded percentage, then F1; G2: the
+      same, then F2; G3: each rate's gross less the percentage, rounded, its net from that):
+
+      | Positions                                 | Discount | Sums                  | Fits           |
+      | ----------------------------------------- | -------- | --------------------- | -------------- |
+      | 3 × 10.00 + 25.00 at 19 % (net)           | 10 %     | 49.5, 9.41, 58.91     | GU, PU, PE, LE |
+      | 58.95 at 19 % (net)                       | 9.45     | 49.5, 9.41, 58.91     | GU, PU         |
+      | 61.00 at 7 % (net)                        | 9.50     | 51.5, 3.61, 55.11     | GU, PU, LE     |
+      | 146.45 at 19 % (net)                      | 10 %     | 131.8, 25.04, 156.84  | GU, PU         |
+      | 98.05 at 7 % (net)                        | 10 %     | 88.24, 6.18, 94.42    | GU, PU         |
+      | 51.50 at 19 % (net)                       | 3 %      | 49.95, 9.49, 59.44    | GU, PU         |
+      | 10.01 + 10.01 + 10.01 at 19 % (net)       | 10 %     | 27.03, 5.13, 32.16    | PU, PE, L      |
+      | 33.33 + 33.33 + 33.34 at 19 % (net)       | 9.99     | 90.01, 17.1, 107.11   | G, P           |
+      | 43.24 + 11.89 + 9.72 at 19 % (net)        | 10 %     | 58.36, 11.08, 69.44   | PU             |
+      | 38.75 + 7.34 + 12.59 at 19 % (net)        | 9.20     | 49.48, 9.41, 58.89    | PU, PE         |
+      | 29.45 + 49.40 at 19 %, 28.80 at 7 % (net) | 10 %     | 96.88, 15.3, 112.18   | PU             |
+      | 37.14 + 37.50 at 19 %, 34.22 at 7 % (net) | 13.30    | 95.56, 14.54, 110.1   | PU, PE         |
+      | 99.99 at 19 % (gross)                     | 3 %      | 81.5, 15.49, 96.99    | G2, G3         |
+      | 99.99 at 19 %, 49.99 at 7 % (gross)       | 7 %      | 121.59, 17.89, 139.48 | G2, G3         |
+      | 80.51 at 19 %, 42.55 at 7 % (gross)       | 3 %      | 104.2, 15.17, 119.37  | G2             |
+      | 133.52 at 19 %, 136.29 at 7 % (gross)     | 10.42    | 230.33, 29.06, 259.39 | F2             |
+      | 68.95 at 19 %, 30.38 at 7 % (gross)       | 6.63     | 80.58, 12.12, 92.7    | F2             |
+      | 59.09 at 19 %, 184.71 at 7 % (gross)      | 5.61     | 217.16, 21.03, 238.19 | F2             |
+      - **Ties are half-up**: 49.50 × 19 % = 9.405 gave 9.41, 51.50 × 7 % = 3.605 gave 3.61, and
+        the deductions 14.645, 9.805 and 1.545 (10 % and 3 %) gave 14.65, 9.81 and 1.55. GE, PE
+        and LE each miss at least one of these.
+      - **Net prices split per position, not per rate**: three positions of 10.01 at 19 % with
+        10 % gave tax 5.13, where the rate's sum (27.03 × 19 % = 5.1357) gives 5.14; the four
+        several-positions cases fit PU only. The rule is: the deduction D (the fixed amount, or
+        the percentage of the net total, rounded half-up) is split over the positions by their
+        nets, each share rounded half-up, the cent left over on the largest net; each position's
+        tax is the rest of its net times its rate, rounded half-up; the document's tax is the sum.
+        It fits all 29 net cases recorded on 2026-11-16 and 2026-11-18; GU misses 5, every other
+        candidate more. Variants of the rule itself come closer: the leftover cent on another
+        position (the last, the first, the highest or lowest rate, the smallest) misses one to
+        four of the #155 cases (101.75/39.05/80.66, 76.24/62.21/32.45, 25.79/40.18/28.80,
+        32.47/89.92/102.48), unrounded shares three; which of two equal largest nets takes the
+        cent is not recorded.
+      - **A percentage on gross prices is a share of the gross total**: 3 % of 99.99 gross took
+        3.00 off the gross (`sumDiscountGross` -3, `sumDiscountNet` -2.53) and gave net 81.5, not
+        the 81.51 that 3 % of the net 84.03 gives; the earlier gross percentages (119 and 119 +
+        107 with 10 %) fit both. With G2 percentages and fixed amounts on gross prices follow one
+        rule: the deduction (the fixed amount, or the percentage of the gross total rounded
+        half-up) is split by the gross of each part, rounded half-up, the leftover cent on the
+        largest; each part's net is its discounted gross / (1 + rate), rounded half-up; the gross
+        is the total less the deduction, the tax the difference. It fits all 11 gross cases, and
+        no other candidate does (G3 misses 80.51/42.55, N three, F3 five, F1 six). They have one
+        position per rate, so whether the parts are positions or rates is not recorded; the code
+        takes positions, as on net prices. None of them leaves a cent over after the split or
+        rounds a tie, so the leftover's place (the largest gross) and half-up are taken from net
+        prices.
+
     - Surcharges (`discount: false`), 100.00 net at 19 %: 10 % and a fixed 10.00 each gave 110,
       20.9, 130.9 (`sumDiscounts` +10, `sumDiscountGross` +11.9); the row reads `discount` `"0"`.
     - A fixed 10.00 on a CHF invoice is 10.00 CHF: the `…ForeignCurrency` sums were 90, 17.1,
@@ -5026,7 +5083,7 @@ pdf, sevClient, name, default, img}]}`, `GET /DocServer/getTemplatesWithThumb?ty
   `write-discount-mixed-tax`, `write-discount-foreign-currency`, `write-discount-order-derived`,
   `write-recurring-template-discount`, the opt-in `write-einvoice-discount`, and
   `write-discount-mixed-tax-uneven`, run tag `MCP-E2E 20261118-1541-hdxr`, 19 drafts all
-  deleted).
+  deleted; the opt-in `write-discount-rounding-edges`, #158, 18 drafts all deleted).
 - **Impact:** A document discount goes out as `discountSave: [{…}]` on all three factories and is
   read back with `/<kind>/{id}/getDiscounts`; updates that change it delete the stored rows in
   `discountDelete` (a list) and save the new one in the same request. `sumDiscounts` is negative and
@@ -5051,17 +5108,16 @@ pdf, sevClient, name, default, img}]}`, `GET /DocServer/getTemplatesWithThumb?ty
   preview says that sevDesk computes them. With the 2026-11-18 answers (#134, #155), a new
   discount is accepted everywhere the argument allows: on e-invoices, in other currencies than
   EUR (a fixed amount in the document's currency, shown with that currency), on gross prices and
-  over several tax rates. The preview's totals follow the rule above (`discountedTotals`, every
-  recorded case a unit test), with the positions of one rate summed first (one position per rate
-  is recorded; several are an assumption the read-back checks through the gross total). Not
-  computed, with a preview warning instead: a fixed amount on gross prices (the preview shows the
-  exact gross total, the read-back compares it, and net and tax are sevDesk's), a new or kept
-  discount on stored positions with several rates (the stored sums do not show the net per
-  rate), and kept surcharges or percentages stored with `isNet` "0" (not recorded beyond one
-  rate; the tools never send either). A new amount above the total (the gross total for a fixed
-  amount on gross prices) is still refused. The basis a preview and the DTO show for a fixed
-  amount follows the document's price mode, not `isNet` (`appliedDiscount`): gross on gross
-  prices, net on net prices. The from-order
+  over several tax rates. The preview's totals follow the rules above, split per position
+  (`discountedTotals`, every recorded case a unit test): on net prices by net, on gross prices,
+  percentage and fixed amount alike, by gross (#158). Stored positions are split by their stored
+  sums; a single stored position without sums stands for the stored totals. Not computed, with a
+  preview warning instead: a new or kept discount on stored positions whose sums sevDesk did not
+  send or whose sums do not add up to the stored totals, and kept surcharges or percentages
+  stored with `isNet` "0" (not recorded beyond one rate; the tools never send either). A new
+  amount above the total (the gross total on gross prices) is still refused. The basis a preview
+  and the DTO show follows the document's price mode, not `isNet` (`appliedDiscount`): gross on
+  gross prices (a percentage of the gross total too), net on net prices. The from-order
   tool says that a partial or advance invoice gets no discount row. The replacement was checked
   on an invoice; orders and credit notes send the same discount keys. The read-back still says
   when sevDesk stored something other than what was sent. `sevdesk_invoice_update_recurring`
@@ -5070,9 +5126,9 @@ pdf, sevClient, name, default, img}]}`, `GET /DocServer/getTemplatesWithThumb?ty
   totals of new positions count a kept single discount as the invoice draft update does
   (`updateTotals`), and otherwise the preview says that sevDesk computes them; the read-back
   still compares the discounts with the ones before. Not recorded: whether the invoices a
-  template generates carry its discount (`read-recurring-generated-discounts`, pending), a
-  surcharge on several rates or on gross prices, how sevDesk splits a fixed gross amount into net
-  and tax, and several positions at one rate.
+  template generates carry its discount (`read-recurring-generated-autogenerate`, pending), a
+  surcharge on several rates or on gross prices, and several positions at one rate on gross
+  prices.
 - **Test:** `test/contract/recorded-gaps-documents.test.ts` ("answers an empty list with total
   null for an order without discounts", "reads through the document discount reader: no rows,
   nothing shown or bound"), `test/unit/domain/drafts/discount.test.ts` ("gives the recorded sums
@@ -5091,16 +5147,20 @@ pdf, sevClient, name, default, img}]}`, `GET /DocServer/getTemplatesWithThumb?ty
   `test/unit/tools/invoices/recurring-update.test.ts` ("a discount on the whole template (D-116;
   review of #124, M2)"); the 2026-11-18 answers: `test/unit/domain/drafts/discount.test.ts`
   ("gives the sums recorded on 2026-11-18 for 10 % on gross prices and 10.00 in CHF", "shows a
-  stored fixed amount on gross prices as gross, whatever isNet says (D-116)"); #155:
+  stored fixed amount on gross prices as gross, whatever isNet says (D-116)"); #155 and #158:
   `test/unit/domain/drafts/discount.test.ts` ("gives the recorded sums for …", one per recorded
-  split; "gives the recorded sums for a percentage on gross prices with two rates", "takes a fixed
-  amount on gross prices off the gross total and leaves net and tax to sevDesk: …", "computes
-  with a fixed amount whatever its isNet (recorded 2026-11-18)", "treats a surcharge as something
-  it does not compute"), `test/unit/domain/document-discounts.test.ts` ("takes a fixed amount on
-  net prices off the net total, whatever isNet says"),
+  net case, the 12 rounding edges included; "gives the recorded sums on gross prices for …", one
+  per recorded gross case; "splits over each position, not over the sum of a rate (recorded
+  2026-11-18)", "splits a new discount over the stored positions by their stored sums", "leaves a
+  new discount on stored positions to sevDesk when their sums are missing or do not add up",
+  "computes with a fixed amount whatever its isNet (recorded 2026-11-18)", "treats a surcharge as
+  something it does not compute"), `test/unit/domain/document-discounts.test.ts` ("takes a fixed
+  amount on net prices off the net total, whatever isNet says", "takes a percentage on gross
+  prices off the gross total (recorded 2026-11-18)"),
   `test/unit/tools/drafts/document-discount.test.ts` ("splits a discount over several tax rates
-  (recorded 2026-11-18, D-116)", "takes a fixed amount on gross prices as gross and leaves net and
-  tax to sevDesk"). Live: probes `write-document-discount`,
+  (recorded 2026-11-18, D-116)", "takes a fixed amount on gross prices as gross and computes net
+  and tax", "splits a new discount over stored positions of several rates by their stored
+  sums"). Live: probes `write-document-discount`,
   `read-order-get-discounts`, and (#136, #134; `test/unit/scripts/gaps-documents-probes.test.ts`;
   all observed 2026-11-18 but the last but one) `write-discount-net-gross`,
   `write-discount-mixed-tax`, `write-discount-foreign-currency`, `write-discount-order-derived`,
@@ -5108,7 +5168,9 @@ pdf, sevClient, name, default, img}]}`, `GET /DocServer/getTemplatesWithThumb?ty
   from the discounted template of `write-recurring-template-due`, the day after; pending) and
   `write-einvoice-discount` (opt-in: the allowance in the e-invoice XML); (#155, observed
   2026-11-18) `write-discount-mixed-tax-uneven` (rounding of uneven splits over two and three
-  rates, two rates on gross prices, a fixed amount with `isNet` false on net prices, surcharges).
+  rates, two rates on gross prices, a fixed amount with `isNet` false on net prices, surcharges);
+  (#158, observed 2026-11-18) `write-discount-rounding-edges` (opt-in: half-cent ties, several
+  positions at one rate, percentages and fixed amounts on gross prices).
 
 ### D-119: The account factories refuse an `accountingNumber` in use or not allowed (422)
 
@@ -5498,9 +5560,15 @@ transaction>], "objectToDelete": <the account>}, "responseCode": 200, "exception
     `positionNumber`, all tie), `GET /VoucherPos` (56, by id ascending), `GET /AccountDatev`
     (100, by `number` ascending, 3 tie) and `GET /TagRelation` (17). With ties on the key, stable
     here does not prove stable on a larger list.
-  - Too few rows to tell (fewer than 12): `GET /Part`, `GET /Tag`, `GET /ContactAddress`,
+  - Too few rows to tell (fewer than 12): `GET /Part`, `GET /Tag`,
     `GET /CommunicationWay?type=EMAIL`, `GET /PrivateTransactionRule` (none), open and partially
     paid invoices, open credit notes, open expense vouchers, `GET /Order?orderType=AB`.
+  - `GET /ContactAddress` without a filter, as the VAT check reads it (probe
+    `write-contact-address-paging-seed`, #158: 25 tagged contacts with one address each, created
+    within seconds, then deleted): 36 rows, sorted by `create` ascending with 22 tied; both
+    passes in pages of 5 gave every row once, but in another order from position 12 on (the two
+    passes agreed). That is the pattern of `GET /CreditNote` and `GET /Order` above, which lost
+    rows on longer lists. `orderBy[0][field]=id` was ignored here too.
   - Order parameters: `orderByOrderNumber=ASC` made the 36 orders page exactly like one page.
     `orderByInvoiceNumber=ASC` (seeded drafts: 4 lost), `orderByCreditNoteNumber=ASC` (5 of 43
     lost; seeded drafts: 10 of 25) and `orderByVoucherNumber=ASC` (1 of 56) made paging worse or
@@ -5508,7 +5576,9 @@ transaction>], "objectToDelete": <the account>}, "responseCode": 200, "exception
     `orderBy[0][arrangement]=asc` was ignored on every list (the same order as without it).
 - **Sources:** recorded 2026-11-18, trial account, Update 2.0 (probes `read-list-paging-order`,
   497 GETs, and `write-list-paging-seed`, 25 contacts, invoices and credit notes created and
-  deleted again; earlier `read-voucher-paging-order`, D-100).
+  deleted again; earlier `read-voucher-paging-order`, D-100; the opt-in
+  `write-contact-address-paging-seed`, #158, 25 contacts and 25 addresses created and deleted
+  again, 26 GETs for the comparison).
 - **Impact (fix in this PR, #162):** Every read that goes past one page is either avoided or
   marked as possibly incomplete; a row that comes twice is kept once.
   - `listAll` (`src/sevdesk/client.ts`) keeps a row with an id once and reports `paged` when rows
@@ -5539,10 +5609,19 @@ transaction>], "objectToDelete": <the account>}, "responseCode": 200, "exception
     which is nearly unique (6 of 54 rows tied); no order parameter is sent for them, and the
     guard above covers the scans that page them.
   - The contact addresses of the VAT check (`GET /ContactAddress`, every address of the account)
-    are not marked either: every address counts for every party, so a mark would leave every
-    purchase and sale finding unjudged on an account with more than 1,000 addresses. Their paging
-    is not measured (11 rows on the trial, too few to tell); a real account (#158) can answer it.
-    Only the cap of that list counts as incomplete; its rows are kept once.
+    are not marked as a whole: every address counts for every party, so a mark would leave every
+    purchase and sale finding unjudged on an account with more than 1,000 addresses. Since the
+    address list reorders between pages like the lists that lost rows (above, #158), a read in
+    more than one page is no longer trusted for a finding: the check reads the addresses of each
+    party whose verdict rests on them again, one request per contact (`contact[id]`, one page of
+    1000, `contactAddressLocationsOf`), and judges it on those (`rereadPartyAddresses`,
+    `src/domain/reports/audit/parties.ts`). That covers a purchase finding or rate check, a
+    purchase not judged for want of any data, and German VAT to an EU business (rule 1); missing
+    addresses can only turn these into OK or not judged, never an OK into a finding, and findings
+    on a customer's VAT id (rules 3, 21) do not rest on addresses. A party whose own read is not
+    complete (a row of another contact came back, so the filter was ignored, D-032, or more than
+    one page) is not judged. At most 50 contacts are read again per run; the rest are not judged
+    either, and a note says how many. Only the cap of the whole list still marks every party.
 - **Test:** `test/regressions/list-paging-ties.test.ts` (a list whose ties are broken per page:
   `listAll` keeps rows once and says it paged, a credit note summary over a range sees 2,500
   credit notes once each from first pages only, so does a voucher summary of 2,500 vouchers with
@@ -5550,8 +5629,12 @@ transaction>], "objectToDelete": <the account>}, "responseCode": 200, "exception
   number check and an order with 1,200 positions are not called complete);
   `test/unit/domain/reports/date-windows.test.ts` (a re-checked page splits by sevDesk's count, an
   empty second page is not a paged range, repeats are counted);
-  `test/unit/domain/reports/audit/vat-check.test.ts` ("still judges every party when the address
-  list is read in two pages"); `test/unit/domain/document-positions.test.ts`,
+  `test/unit/domain/reports/audit/vat-check.test.ts` ("reads the addresses of would-be findings
+  again when the address list pages (D-146)", "regression: an address the paged list skipped does
+  not make a finding (#158, D-146)", "leaves a party unjudged when its own read is not complete
+  (the filter ignored)", "reads at most 50 contacts again and says so"),
+  `test/unit/domain/reports/audit/parties.test.ts` ("reads each contact once with its filter and
+  one page, and resolves the countries"); `test/unit/domain/document-positions.test.ts`,
   `test/unit/tools/contacts/get.test.ts` (rows read in two pages are not complete). Live: probes
-  `read-list-paging-order` and
-  `write-list-paging-seed` (`test/unit/scripts/list-paging-probes.test.ts`).
+  `read-list-paging-order`, `write-list-paging-seed` and `write-contact-address-paging-seed`
+  (`test/unit/scripts/list-paging-probes.test.ts`).

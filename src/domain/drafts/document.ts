@@ -15,14 +15,7 @@ import {
   type UpdateTotals,
 } from "./discount.js";
 import type { PriceMode } from "./positions.js";
-import {
-  addressText,
-  type DraftPreview,
-  fact,
-  moneyText,
-  type PreviewFact,
-  totalsText,
-} from "./preview.js";
+import { addressText, type DraftPreview, fact, type PreviewFact, totalsText } from "./preview.js";
 import type { DocumentAddress } from "./recipient.js";
 import {
   addressBlock,
@@ -288,17 +281,9 @@ export function logDiscountChange(
   return before === undefined ? [] : [fact("Discount (unchanged)", before)];
 }
 
-/**
- * The total of a create preview: net, tax and gross, or the gross total alone when sevDesk splits
- * net and tax (a fixed discount on gross prices, see `createTotals`).
- */
+/** The total of a create preview: net, tax and gross (see `createTotals`). */
 export function createTotalFact(totals: CreateTotals, currency: string): PreviewFact {
-  return fact(
-    "Total (expected)",
-    totals.expected === undefined
-      ? `gross ${moneyText(totals.gross, currency)}; net and tax as sevDesk splits them`
-      : totalsText(totals.expected, currency),
-  );
+  return fact("Total (expected)", totalsText(totals.expected, currency));
 }
 
 /**

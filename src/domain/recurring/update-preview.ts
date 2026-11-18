@@ -598,13 +598,12 @@ function keptDiscount(counted: boolean): Phrase {
 /** New positions whose total with the kept discounts this server does not compute. */
 const DISCOUNTS_NOT_COMPUTED: Readonly<Record<"one" | "other", Phrase>> = {
   one: phrase(
-    "The total per invoice with the kept discount is not computed here (a fixed amount on " +
-      "gross prices, which sevDesk splits into net and tax itself, or a discount larger than " +
-      "the total): sevDesk computes it. Check it in the result before the template's next run.",
-    "Die Summe je Rechnung mit dem erhaltenen Rabatt wird hier nicht berechnet (ein fester " +
-      "Betrag bei Bruttopreisen, den sevDesk selbst auf netto und USt. aufteilt, oder ein " +
-      "Rabatt über der Summe): sevDesk berechnet sie. Prüfe sie im Ergebnis vor der nächsten " +
-      "Ausführung der Vorlage.",
+    "The total per invoice with the kept discount is not computed here (a discount larger " +
+      "than the total, or a total that is not positive): sevDesk computes it. Check it in the " +
+      "result before the template's next run.",
+    "Die Summe je Rechnung mit dem erhaltenen Rabatt wird hier nicht berechnet (ein Rabatt über " +
+      "der Summe oder eine Summe von null oder weniger): sevDesk berechnet sie. Prüfe sie im " +
+      "Ergebnis vor der nächsten Ausführung der Vorlage.",
   ),
   other: phrase(
     "The template's discounts on the whole document (several, a surcharge or a percentage " +

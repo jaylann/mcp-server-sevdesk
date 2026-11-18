@@ -26,6 +26,7 @@
  * the trial's sequence.
  */
 import { documentDateFilter } from "../../../src/domain/common.js";
+import { TEMPLATE_SETTINGS_EMBED } from "../../../src/domain/recurring/schedule.js";
 import { rowsOf } from "../fixture-plan.js";
 import { RUN_TAG_PREFIX } from "../live-env.js";
 import {
@@ -1526,10 +1527,14 @@ async function discountMixedTax(ctx: ProbeContext, own: OwnDocument[]): Promise<
   };
 }
 
-/** One position of `write-discount-mixed-tax-uneven`: its price (net or gross) and rate. */
+/**
+ * One position of `write-discount-mixed-tax-uneven` and `write-discount-rounding-edges`: its price
+ * (net or gross), rate and, when more than one, quantity.
+ */
 interface PricedPosition {
   readonly price: number;
   readonly taxRate: number;
+  readonly quantity?: number;
 }
 
 /** One case of `write-discount-mixed-tax-uneven` (#155). */
@@ -1594,9 +1599,14 @@ const UNEVEN_CASES: readonly UnevenCase[] = [
   { showNet: true, positions: [at(100, 19)], percentage: false, value: 10, surcharge: true },
 ];
 
-/** `70.00 at 19 % + 30.00 at 7 %`, in the order sent. */
+/** `70.00 at 19 % + 30.00 at 7 %` (`3 × 10.00 at 19 %` with a quantity), in the order sent. */
 function positionsLabel(positions: readonly PricedPosition[]): string {
-  return positions.map((item) => `${item.price.toFixed(2)} at ${item.taxRate} %`).join(" + ");
+  return positions
+    .map(
+      (item) =>
+        `${item.quantity === undefined ? "" : `${item.quantity} × `}${item.price.toFixed(2)} at ${item.taxRate} %`,
+    )
+    .join(" + ");
 }
 
 function unevenLabel(item: UnevenCase, positions: readonly PricedPosition[]): string {
@@ -1676,6 +1686,200 @@ async function discountMixedTaxUneven(
   return {
     verdict: "observed",
     finding: `${saved} of ${UNEVEN_CASES.length} cases saved. ${lines.join(". ")}.`,
+  };
+}
+
+/** One case of `write-discount-rounding-edges`, with the candidate rules it tells apart. */
+interface RoundingCase extends UnevenCase {
+  /** Trusted, short: what the case asks (shown before its sums in the finding). */
+  readonly asks: string;
+}
+
+/**
+ * The cases of `write-discount-rounding-edges` (#155 review, D-116): the roundings the 2026-11-18
+ * cases could not tell apart. Net cases name the candidate rules by these codes:
+ * - GU, GE: the recorded fit (#161): positions summed per rate, the deduction split by the rates'
+ *   nets, the leftover cent on the largest, tax per rate on the rest; rounding half-up (GU, what
+ *   the code assumes) or half-to-even (GE) at a tie, also of a percentage's deduction.
+ * - PU, PE: the same split per position instead of per rate, tax per position on its rest.
+ * - LU, LE: the earlier one-rate formula: the positions' taxes (each rounded) less the tax of
+ *   each rate's share.
+ * - Per position split, tax per rate on the summed rests gives the same sums as GU here (on one
+ *   rate always); no case separates it.
+ * Gross percentage cases (G…): N the net rule on the positions' nets (what 119 + 107 with 10 %
+ * recorded); G1 the gross total less the rounded percentage, net less net total × amount / gross
+ * total; G2 the same amount split by gross shares per rate, each rate's net from its discounted
+ * gross; G3 each rate's gross less the percentage, rounded, its net from that. Gross fixed cases
+ * (F…): the three rules that fit the recorded gross cases of #155 (`b2-155-gross.py`): F1 net
+ * less net total × amount / gross total; F2 a gross share per rate, each rate's net from its
+ * discounted gross; F3 the net of each gross share. Each comment lists sumNet / sumTax per rule
+ * (computed with exact fractions, half-up unless E).
+ */
+const ROUNDING_CASES: readonly RoundingCase[] = [
+  // One rate, the rest's tax on a half cent (49.50 × 19 % = 9.405): GU/PU/PE/LE 49.50 / 9.41;
+  // GE/LU 49.50 / 9.40.
+  {
+    asks: "one rate, tax of the rest a half cent (GU vs GE, LU)",
+    showNet: true,
+    positions: [{ price: 10, taxRate: 19, quantity: 3 }, at(25, 19)],
+    percentage: true,
+    value: 10,
+  },
+  // A fixed amount, the same tie (58.95 - 9.45 = 49.50): GU/PU 9.41; GE/PE/LU/LE 9.40.
+  {
+    asks: "one rate, fixed, tax of the rest a half cent (GU vs GE, L)",
+    showNet: true,
+    positions: [at(58.95, 19)],
+    percentage: false,
+    value: 9.45,
+  },
+  // 7 %, fixed (61.00 - 9.50 = 51.50, × 7 % = 3.605): GU/PU/LE 3.61; GE/PE/LU 3.60.
+  {
+    asks: "7 %, fixed, tax of the rest a half cent (GU vs GE, LU)",
+    showNet: true,
+    positions: [at(61, 7)],
+    percentage: false,
+    value: 9.5,
+  },
+  // Deduction and tax both on a half cent (10 % of 146.45 = 14.645): GU 131.80 / 25.04; GE
+  // 131.81 / 25.04; LU 131.80 / 25.05; LE 131.81 / 25.05.
+  {
+    asks: "one rate, deduction 14.645 (GU, GE, LU, LE apart)",
+    showNet: true,
+    positions: [at(146.45, 19)],
+    percentage: true,
+    value: 10,
+  },
+  // 7 % (10 % of 98.05 = 9.805): GU 88.24 / 6.18; GE 88.25 / 6.18; LU 88.24 / 6.17; LE 88.25 /
+  // 6.17.
+  {
+    asks: "7 %, deduction 9.805 (GU, GE, LU, LE apart)",
+    showNet: true,
+    positions: [at(98.05, 7)],
+    percentage: true,
+    value: 10,
+  },
+  // A percentage on a half cent (3 % of 51.50 = 1.545): GU 49.95 / 9.49; GE/LE 49.96 / 9.49; LU
+  // 49.95 / 9.50.
+  {
+    asks: "one rate, deduction 1.545 (GU vs GE vs LU)",
+    showNet: true,
+    positions: [at(51.5, 19)],
+    percentage: true,
+    value: 3,
+  },
+  // Several positions at one rate: GU/GE 27.03 / 5.14; PU/PE/L 27.03 / 5.13.
+  {
+    asks: "three positions at one rate (G vs P, L)",
+    showNet: true,
+    positions: [at(10.01, 19), at(10.01, 19), at(10.01, 19)],
+    percentage: true,
+    value: 10,
+  },
+  // G/P 90.01 / 17.10; L 90.01 / 17.09.
+  {
+    asks: "three positions at one rate, fixed (G, P vs L)",
+    showNet: true,
+    positions: [at(33.33, 19), at(33.33, 19), at(33.34, 19)],
+    percentage: false,
+    value: 9.99,
+  },
+  // GU 58.36 / 11.09; GE 58.37 / 11.09; PU 58.36 / 11.08; PE 58.37 / 11.08; LU 58.36 / 11.10;
+  // LE 58.37 / 11.10.
+  {
+    asks: "three positions at one rate (six rules apart)",
+    showNet: true,
+    positions: [at(43.24, 19), at(11.89, 19), at(9.72, 19)],
+    percentage: true,
+    value: 10,
+  },
+  // G 49.48 / 9.40; P 49.48 / 9.41; L 49.48 / 9.39.
+  {
+    asks: "three positions at one rate, fixed (G vs P vs L)",
+    showNet: true,
+    positions: [at(38.75, 19), at(7.34, 19), at(12.59, 19)],
+    percentage: false,
+    value: 9.2,
+  },
+  // Two positions at 19 % and one at 7 %: GU 96.88 / 15.29; GE 96.89 / 15.29; PU 96.88 / 15.30;
+  // PE 96.89 / 15.30; LU 96.88 / 15.31; LE 96.89 / 15.31.
+  {
+    asks: "two at 19 % and one at 7 % (six rules apart)",
+    showNet: true,
+    positions: [at(29.45, 19), at(49.4, 19), at(28.8, 7)],
+    percentage: true,
+    value: 10,
+  },
+  // G 95.56 / 14.55; P 95.56 / 14.54; LU 95.56 / 14.57; LE 95.56 / 14.56.
+  {
+    asks: "two at 19 % and one at 7 %, fixed (G vs P vs LU vs LE)",
+    showNet: true,
+    positions: [at(37.14, 19), at(37.5, 19), at(34.22, 7)],
+    percentage: false,
+    value: 13.3,
+  },
+  // A percentage on gross prices: N 81.51 / 15.49; G1 81.51 / 15.48; G2/G3 81.50 / 15.49.
+  {
+    asks: "gross, percentage (N vs G1 vs G2/G3)",
+    showNet: false,
+    positions: [at(99.99, 19)],
+    percentage: true,
+    value: 3,
+  },
+  // N 121.60 / 17.89; G1 121.60 / 17.88; G2/G3 121.59 / 17.89.
+  {
+    asks: "gross, two rates, percentage (N vs G1 vs G2/G3)",
+    showNet: false,
+    positions: [at(99.99, 19), at(49.99, 7)],
+    percentage: true,
+    value: 7,
+  },
+  // N 104.21 / 15.17; G1 104.21 / 15.16; G2 104.20 / 15.17; G3 104.19 / 15.17.
+  {
+    asks: "gross, two rates, percentage (N, G1, G2, G3 apart)",
+    showNet: false,
+    positions: [at(80.51, 19), at(42.55, 7)],
+    percentage: true,
+    value: 3,
+  },
+  // A fixed amount on gross prices: F1 230.32 / 29.07; F2 230.33 / 29.06; F3 230.31 / 29.08.
+  {
+    asks: "gross, two rates, fixed (F1, F2, F3 apart)",
+    showNet: false,
+    positions: [at(133.52, 19), at(136.29, 7)],
+    percentage: false,
+    value: 10.42,
+  },
+  // F1 80.57 / 12.13; F2 80.58 / 12.12; F3 80.56 / 12.14.
+  {
+    asks: "gross, two rates, fixed (F1, F2, F3 apart)",
+    showNet: false,
+    positions: [at(68.95, 19), at(30.38, 7)],
+    percentage: false,
+    value: 6.63,
+  },
+  // F1 217.17 / 21.02; F2 217.16 / 21.03; F3 217.18 / 21.01.
+  {
+    asks: "gross, two rates, fixed (F1, F2, F3 apart)",
+    showNet: false,
+    positions: [at(59.09, 19), at(184.71, 7)],
+    percentage: false,
+    value: 5.61,
+  },
+];
+
+async function discountRoundingEdges(ctx: ProbeContext, own: OwnDocument[]): Promise<ProbeOutcome> {
+  const lines: string[] = [];
+  let saved = 0;
+  for (const item of ROUNDING_CASES) {
+    const draft = await unevenDraft(ctx, own, item);
+    if (draft.id !== undefined) saved += 1;
+    lines.push(`[${item.asks}] ${draft.text}`);
+  }
+  if (saved === 0) return inconclusive(`No discounted draft was saved. ${lines.join(". ")}.`);
+  return {
+    verdict: "observed",
+    finding: `${saved} of ${ROUNDING_CASES.length} cases saved. ${lines.join(". ")}.`,
   };
 }
 
@@ -2114,6 +2318,290 @@ async function generatedDiscounts(ctx: ProbeContext): Promise<ProbeOutcome> {
     verdict: "observed",
     finding: `${templates.length} tagged template(s), ${generatedCount} generated invoice(s). ${lines.join(". ")}.`,
   };
+}
+
+// ---------------------------------------------------------------------------------------------
+// #158: a template with automatic generation on, and what it generates
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * The end of the header of the template `write-recurring-template-autogenerate` leaves active
+ * (after the run tag): `read-recurring-generated-autogenerate` finds it by tag and this text on a
+ * later day, since a probe run keeps no ids between runs.
+ */
+const AUTOGENERATE_HEADER = "Abo autogenerate";
+
+/** The fixed amount of the template's second discount row (the first is 10 %). */
+const AUTOGENERATE_FIXED = 5;
+
+/** Whether a template row is one `write-recurring-template-autogenerate` made. */
+function isAutogenerateTemplate(row: Row): boolean {
+  return (
+    str(row, "invoiceType") === "WKR" &&
+    isTagged(row) &&
+    str(row, "header").endsWith(` ${AUTOGENERATE_HEADER}`)
+  );
+}
+
+/** Automatic generation as stored (D-132): `null` never set, `""` off, `"1"` on. */
+function autoGenerateText(row: Row | undefined): string {
+  if (row === undefined || !Object.hasOwn(row, "propertyAutoGenerateRecurringInvoice")) {
+    return "not returned";
+  }
+  const value = row["propertyAutoGenerateRecurringInvoice"];
+  if (value === null) return "null (never set: off)";
+  if (value === "") return '"" (off)';
+  return `${JSON.stringify(value)}${value === "1" ? " (on)" : " (meaning not recorded)"}`;
+}
+
+function autoGenerateOn(row: Row | undefined): boolean {
+  return row?.["propertyAutoGenerateRecurringInvoice"] === "1";
+}
+
+/**
+ * Automatic sending as stored (D-132): off only when sevDesk returned `autoSendConfiguration` and
+ * it is empty. A configuration, or an answer without the key, counts as not off.
+ */
+function autoSendState(
+  ctx: ProbeContext,
+  row: Row | undefined,
+): { readonly off: boolean; readonly text: string } {
+  if (row === undefined || !Object.hasOwn(row, "autoSendConfiguration")) {
+    return { off: false, text: "not returned" };
+  }
+  const value = row["autoSendConfiguration"];
+  if (value === null || value === "") return { off: true, text: `${JSON.stringify(value)} (off)` };
+  if (Array.isArray(value) && value.length === 0) return { off: true, text: "[] (off)" };
+  const config = isRecord(value) ? value : firstRow(value);
+  return {
+    off: false,
+    text:
+      config === undefined
+        ? `ON? (${shapeOf(value)})`
+        : `ON (sendType ${shown(ctx, "sendType", config["sendType"])}, ` +
+          `sendIntervalAfterCreation ${shown(ctx, "sendIntervalAfterCreation", config["sendIntervalAfterCreation"])})`,
+  };
+}
+
+/** A template read with both switches (D-132). */
+async function templateWithSettings(ctx: ProbeContext, id: number): Promise<Row | undefined> {
+  return ctx.read.byId("Invoice", id, { embed: TEMPLATE_SETTINGS_EMBED });
+}
+
+/** The two discount rows of the template: 10 % and a fixed {@link AUTOGENERATE_FIXED}. */
+function autogenerateDiscounts(tag: string): readonly (readonly Record<string, unknown>[])[] {
+  const percentage = discountRow(tag, { percentage: true });
+  return [
+    [percentage, discountRow(tag, { percentage: false, value: AUTOGENERATE_FIXED })],
+    [percentage],
+  ];
+}
+
+/**
+ * `write-recurring-template-autogenerate`: a monthly template for the tagged contact (checked to
+ * have no e-mail address) with two discounts, automatic generation on and automatic sending off,
+ * whose first run is tomorrow. It stays active so that sevDesk generates from it; every check that
+ * fails deletes it again, so no template that could send or that does not generate is left.
+ */
+async function autogenerateTemplate(ctx: ProbeContext): Promise<ProbeOutcome> {
+  const tag = data(ctx).tag;
+  const run = addDays(ctx.today, 1);
+  const contact = await data(ctx).contact();
+  // Nothing may be e-mailed: the contact must have no e-mail address (checked, not assumed).
+  const ways = await ctx.read.page(
+    "/CommunicationWay",
+    { "contact[id]": contact, "contact[objectName]": "Contact" },
+    100,
+  );
+  const mails = ways.rows.filter(
+    (row) => refId(row, "contact") === contact && str(row, "type").toUpperCase() === "EMAIL",
+  );
+  if (!ways.result.ok || mails.length > 0) {
+    return inconclusive(
+      `STOPPED before saving a template: the communication ways of contact ${contact} ` +
+        `${ways.result.ok ? `hold ${mails.length} e-mail address(es)` : `could not be read (${outcomeOf(ways.result)})`}.`,
+    );
+  }
+  const tried: string[] = [];
+  let made: { readonly id: number; readonly discounts: number } | undefined;
+  for (const discounts of autogenerateDiscounts(tag)) {
+    const draft = await templateDraft(
+      ctx,
+      {
+        header: `${tag} ${AUTOGENERATE_HEADER}`,
+        // The template's own dates, as the create tool sends them: the first run.
+        invoiceDate: germanDate(run),
+        deliveryDate: berlinMidnight(run),
+        accountIntervall: "P0Y1M0W",
+        accountStartDate: berlinMidnight(run),
+        propertyAutoGenerateRecurringInvoice: true,
+      },
+      { discountSave: discounts, discountDelete: null },
+    );
+    if (draft.id !== undefined) {
+      made = { id: draft.id, discounts: discounts.length };
+      break;
+    }
+    tried.push(`with ${discounts.length} discount row(s): ${outcomeOf(draft.result)}`);
+  }
+  if (made === undefined) {
+    return inconclusive(`No template with a discount was saved. ${tried.join(". ")}.`);
+  }
+  const { id } = made;
+  data(ctx).mark("Invoice", id, "recurring template (WKR), automatic generation on: checking");
+  const first = await templateWithSettings(ctx, id);
+  const firstText = `automatic generation ${autoGenerateText(first)}, automatic sending ${autoSendState(ctx, first).text}`;
+  // Switched off whatever the first read says, as the web app does after saving one (D-132).
+  const deactivated = await ctx.http.write("POST", `/Invoice/${id}/deactivateAutoSending`, {
+    tier: "write",
+  });
+  let row = await templateWithSettings(ctx, id);
+  let switchedOn = "";
+  if (!autoGenerateOn(row)) {
+    const result = await saveTemplate(ctx, id, { propertyAutoGenerateRecurringInvoice: true });
+    row = await templateWithSettings(ctx, id);
+    switchedOn = `; switched on by an update: ${outcomeOf(result)} → ${autoGenerateText(row)}`;
+  }
+  const sending = autoSendState(ctx, row);
+  const settings =
+    `right after saving: ${firstText}; deactivateAutoSending ${outcomeOf(deactivated)}${switchedOn}; ` +
+    `now: automatic generation ${autoGenerateText(row)}, automatic sending ${sending.text}, sendType ${shown(ctx, "sendType", row?.["sendType"])}`;
+  const nextRun = str(row, "accountNextInvoice");
+  const problems = [
+    ...(sending.off ? [] : ["automatic sending is not off"]),
+    ...(autoGenerateOn(row) ? [] : ["automatic generation is not on"]),
+    ...(nextRun === "" ? ["no next run is stored"] : []),
+  ];
+  if (problems.length > 0) {
+    const deleted = await deleteTemplate(ctx, id);
+    return inconclusive(
+      `STOPPED: ${problems.join(", ")}, so template ${id} was not kept (${deleted.gone ? "deleted" : deleted.text}). ` +
+        `${settings}. ${tried.length === 0 ? "" : `Tried before: ${tried.join(". ")}.`}`.trim(),
+    );
+  }
+  const discounts = await discountRows(ctx, "Invoice", id);
+  const generated = (
+    await ctx.read.page(
+      "/Invoice",
+      { showAll: "true", "origin[id]": id, "origin[objectName]": "Invoice" },
+      1000,
+    )
+  ).rows.filter((item) => refId(item, "origin") === id);
+  data(ctx).mark(
+    "Invoice",
+    id,
+    "ACTIVE recurring template (WKR, automatic generation on, sending off): end/delete after read-recurring-generated-autogenerate",
+  );
+  return {
+    verdict: "observed",
+    finding:
+      `Kept template ${id} for contact ${contact} (no e-mail address: ${ways.rows.length} communication way(s), none of type EMAIL): ` +
+      `status ${str(row, "status")}; ${schedule(ctx, row)}; ${settings}. ` +
+      `${made.discounts === 2 ? `10 % and a fixed ${AUTOGENERATE_FIXED.toFixed(2)}` : "10 % only"} on 100.00 net at 19 %: ${discountSums(row)}; ${discounts.text}. ` +
+      `Invoices with this template as origin right after saving: ${generated.length}. ` +
+      `Run read-recurring-generated-autogenerate after 00:00 on ${run} (sevDesk generates within about a minute of the run time, D-111).` +
+      (tried.length === 0 ? "" : ` Tried before: ${tried.join(". ")}.`),
+    deviations: { "D-132": "informs" },
+  };
+}
+
+/** `discount/percentage/value/isNet` of each discount row, sorted: what a copy must match. */
+function discountSignature(rows: readonly Row[]): string {
+  return rows
+    .map(
+      (row) =>
+        `${str(row, "discount")}/${str(row, "percentage")}/${str(row, "value")}/${str(row, "isNet")}`,
+    )
+    .sort()
+    .join("; ");
+}
+
+/** Whether a generated invoice's discount rows are the template's. */
+function carriesDiscount(template: readonly Row[], invoice: readonly Row[]): string {
+  if (invoice.length === 0) {
+    return template.length === 0 ? "no discount rows (nor has the template)" : "NO discount rows";
+  }
+  return discountSignature(invoice) === discountSignature(template)
+    ? `the template's ${template.length} discount row(s)`
+    : `DIFFERENT discount rows (template ${discountSignature(template) || "none"}; invoice ${discountSignature(invoice)})`;
+}
+
+/** The sums of a generated invoice against its template's. */
+function sumsAgainst(template: Row, invoice: Row): string {
+  const differing = DISCOUNT_SUMS.filter((key) => str(template, key) !== str(invoice, key));
+  return differing.length === 0
+    ? "sums equal to the template's"
+    : `sums differ from the template's in ${differing.join(", ")}`;
+}
+
+/**
+ * `read-recurring-generated-autogenerate`: the templates of `write-recurring-template-autogenerate`
+ * and the invoices generated from them (by origin; by contact and header as a fallback), with
+ * their discounts against the template's.
+ */
+async function generatedAutogenerate(ctx: ProbeContext): Promise<ProbeOutcome> {
+  const templates = (
+    await ctx.read.page("/Invoice", { invoiceType: "WKR", embed: TEMPLATE_SETTINGS_EMBED }, 1000)
+  ).rows.filter(isAutogenerateTemplate);
+  if (templates.length === 0) {
+    return inconclusive(
+      `No tagged template of write-recurring-template-autogenerate (header "<run tag> ${AUTOGENERATE_HEADER}") on the account.`,
+    );
+  }
+  const lines: string[] = [];
+  let generatedCount = 0;
+  for (const template of templates.slice(0, 5)) {
+    const id = Number(template["id"]);
+    const own = await discountRows(ctx, "Invoice", id);
+    const byOrigin = (
+      await ctx.read.page(
+        "/Invoice",
+        { showAll: "true", "origin[id]": id, "origin[objectName]": "Invoice" },
+        1000,
+      )
+    ).rows.filter((row) => refId(row, "origin") === id);
+    const contact = refId(template, "contact");
+    const originIds = new Set(byOrigin.map((row) => str(row, "id")));
+    const byContact =
+      contact === undefined
+        ? []
+        : (
+            await ctx.read.page(
+              "/Invoice",
+              { showAll: "true", "contact[id]": contact, "contact[objectName]": "Contact" },
+              1000,
+            )
+          ).rows.filter(
+            (row) =>
+              str(row, "invoiceType") !== "WKR" &&
+              str(row, "header") === str(template, "header") &&
+              !originIds.has(str(row, "id")),
+          );
+    const generated = [...byOrigin, ...byContact];
+    generatedCount += generated.length;
+    const described: string[] = [];
+    for (const row of generated.slice(0, 5)) {
+      const invoiceId = Number(row["id"]);
+      const rows = await discountRows(ctx, "Invoice", invoiceId);
+      described.push(
+        `${invoiceId} (${originIds.has(str(row, "id")) ? "origin the template" : "same contact and header, no origin link"}): ` +
+          `type ${str(row, "invoiceType")}, status ${str(row, "status")}, ${numberText(ctx, row, "Invoice")}, ` +
+          `invoiceDate ${str(row, "invoiceDate").slice(0, 10) || "-"}, deliveryDate ${str(row, "deliveryDate").slice(0, 10) || "-"}, ` +
+          `deliveryDateUntil ${str(row, "deliveryDateUntil").slice(0, 10) || "-"}, sendDate ${str(row, "sendDate") || "-"}, ` +
+          `sendType ${str(row, "sendType") || "-"}; carries ${carriesDiscount(own.rows, rows.rows)}; ` +
+          `${discountSums(row)} (${sumsAgainst(template, row)}); ${rows.text}`,
+      );
+    }
+    lines.push(
+      `Template ${id} (status ${str(template, "status")}, automatic generation ${autoGenerateText(template)}, ` +
+        `automatic sending ${autoSendState(ctx, template).text}; ${schedule(ctx, template)}): ${discountSums(template)}; ${own.text}; ` +
+        `generated: ${described.length === 0 ? "none yet" : described.join("; ")}`,
+    );
+  }
+  const finding = `${templates.length} template(s) of write-recurring-template-autogenerate, ${generatedCount} generated invoice(s). ${lines.join(". ")}.`;
+  return generatedCount === 0
+    ? inconclusive(`${finding} Nothing generated yet: run again after the next run date.`)
+    : { verdict: "observed", finding, deviations: { "D-132": "informs" } };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -3260,6 +3748,23 @@ export const GAPS_DOCUMENTS_PROBES: readonly ProbeDefinition[] = [
     },
   },
   {
+    id: "write-recurring-template-autogenerate",
+    title:
+      "A recurring template with automatic generation on, first run tomorrow (opt-in, stays active)",
+    mode: "write",
+    optIn: true,
+    question:
+      "OPT-IN, leaves ONE ACTIVE recurring template on the trial: do invoices sevDesk generates from a template carry its document discount (#124, #158)? A monthly " +
+      `WKR template for the tagged contact (checked to have no e-mail address; stops otherwise) with one position of 100.00 net at 19 %, a 10 % and a fixed ` +
+      `${AUTOGENERATE_FIXED.toFixed(2)} discount (10 % alone if sevDesk refuses two rows), automatic generation on (propertyAutoGenerateRecurringInvoice: true, D-132) ` +
+      "and its first run tomorrow. Automatic sending is switched off with deactivateAutoSending and read back with the embed; if it is not off, generation not on " +
+      "or no next run stored, the template is deleted and the probe stops. With sending off sevDesk only creates a draft (status 100, not sent, D-111). What do " +
+      `both switches, sendType, the schedule, the sums and getDiscounts read? Run read-recurring-generated-autogenerate after the run date; the template (header "<run tag> ${AUTOGENERATE_HEADER}") ` +
+      "is ended or deleted after that.",
+    deviations: ["D-132", "D-111", "D-116"],
+    run: autogenerateTemplate,
+  },
+  {
     id: "read-order-get-discounts",
     title: "GET /Order/{id}/getDiscounts",
     mode: "read",
@@ -3440,6 +3945,28 @@ export const GAPS_DOCUMENTS_PROBES: readonly ProbeDefinition[] = [
     },
   },
   {
+    id: "write-discount-rounding-edges",
+    title: "Discount rounding at half cents, per position and on gross prices",
+    mode: "write",
+    optIn: true,
+    question:
+      `OPT-IN (${ROUNDING_CASES.length} invoice drafts, each deleted afterwards): how does sevDesk round a document discount where the 2026-11-18 cases could not ` +
+      "tell (#155 review, D-116)? Net cases whose rest's tax or percentage deduction lands on a half cent, at 19 % and 7 %, percentage and fixed (half-up or " +
+      "half-to-even; the rest's tax or the positions' taxes less the share's); several positions at one rate and two at 19 % with one at 7 % (split per rate or " +
+      "per position); percentages on gross prices that do not divide evenly; fixed amounts on gross prices with two rates where the three rules that fit #155 " +
+      "disagree. Each case names the rules it tells apart; the code comment lists their sums. For each: sumNet, sumTax, sumGross, sumDiscounts, " +
+      "sumDiscountNet, sumDiscountGross, every other sum field, the getDiscounts row and the sum fields of each position. Every draft is deleted at the end, " +
+      "also when a step fails.",
+    deviations: ["D-116"],
+    async run(ctx) {
+      const own: OwnDocument[] = [];
+      return withCleanup(
+        () => discountRoundingEdges(ctx, own),
+        () => deleteOwnDocuments(ctx, own),
+      );
+    },
+  },
+  {
     id: "write-discount-foreign-currency",
     title: "A fixed discount on a CHF invoice",
     mode: "write",
@@ -3536,6 +4063,19 @@ export const GAPS_DOCUMENTS_PROBES: readonly ProbeDefinition[] = [
       "write-recurring-template-due, whose template has a 10 % discount.",
     deviations: ["D-116", "D-111"],
     run: generatedDiscounts,
+  },
+  {
+    id: "read-recurring-generated-autogenerate",
+    title:
+      "Invoices generated from the template of write-recurring-template-autogenerate, and their discounts",
+    mode: "read",
+    question:
+      "Do the invoices sevDesk generated from the template of write-recurring-template-autogenerate carry its discounts (#124, #158)? For up to 5 such templates " +
+      `(tagged WKR, header "<run tag> ${AUTOGENERATE_HEADER}", both switches read with the embed): getDiscounts and sums, and for up to 5 invoices generated from each ` +
+      "(origin the template; else same contact and header): type, status, number, invoice and delivery dates, sendDate and sendType, getDiscounts and sums against " +
+      "the template's. Inconclusive while nothing is generated.",
+    deviations: ["D-116", "D-111", "D-132"],
+    run: generatedAutogenerate,
   },
   {
     id: "write-einvoice-discount",

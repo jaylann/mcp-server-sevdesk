@@ -106,16 +106,15 @@ Vorschau nennt die entfernte.
 > Gib der Musterfirma 3 % Rabatt auf die ganze Rechnung.
 
 Neben dem Rabatt je Position kann ein Entwurf einen Rabatt auf den Gesamtbetrag tragen: einen
-Prozentsatz vom Nettobetrag oder einen festen Betrag in der Währung des Dokuments, mit dem Text,
-der daneben gedruckt wird („Rabatt“, wenn du keinen anderen nennst). Der feste Betrag ist bei
-Nettopreisen netto und bei Bruttopreisen brutto. Die Vorschau zeigt ihn und die Summe, die sich
-daraus ergibt; das Ergebnis zeigt, was sevDesk abgezogen hat. Angebote, Auftragsbestätigungen und
-Gutschriften nehmen denselben Rabatt, und eine E-Rechnung führt ihn als Abschlag auf die ganze
-Rechnung. Bei mehreren Steuersätzen verteilt sevDesk den Rabatt nach ihrem Anteil am Nettobetrag,
-und die Vorschau rechnet genauso. Einen festen Betrag bei Bruttopreisen zieht sevDesk genau vom
-Bruttobetrag ab; wie es ihn auf netto und USt. aufteilt, berechnet der Server nicht. Die Vorschau
-zeigt dann nur die Bruttosumme und sagt das. Ebenso bleibt die Summe sevDesk überlassen, wenn ein
-neuer Rabatt auf gespeicherte Positionen mit mehreren Steuersätzen kommt. Ändert der
+Prozentsatz oder einen festen Betrag in der Währung des Dokuments, mit dem Text, der daneben
+gedruckt wird („Rabatt“, wenn du keinen anderen nennst). Prozentsatz und fester Betrag beziehen
+sich bei Nettopreisen auf den Nettobetrag und bei Bruttopreisen auf den Bruttobetrag. Die Vorschau
+zeigt ihn und die Summe, die sich daraus ergibt; das Ergebnis zeigt, was sevDesk abgezogen hat.
+Angebote, Auftragsbestätigungen und Gutschriften nehmen denselben Rabatt, und eine E-Rechnung
+führt ihn als Abschlag auf die ganze Rechnung. sevDesk verteilt den Rabatt auf die Positionen
+nach ihrem Anteil am Netto- bzw. Bruttobetrag und rundet jeden Anteil auf Cent, und die Vorschau
+rechnet genauso. Kommt ein neuer Rabatt auf gespeicherte Positionen, deren Summen sevDesk nicht
+mitschickt, bleibt die Summe sevDesk überlassen, und die Vorschau sagt das. Ändert der
 Assistent den Entwurf später, bleibt der Rabatt, solange du ihn nicht ersetzt oder entfernst. Ein
 Dokument mit mehreren Rabatten (sevDesk rechnet dann nur einen davon in die Summen ein) bleibt der
 Web-App von sevDesk überlassen; die Abfragewerkzeuge und die Freigabe weisen darauf hin.

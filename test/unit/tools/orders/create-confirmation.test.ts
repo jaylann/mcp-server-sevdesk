@@ -541,7 +541,8 @@ describe("sevdesk_order_create_confirmation (D-107)", () => {
       expect.arrayContaining([
         {
           label: "Discount on the whole document (Rabatt) 1",
-          value: "5 % of the net total\nText: Treuerabatt",
+          // The offer has gross prices: a percentage is a share of the gross total (D-116).
+          value: "5 % of the gross total\nText: Treuerabatt",
         },
         {
           label: "Discount on the whole document (Rabatt) 2",
@@ -551,7 +552,10 @@ describe("sevdesk_order_create_confirmation (D-107)", () => {
     );
     expect(plan.previewDe.facts).toEqual(
       expect.arrayContaining([
-        { label: "Rabatt auf den Gesamtbetrag 1", value: "5 % vom Nettobetrag\nText: Treuerabatt" },
+        {
+          label: "Rabatt auf den Gesamtbetrag 1",
+          value: "5 % vom Bruttobetrag\nText: Treuerabatt",
+        },
         {
           label: "Rabatt auf den Gesamtbetrag 2",
           value: "Aufschlag: 12,50 EUR brutto\nText: Expresszuschlag",

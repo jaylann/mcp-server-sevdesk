@@ -16,7 +16,8 @@
  * `read-list-paging-order` is read-only and opt-in (it sends up to {@link LIST_PAGING_BUDGET}
  * GETs). `write-list-paging-seed` is opt-in as well and needs `--allow-writes`: it creates tagged
  * contacts and draft invoices and credit notes of one day (ties a date order cannot settle),
- * compares the same reads over them and deletes every one again.
+ * compares the same reads over them and deletes every one again. `write-contact-address-paging-seed`
+ * does the same for the address list of the VAT check (#164) with tagged contacts and addresses.
  */
 import { documentDateFilter } from "../../../src/domain/common.js";
 import { rowsOf } from "../fixture-plan.js";
@@ -52,6 +53,13 @@ export const LIST_PAGING_BUDGET = 500;
 const SEED_BUDGET = 200;
 /** Contacts, draft invoices and draft credit notes `write-list-paging-seed` creates, each. */
 export const LIST_PAGING_SEED_COUNT = 25;
+/** Contacts `write-contact-address-paging-seed` creates, with one address each. */
+export const ADDRESS_SEED_COUNT = 25;
+/** Most GETs the comparison of `write-contact-address-paging-seed` sends. */
+const ADDRESS_SEED_BUDGET = 60;
+/** sevDesk's StaticCountry id of Germany and the Category id of a billing address. */
+const GERMANY = 1;
+const BILLING_ADDRESS = 47;
 
 // ---------------------------------------------------------------------------------------------
 // Cases
@@ -113,6 +121,20 @@ const ORDER_ORDERS = numberOrder("orderByOrderNumber");
 const VOUCHER_ORDERS = numberOrder("orderByVoucherNumber");
 const CONTACT_ORDERS = numberOrder("orderByCustomerNumber");
 const ID_ONLY: readonly ExplicitOrder[] = [BY_ID];
+
+/**
+ * The address directory of the VAT check (#164): `GET /ContactAddress` without a filter, read the
+ * way `listContactAddressLocations` reads it for audit parties. Compared by `read-list-paging-order`
+ * and, over seeded addresses, by `write-contact-address-paging-seed`.
+ */
+const CONTACT_ADDRESS_CASE: PagingCase = {
+  name: "contact addresses (audit parties)",
+  readers: "audit parties listContactAddressLocations (scanPages)",
+  path: "/ContactAddress",
+  query: {},
+  keys: [],
+  orders: ID_ONLY,
+};
 
 /**
  * The list queries of every reader that pages past its first page, in the order they are compared
@@ -214,14 +236,7 @@ export function listPagingCases(today: string): readonly PagingCase[] {
       keys: contactKeys,
       orders: CONTACT_ORDERS,
     },
-    {
-      name: "contact addresses (audit parties)",
-      readers: "audit parties listContactAddressLocations (scanPages)",
-      path: "/ContactAddress",
-      query: {},
-      keys: [],
-      orders: ID_ONLY,
-    },
+    CONTACT_ADDRESS_CASE,
     {
       name: "transaction log (readWholeLog)",
       readers:
@@ -785,7 +800,7 @@ async function listPagingOrder(ctx: ProbeContext): Promise<ProbeOutcome> {
 
 /** A record `write-list-paging-seed` created, for its cleanup. */
 interface OwnRecord {
-  readonly objectName: "Contact" | "Invoice" | "CreditNote";
+  readonly objectName: "Contact" | "ContactAddress" | "Invoice" | "CreditNote";
   readonly id: number;
 }
 
@@ -872,6 +887,57 @@ async function seededListPaging(ctx: ProbeContext, own: OwnRecord[]): Promise<Pr
   );
 }
 
+/** `POST /ContactAddress`: a German billing address of a seeded contact, registered for cleanup. */
+async function seedAddress(
+  ctx: ProbeContext,
+  contact: number,
+  label: string,
+): Promise<number | string> {
+  const result = await ctx.http.write("POST", "/ContactAddress", {
+    tier: "write",
+    body: {
+      contact: { id: contact, objectName: "Contact" },
+      street: `${data(ctx).tag} ${label}`,
+      zip: "10115",
+      city: "Berlin",
+      country: { id: GERMANY, objectName: "StaticCountry" },
+      category: { id: BILLING_ADDRESS, objectName: "Category" },
+    },
+  });
+  const id = createdId(result.objects);
+  if (id === undefined) return `POST /ContactAddress ${outcomeOf(result)}`;
+  data(ctx).register("ContactAddress", id, "address of a tagged contact");
+  return id;
+}
+
+/**
+ * The body of `write-contact-address-paging-seed`: {@link ADDRESS_SEED_COUNT} tagged contacts
+ * with one address each, created within seconds (ties on `create`), then the comparison of
+ * {@link CONTACT_ADDRESS_CASE} over the whole address list, theirs included.
+ */
+async function seededAddressPaging(ctx: ProbeContext, own: OwnRecord[]): Promise<ProbeOutcome> {
+  for (let number = 1; number <= ADDRESS_SEED_COUNT; number += 1) {
+    const label = `Adresse ${String(number).padStart(2, "0")}`;
+    const contact = await seedContact(ctx, label);
+    if (typeof contact === "string") {
+      return inconclusive(`Contact ${number} of ${ADDRESS_SEED_COUNT}: ${contact}.`);
+    }
+    own.push({ objectName: "Contact", id: contact });
+    const address = await seedAddress(ctx, contact, label);
+    if (typeof address === "string") {
+      return inconclusive(`Address ${number} of ${ADDRESS_SEED_COUNT}: ${address}.`);
+    }
+    own.push({ objectName: "ContactAddress", id: address });
+  }
+  const { results, sent } = await runCases(ctx, [CONTACT_ADDRESS_CASE], ADDRESS_SEED_BUDGET);
+  return pagingFinding(
+    results,
+    sent,
+    ADDRESS_SEED_BUDGET,
+    `The probe created ${ADDRESS_SEED_COUNT} tagged contacts with one German billing address each; the list read is the account's whole address list, the seeded addresses included. `,
+  );
+}
+
 /**
  * Deletes the seeded records that are still there, documents before contacts: DELETE, then a GET
  * to see it gone. One note per record it could not delete; deleted ones are marked in the
@@ -933,6 +999,26 @@ export const LIST_PAGING_PROBES: readonly ProbeDefinition[] = [
       const own: OwnRecord[] = [];
       return withCleanup(
         () => seededListPaging(ctx, own),
+        () => deleteSeeded(ctx, own),
+      );
+    },
+  },
+  {
+    id: "write-contact-address-paging-seed",
+    title: `${ADDRESS_SEED_COUNT} tagged contacts with one address each: is GET /ContactAddress stable between pages`,
+    mode: "write",
+    optIn: true,
+    question:
+      `The question of read-list-paging-order (#162, #164) for the VAT check's address directory, on ${ADDRESS_SEED_COUNT} tagged contacts with one German ` +
+      "billing address each, created within seconds: GET /ContactAddress without a filter, as audit parties reads it (listContactAddressLocations), one page " +
+      `of ${ONE_PAGE} against two passes in pages of ${LIST_PAGING_PAGE} over the whole address list (the seeded addresses included, at most the first ` +
+      `${LIST_PAGING_PREFIX} rows), the sort key and the rows that tie on it; orderBy[0][field]=id too when the default order is not stable. ` +
+      `Opt-in: it creates ${2 * ADDRESS_SEED_COUNT} records and deletes every one at the end (addresses first), also when a step fails.`,
+    deviations: ["D-146", "D-100"],
+    async run(ctx) {
+      const own: OwnRecord[] = [];
+      return withCleanup(
+        () => seededAddressPaging(ctx, own),
         () => deleteSeeded(ctx, own),
       );
     },
