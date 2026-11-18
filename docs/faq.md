@@ -179,11 +179,11 @@ details are in [Banking and cash](guides/banking.md).
 ### Can it mark recurring private payments automatically?
 
 Through sevDesk's private-transaction rules: a rule names a counterparty or purpose text, and
-sevDesk marks matching transactions as private when it imports them from the bank. The server
-lists, creates and deletes rules; creating and deleting are `commit` tools that you confirm. Where
-rules act could not be tested, because a trial account imports no bank transactions, and there
-they changed no existing transaction. The preview's list of open transactions the rule seems meant
-for is the server's estimate, not sevDesk's matching. Details:
+sevDesk is expected to mark matching transactions as private when it imports them from the bank.
+The server lists, creates and deletes rules; creating and deleting are `commit` tools that you
+confirm. Where rules act could not be tested, because a trial account imports no bank
+transactions, and there they changed no existing transaction. The preview's list of open
+transactions the rule seems meant for is the server's estimate, not sevDesk's matching. Details:
 [Banking and cash](guides/banking.md#private-transaction-rules).
 
 ### How far can I rely on the VAT summary and the profit and loss?

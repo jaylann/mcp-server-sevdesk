@@ -3866,7 +3866,8 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   text; eight tagged rules, all deleted again).
 - **Impact:** The rule tools of #88 can list, create and delete rules, but a preview of which
   open transactions a new rule "would match" cannot rely on sevDesk applying it to existing or
-  hand-made rows: it must say that sevDesk applies rules to imported transactions, and mark any
+  hand-made rows: it must say that sevDesk is expected to apply rules to imported transactions
+  (descriptions, previews, summaries and docs hedge this, never state it as a fact), and mark any
   local matching as an estimate. Handling (#88): `sevdesk_private_transaction_rules_list` (read,
   explicit `limit`, texts cleaned), `sevdesk_private_transaction_rule_create` and
   `sevdesk_private_transaction_rule_delete` (both `commit`: a rule makes sevDesk mark imports
@@ -3879,18 +3880,22 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   equals an existing one's (case and spaces ignored; sevDesk itself would store the duplicate),
   and lists up to ten of at most 500 open transactions whose counterparty or purpose contains the
   text, every time labelled as this server's estimate, never as sevDesk's matching, with the
-  sentence that sevDesk acts on bank imports and could not be tested on a trial account. Both
-  tools confirm the write by reading the rule list back (no read by id is recorded); create
-  compares the stored text exactly with the trimmed text it sent and notes any difference. The
-  order of the list is not recorded, so create looks for the new rule on up to five pages of 1000;
-  on a longer list without it, the result shows the rule as sevDesk answered the POST and notes
-  that its stored text was not checked. The delete preview says that private transactions stay
-  private.
+  sentence that sevDesk is expected to act on bank imports and could not be tested on a trial
+  account. Both tools confirm the write by reading the rule list back (no read by id is
+  recorded); create compares the stored text exactly with the trimmed text it sent and notes any
+  difference. The order of the list is not recorded, so every search of it (the duplicate check,
+  the delete lookup and both read-backs, #132) reads up to five pages of 1000 with an explicit
+  `limit`: a longer list makes the create preview say how many rules the duplicate check read,
+  the delete refusal say "among the first N rules", and the create result show the rule as
+  sevDesk answered the POST with a note that its stored text was not checked. The delete preview
+  says that private transactions stay private.
 - **Test:** `test/unit/scripts/gaps-banking-probes.test.ts` ("answers the banking questions as
   recorded…": no row turns private, the rules are deleted);
   `test/unit/tools/banking/private-rules.test.ts` (list, refusals, the estimate and its labels,
   read-backs, also past the first 1000 rules, the trimmed text sent and a stored text with spaces
-  or cut short noted);
+  or cut short noted); `test/unit/domain/private-transaction-rules.test.ts` (paging: a duplicate
+  on page 2, a delete target on page 3, more than five pages, a short last page without a total,
+  a total of 0, the delete read-back past page 1);
   `test/regressions/private-transaction-rules.test.ts` (no rule without a confirmation, no match
   stated as fact); `test/regressions/concurrent-check-then-write.test.ts` (two equal creations at
   once give one rule); `test/unit/sevdesk/paths.test.ts` ("minimumWriteTier for

@@ -1170,7 +1170,7 @@ List the payment accounts (Zahlungskonten): bank accounts (Bankkonten), clearing
 
 **Create a sevDesk private-transaction rule** · tier `commit` · changes state, destructive, supports `dryRun`, asks the user to confirm
 
-Create a private-transaction rule (Regel für private Umsätze): sevDesk then marks bank transactions it imports from the bank as private (Privatentnahme/Privateinlage) on its own when their counterparty (Auftraggeber/Empfänger) or purpose (Verwendungszweck) matches the text. One text per rule. It does not change existing transactions; how sevDesk matches is not known. The preview lists open transactions that look like what the rule is meant for, as an estimate. Only for sole proprietors and partnerships, not for a GmbH or UG. Refuses a text equal to an existing rule's and one that is too short. Commit tier: asks a human to confirm the preview; dryRun only previews. Undo: sevdesk_private_transaction_rule_delete. Existing rules: sevdesk_private_transaction_rules_list.
+Create a private-transaction rule (Regel für private Umsätze): sevDesk is then expected to mark bank transactions it imports from the bank as private (Privatentnahme/Privateinlage) on its own when their counterparty (Auftraggeber/Empfänger) or purpose (Verwendungszweck) matches the text (not testable on a trial account). One text per rule. It does not change existing transactions; how sevDesk matches is not known. The preview lists open transactions that look like what the rule is meant for, as an estimate. Only for sole proprietors and partnerships, not for a GmbH or UG. Refuses a text equal to an existing rule's and one that is too short. Commit tier: asks a human to confirm the preview; dryRun only previews. Undo: sevdesk_private_transaction_rule_delete. Existing rules: sevdesk_private_transaction_rules_list.
 
 | Argument       | Type    | Required | Description                                                                                                                                              |
 | -------------- | ------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -1182,7 +1182,7 @@ Create a private-transaction rule (Regel für private Umsätze): sevDesk then ma
 
 **Delete a sevDesk private-transaction rule** · tier `commit` · changes state, destructive, supports `dryRun`, asks the user to confirm
 
-Delete a private-transaction rule (Regel für private Umsätze), so sevDesk no longer marks imported bank transactions private by it. Transactions already marked private stay private (sevdesk_transaction_reset sets one back). Commit tier: asks a human to confirm the preview; dryRun only previews. Rule ids: sevdesk_private_transaction_rules_list.
+Delete a private-transaction rule (Regel für private Umsätze), so sevDesk is no longer expected to mark imported bank transactions private by it. Transactions already marked private stay private (sevdesk_transaction_reset sets one back). Commit tier: asks a human to confirm the preview; dryRun only previews. Rule ids: sevdesk_private_transaction_rules_list.
 
 | Argument | Type    | Required | Description                                                                                                                                              |
 | -------- | ------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -1193,7 +1193,7 @@ Delete a private-transaction rule (Regel für private Umsätze), so sevDesk no l
 
 **List sevDesk private-transaction rules** · tier `read` · read-only, idempotent
 
-List the private-transaction rules (Regeln für private Umsätze): texts by which sevDesk marks bank transactions as private (Privatentnahme/Privateinlage) on its own when it imports them from the bank. Each rule has a counterparty text (Auftraggeber/Empfänger), a purpose text (Verwendungszweck) or both. Create or delete one with sevdesk_private_transaction_rule_create / sevdesk_private_transaction_rule_delete.
+List the private-transaction rules (Regeln für private Umsätze): texts by which sevDesk is expected to mark bank transactions as private (Privatentnahme/Privateinlage) on its own when it imports them from the bank (not testable on a trial account). Each rule has a counterparty text (Auftraggeber/Empfänger), a purpose text (Verwendungszweck) or both. Create or delete one with sevdesk_private_transaction_rule_create / sevdesk_private_transaction_rule_delete.
 
 | Argument | Type    | Required | Description                                                                    |
 | -------- | ------- | -------- | ------------------------------------------------------------------------------ |
