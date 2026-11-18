@@ -38,6 +38,8 @@ export interface WindowedScan<T> {
   readonly items: T[];
   /** sevDesk rows of the kept reads (count requests and a split page are not included). */
   readonly scanned: number;
+  /** Rows dropped because their id came before (counted in `scanned`). */
+  readonly repeated: number;
   /** sevDesk's count for the whole range, from the first request. */
   readonly total: number | undefined;
   /** True when the row cap (`max`) stopped reading while rows may have been left. */
@@ -90,8 +92,14 @@ export async function scanDateWindows<T>(
   const items: T[] = [];
   const seen = new Set<number>();
   const pagedRanges: string[] = [];
-  const state: { scanned: number; truncated: boolean; total: number | undefined } = {
+  const state: {
+    scanned: number;
+    repeated: number;
+    truncated: boolean;
+    total: number | undefined;
+  } = {
     scanned: 0,
+    repeated: 0,
     truncated: false,
     total: undefined,
   };
@@ -106,7 +114,10 @@ export async function scanDateWindows<T>(
     for (const item of page.items) {
       const id = idOf(item);
       if (id !== undefined) {
-        if (seen.has(id)) continue;
+        if (seen.has(id)) {
+          state.repeated += 1;
+          continue;
+        }
         seen.add(id);
       }
       items.push(item);
@@ -124,7 +135,8 @@ export async function scanDateWindows<T>(
 
   /**
    * The rest of a window that has to be read in pages (from `offset` on). The window counts as
-   * paged once a second page is actually read; a cap that stops before it is only `truncated`.
+   * paged once a second page actually brings rows; a cap that stops before it is only
+   * `truncated`, and an empty second page (the rows ended at the page size) is neither.
    */
   async function pageOn(window: DateRange, offset: number): Promise<void> {
     let next = offset;
@@ -135,7 +147,8 @@ export async function scanDateWindows<T>(
         return;
       }
       const page = await fetch(window, next, limit);
-      if (next === offset) pagedRanges.push(rangeLabel(window));
+      // Only a second page that brought rows makes the window paged: an empty one ends it.
+      if (next === offset && page.received > 0) pagedRanges.push(rangeLabel(window));
       await keep(page);
       next = page.nextOffset;
       if (!moreAfter(page, limit)) return;
@@ -193,6 +206,7 @@ export async function scanDateWindows<T>(
   return {
     items,
     scanned: state.scanned,
+    repeated: state.repeated,
     total: state.total,
     truncated: state.truncated,
     pagedRanges,

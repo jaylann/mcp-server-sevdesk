@@ -444,6 +444,13 @@ export interface VoucherListParams {
   readonly from?: string | undefined;
   readonly to?: string | undefined;
   readonly type?: VoucherTypeKey | undefined;
+  /**
+   * How a `type` sevDesk may ignore is re-checked. `scan` (default): rows are read from `offset`
+   * until `limit` matches are found, as the list tool pages. `drop`: a row of another type is
+   * dropped from the page like a date outside the range, so each request stays one page with
+   * sevDesk's `total` (reports that read date windows, D-146).
+   */
+  readonly typeCheck?: "scan" | "drop" | undefined;
   /** Only vouchers with this tag (`resolveTagFilter`), re-checked on every row. */
   readonly tagFilter?: TagListFilter | undefined;
   /** Only vouchers on this cost centre (`resolveCostCentreFilter`), re-checked on every row. */
@@ -502,8 +509,10 @@ export async function listVouchers(
     limit: params.limit,
     offset: params.offset,
     map: (raw) => toVoucherDto(parseVoucherRecord(raw), raw),
-    keep: type === undefined ? undefined : (item) => item.type === type,
+    keep:
+      type === undefined || params.typeCheck === "drop" ? undefined : (item) => item.type === type,
     recheck: (item) =>
+      (type === undefined || params.typeCheck !== "drop" || item.type === type) &&
       dates.contains(item.date) &&
       carriesTag(params.tagFilter, item.id) &&
       inCostCentre(params.costCentreFilter, item.costCentreId),
@@ -522,7 +531,7 @@ export interface VoucherDetails {
   /** Internal attachment identity for write verification; not part of the tool's DTO. */
   readonly documentId?: number | undefined;
   readonly positions: readonly VoucherPositionDto[];
-  /** False when sevDesk had more position rows than could be read; `positions` is then partial. */
+  /** False when not every position could be read for certain; `positions` may be partial. */
   readonly positionsComplete: boolean;
 }
 

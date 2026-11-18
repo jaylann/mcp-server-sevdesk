@@ -575,7 +575,8 @@ describe("sevdesk_records_summarize (community fixtures, fake data)", () => {
       },
     );
     await expect(promise).rejects.toMatchObject({ kind: "aborted" });
-    expect(progressCalls).toEqual([[1000, undefined, "Read 1000 vouchers."]]);
+    // The voucher type is re-checked per page (D-146), so sevDesk's total is known.
+    expect(progressCalls).toEqual([[1000, 2500, "Read 1000 vouchers."]]);
     expect(fakeClient?.callsTo("/Voucher")).toHaveLength(1);
   });
 

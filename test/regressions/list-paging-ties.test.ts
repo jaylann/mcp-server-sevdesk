@@ -21,7 +21,7 @@ import { summarizeRecords } from "../../src/domain/reports/summarize.js";
 import type { Tier } from "../../src/safety/tiers.js";
 import { createSevdeskClient } from "../../src/sevdesk/client.js";
 import { createFakeClock, jsonResponse } from "../helpers/fake-fetch.js";
-import { creditNoteDoc, invoiceDoc } from "../unit/domain/reports/builders.js";
+import { creditNoteDoc, invoiceDoc, voucherDoc } from "../unit/domain/reports/builders.js";
 
 type Raw = Record<string, unknown>;
 
@@ -153,6 +153,40 @@ describe("lists whose sort key ties, read past one page (#162, D-146)", { timeou
     // Every kept read is the first page of its window.
     const reads = requests.filter((url) => url.pathname.endsWith("/CreditNote"));
     expect(reads.every((url) => url.searchParams.get("offset") === "0")).toBe(true);
+  });
+
+  it("a voucher summary over a range reads 2,500 vouchers in windows, each once, and drops templates", async () => {
+    // 2,500 normal vouchers and 30 recurring templates (RV) sevDesk lists despite voucherType=VOU:
+    // the type is re-checked per page, so sevDesk's total stays and the range is split by it.
+    const vouchers = Array.from({ length: 2530 }, (_, index) =>
+      voucherDoc(
+        {
+          id: index + 1,
+          date: `2026-0${String(1 + (index % 3))}-${String(1 + (index % 28)).padStart(2, "0")}`,
+          net: "10",
+          tax: "1.9",
+        },
+        { create: CREATED, voucherType: index < 2500 ? "VOU" : "RV" },
+      ),
+    );
+    const { client, requests } = tiedSevdesk({
+      "/Voucher": { rows: vouchers, dateKey: "voucherDate" },
+    });
+    const report = await summarizeRecords(client, {
+      subject: "vouchers",
+      groupBy: "none",
+      from: "2026-01-01",
+      to: "2026-03-31",
+      maxGroups: 10,
+    });
+    expect(report.recordsCounted).toBe(2500);
+    expect(report.truncated).toBe(false);
+    expect(report.pagedRead).toBeUndefined();
+    const reads = requests.filter((url) => url.pathname.endsWith("/Voucher"));
+    expect(reads.every((url) => url.searchParams.get("offset") === "0")).toBe(true);
+    expect(reads.every((url) => url.searchParams.get("voucherType") === "VOU")).toBe(true);
+    // Split windows: more than one read, every one a first page.
+    expect(reads.length).toBeGreaterThan(1);
   });
 
   it("a credit note summary without a range pages, keeps each once and says rows may be missing", async () => {

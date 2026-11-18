@@ -635,7 +635,7 @@ async function readRecords(
     return {
       items: scan.items,
       scanned: scan.scanned,
-      repeated: 0,
+      repeated: scan.repeated,
       truncated: scan.truncated,
       pagedNote:
         scan.pagedRanges.length === 0
@@ -728,7 +728,10 @@ function pageFetcher(
             kind: params.kind,
             supplierId: params.contactId,
             // Recurring vouchers (RV) are templates; their generated vouchers are the records.
+            // Dropped per page, not scanned for: sevDesk's total stays, so a range is read in
+            // date windows of one page each (D-146).
             type: "normal",
+            typeCheck: "drop",
             tagFilter: filters.tag,
             costCentreFilter: filters.costCentre,
             limit,
