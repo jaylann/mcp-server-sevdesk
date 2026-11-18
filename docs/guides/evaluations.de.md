@@ -67,8 +67,9 @@ Dokumente als die eines Projekts ausgegeben.
   Tag-Gruppen, und die Tag-Gruppen ergeben zusammen mehr als die Gesamtsummen. Das Ergebnis sagt es
   (`groupsOverlap`).
 - **Kostenstellen teilen auf.** sevDesk führt je Dokument eine Kostenstelle, deshalb ergeben die
-  Kostenstellen-Gruppen zusammen die Gesamtsummen. Kostenstellen einzelner Belegpositionen werden
-  nicht gelesen: Das ganze Dokument zählt für die Kostenstelle im Kopf.
+  Kostenstellen-Gruppen zusammen die Gesamtsummen. Belegpositionen liest sevDesk ohne eigene
+  Kostenstelle zurück (eine mit der Position gesendete fällt weg), deshalb zählt das ganze Dokument
+  für die Kostenstelle im Kopf.
 - **Ohne.** Dokumente ohne Tag oder ohne Kostenstelle bilden eine eigene Gruppe, `none`.
 - **Unvollständiges Lesen.** Die Tags kommen aus den Tag-Zuordnungen des Kontos, gelesen bis
   10.000. Gibt es mehr, oder stoppt die Zeilengrenze das Lesen, ist die Aufteilung als

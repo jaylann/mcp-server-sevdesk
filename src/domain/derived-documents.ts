@@ -13,7 +13,9 @@
  *   invoice wrapped in `objects` (D-001); a nested `{invoice: …}` is accepted too. sevDesk copies
  *   the order's discount on the whole document into the invoice (D-116, checked 2026-11-17 for a
  *   whole sent offer: same row, same sums), so the preview shows the order's discounts and the
- *   read-back the invoice's; for a partial or advance invoice what happens to it is not checked.
+ *   read-back the invoice's. A partial (TR) or advance (AR) invoice gets no discount row: its
+ *   amount is the share of the discounted total (recorded 2026-11-18, 50 % of an offer of 150.00
+ *   with 10 % off gave 67.50 net and no discount).
  * - `POST /CreditNote/Factory/createFromInvoice`, body `{invoice: {id, objectName: "Invoice"}}`;
  *   the answer is `{creditNote, creditNotePos, discount}` per the spec, and sevdesk-rs
  *   (https://github.com/jernoxit/sevdesk-rs, `tests/number_probe/calls.rs`, live) reads the id
@@ -286,9 +288,8 @@ export async function planOrderToInvoice(
   if (discount !== undefined) {
     warnings.push(
       partial
-        ? "The order has a discount on the whole document. sevDesk copies it into an invoice for " +
-            "the whole order; what it does with it in a partial or advance invoice is not " +
-            "verified, so check the draft's total with sevdesk_invoice_get before finalizing."
+        ? "The order has a discount on the whole document. A partial or advance invoice gets no " +
+            "discount of its own: sevDesk takes its share of the discounted order total."
         : "The order has a discount on the whole document, and sevDesk copies it into the " +
             "invoice; the order totals shown already include it.",
     );

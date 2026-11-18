@@ -351,7 +351,7 @@ export async function prepareInvoiceCreate(
   const basics = await resolveCreateBasics(client, args, INVOICE_TAX_OPTIONS, options);
   const { contact, contactPerson, address, currency, mode } = basics;
   // With the document discount, which `basics.expected` leaves out.
-  const expected = createTotals(basics.positions, mode, discount, currency);
+  const expected = createTotals(basics.positions, mode, discount);
   const duplicateQuery = { contactId: args.contactId, date, gross: expected.gross, currency };
   const duplicates = await findDuplicates(client, { kind: "invoice" }, duplicateQuery, signal);
 
@@ -465,10 +465,8 @@ export async function prepareInvoiceUpdate(
     positions: basics.positions,
     storedPositions: current.positions,
     mode: basics.mode,
-    currency: basics.currency,
     currencyChanged: basics.currencyChanged,
     stored: doc,
-    eInvoice: doc.propertyIsEInvoice === true,
   });
   const expected = totals.expected;
 
@@ -548,7 +546,7 @@ export async function prepareInvoiceUpdate(
   if (centre !== undefined) {
     log.value("cost centre", "Cost centre (Kostenstelle)", ...costCentreChange(centre));
   }
-  const keptDiscount = logDiscountChange(log, change, discounts.rows, basics.currency);
+  const keptDiscount = logDiscountChange(log, change, discounts.rows, basics.currency, basics.mode);
 
   const taxHint = await updateTaxRuleHint(client, args, basics, doc.addressCountry?.id, options);
 

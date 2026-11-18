@@ -35,8 +35,8 @@ function client(routes: readonly FakeRoute[]): FakeSevdeskClient {
 
 const add = { action: "add", document: "invoice", id: 1001, tag: "Projekt Y" };
 const REUSES =
-  "A tag whose name differs only in case or accents exists: sevDesk reuses it, with its own " +
-  "spelling.";
+  "A tag whose name differs only in case, accents or ß/ss exists: sevDesk reuses it, with its " +
+  "own spelling.";
 const remove = { ...add, action: "remove" };
 
 describe("sevdesk_document_tag: metadata and registration", () => {
@@ -99,8 +99,8 @@ describe("sevdesk_document_tag: add", () => {
       value: "new: sevDesk creates it",
     });
     expect(plan.preview.warnings).toEqual([
-      "No tag has this name yet (compared ignoring case and accents, as sevDesk does): sevDesk " +
-        "creates the tag.",
+      "No tag has this name yet (compared ignoring case, accents and ß/ss, as sevDesk does): " +
+        "sevDesk creates the tag.",
     ]);
     expect(fake.writes().map((call) => [call.method, call.path, call.tier, call.body])).toEqual([
       [
@@ -175,7 +175,8 @@ describe("sevdesk_document_tag: add", () => {
   it("refuses to add when tags differ only in accents, since sevDesk's pick is unknown", async () => {
     const fake = client([INVOICE, tagsRoute([tagRow(7001, "Café"), tagRow(7003, "Cafe")])]);
     await expect(prepareWrite(tool, { ...add, tag: "Cafe" }, fake)).rejects.toThrow(
-      "Several tags have this name (compared ignoring case and accents), and sevDesk would pick",
+      "Several tags have this name (compared ignoring case, accents and ß/ss), and sevDesk would " +
+        "pick one of them.",
     );
     expect(fake.writes()).toEqual([]);
   });
@@ -249,10 +250,10 @@ describe("sevdesk_document_tag: which tag an add uses (stored names, similar spe
     };
   }
   const SIMILAR =
-    "No tag has exactly this name (compared ignoring case and accents), but one is spelled " +
-    "similarly (e.g. ß for ss, or with invisible characters). sevDesk may reuse that tag " +
-    "instead of creating one: how it compares such spellings is not measured. The result says " +
-    "which tag was used.";
+    "No tag has exactly this name (compared ignoring case, accents and ß/ss), but one is " +
+    "spelled similarly (e.g. æ for ae, or with invisible characters). sevDesk may reuse that " +
+    "tag instead of creating one: how it compares such spellings is not measured. The result " +
+    "says which tag was used.";
 
   it("matches the name sevDesk stores and sends it back unchanged (invisible characters, spaces)", async () => {
     const stored = " Projekt​Y ";
@@ -278,9 +279,11 @@ describe("sevdesk_document_tag: which tag an add uses (stored names, similar spe
   });
 
   it("does not take a cleaned name for the stored one, and says sevDesk may reuse that tag", async () => {
+    // A zero-width joiner: how sevDesk compares it is not measured (D-088), unlike the
+    // zero-width space, which it ignores.
     const fake = client([
       INVOICE,
-      tagsRoute([tagRow(7001, "Projekt​Y"), tagRow(7002, "Filiale München")]),
+      tagsRoute([tagRow(7001, "Projekt‍Y"), tagRow(7002, "Filiale München")]),
       CREATE,
     ]);
     const { plan, output } = await executeWrite(tool, { ...add, tag: "ProjektY" }, fake);
@@ -314,30 +317,71 @@ describe("sevdesk_document_tag: which tag an add uses (stored names, similar spe
     ).rejects.toThrow("Invoice 1001 does not carry this tag");
   });
 
-  it("reports the tag sevDesk reused for a similar spelling, not a created one (Großkunde = Grosskunde)", async () => {
+  it("reuses a tag spelled with ß for ss or with a zero-width space (recorded 2026-11-18, D-088)", async () => {
+    for (const [stored, asked] of [
+      ["Großkunde", "Grosskunde"],
+      ["Grosskunde", "Großkunde"],
+      ["Projekt​Y", "ProjektY"],
+    ] as const) {
+      const fake = client([
+        INVOICE,
+        tagsRoute([tagRow(7001, stored), tagRow(7002, "Filiale München")]),
+        documentTagRoute(7001, "Invoice", 1001, []),
+        CREATE,
+      ]);
+      const { plan, output } = await executeWrite(tool, { ...add, tag: asked }, fake);
+      expect(plan.preview.action).toBe("Tag invoice 1001 with tag 7001.");
+      expect(plan.preview.facts).toContainEqual({
+        label: "Tag status",
+        value: "exists (id 7001), added to this document",
+      });
+      expect(plan.preview.warnings).toEqual([REUSES]);
+      // The stored spelling is sent, so sevDesk reuses exactly that tag.
+      expect(fake.writes()[0]?.body).toEqual({
+        name: stored,
+        object: { id: 1001, objectName: "Invoice" },
+      });
+      expect(output.data).toMatchObject({ tag: { id: 7001 }, tagCreated: false });
+    }
+  });
+
+  it("previews a soft hyphen and a doubled inner space as a new tag (recorded 2026-11-18, D-088)", async () => {
+    for (const asked of ["Projekt­Y", "Projekt  Y"]) {
+      const fake = client([INVOICE, tagsRoute(TAGS)]);
+      const plan = await prepareWrite(tool, { ...add, tag: asked }, fake);
+      expect(plan.preview.action).toBe("Tag invoice 1001 with a new tag.");
+      expect(plan.preview.facts).toContainEqual({
+        label: "Tag status",
+        value: "new: sevDesk creates it",
+      });
+      expect(plan.preview.facts.map((fact) => fact.label)).not.toContain("Similar tag");
+    }
+  });
+
+  it("reports the tag sevDesk reused for a similar spelling, not a created one (Cæsar = Caesar)", async () => {
     const fake = client([
       INVOICE,
-      tagsRoute([tagRow(7001, "Großkunde"), tagRow(7002, "Filiale München")]),
+      tagsRoute([tagRow(7001, "Cæsar"), tagRow(7002, "Filiale München")]),
       CREATE,
     ]);
-    const { plan, output } = await executeWrite(tool, { ...add, tag: "Grosskunde" }, fake);
+    const { plan, output } = await executeWrite(tool, { ...add, tag: "Caesar" }, fake);
     expect(plan.preview.facts).toContainEqual({
       label: "Tag status",
       value: "new, unless sevDesk takes a similar tag for it",
     });
     expect(plan.preview.facts).toContainEqual({
       label: "Similar tag",
-      value: "Großkunde (id 7001)",
+      value: "Cæsar (id 7001)",
     });
     expect(plan.preview.warnings).toEqual([SIMILAR]);
     expect(fake.writes()[0]?.body).toEqual({
-      name: "Grosskunde",
+      name: "Caesar",
       object: { id: 1001, objectName: "Invoice" },
     });
     expect(output.data).toEqual({
       action: "added",
       document: { kind: "invoice", id: 1001 },
-      tag: { id: 7001, name: "Großkunde" },
+      tag: { id: 7001, name: "Cæsar" },
       relationId: 8101,
       tagCreated: false,
     });
@@ -352,16 +396,16 @@ describe("sevdesk_document_tag: which tag an add uses (stored names, similar spe
     const fake = client([
       INVOICE,
       tagsRoute([
-        tagRow(7001, "Strasse"),
-        tagRow(7002, "STRASSE"),
-        tagRow(7003, "Stras​se"),
-        tagRow(7004, "strasse"),
+        tagRow(7001, "Caesar"),
+        tagRow(7002, "CAESAR"),
+        tagRow(7003, "Cae‍sar"),
+        tagRow(7004, "caesar"),
       ]),
     ]);
-    const plan = await prepareWrite(tool, { ...add, tag: "Straße" }, fake);
+    const plan = await prepareWrite(tool, { ...add, tag: "Cæsar" }, fake);
     expect(plan.preview.facts).toContainEqual({
       label: "Similar tags",
-      value: "Strasse (id 7001); STRASSE (id 7002); Strasse (id 7003); and 1 more",
+      value: "Caesar (id 7001); CAESAR (id 7002); Caesar (id 7003); and 1 more",
     });
   });
 
@@ -504,13 +548,13 @@ describe("sevdesk_document_tag: remove", () => {
     await expect(prepareWrite(tool, remove, notCarried)).rejects.toMatchObject({
       kind: "validation",
       message:
-        "Invoice 1001 does not carry this tag (compared ignoring case and accents); nothing to " +
-        "remove. sevdesk_tags_list lists the tags.",
+        "Invoice 1001 does not carry this tag (compared ignoring case, accents and ß/ss); " +
+        "nothing to remove. sevdesk_tags_list lists the tags.",
     });
     const unknown = client([INVOICE, tagsRoute(TAGS)]);
     await expect(prepareWrite(tool, { ...remove, tag: "Unbekannt" }, unknown)).rejects.toThrow(
-      "Invoice 1001 does not carry this tag (compared ignoring case and accents); nothing to " +
-        "remove.",
+      "Invoice 1001 does not carry this tag (compared ignoring case, accents and ß/ss); nothing " +
+        "to remove.",
     );
     expect([...notCarried.writes(), ...unknown.writes()]).toEqual([]);
   });
@@ -566,9 +610,53 @@ describe("sevdesk_document_tag: remove", () => {
     expect(error).toBeInstanceOf(SevdeskError);
     const message = error instanceof SevdeskError ? error.message : "";
     expect(message).toBe(
-      "Several tags have this name (compared ignoring case and accents). Give one of them a " +
-        "distinct name in sevDesk first; sevdesk_tags_list shows their ids.",
+      "Several tags have this name (compared ignoring case, accents and ß/ss). Give one of " +
+        "them a distinct name in sevDesk first; sevdesk_tags_list shows their ids.",
     );
     expect(ambiguous.writes()).toEqual([]);
+  });
+
+  // ß/ss fold to one name (D-088, recorded 2026-11-18): a remove by name must never take the
+  // relation of the other spelling's tag when both exist.
+  it("removes only the exactly spelled tag of an ß/ss pair, and refuses a name matching both", async () => {
+    const tags = tagsRoute([tagRow(7003, "Straße"), tagRow(7001, "Strasse")]);
+    const exact = client([
+      INVOICE,
+      tags,
+      carries,
+      tagUsesRoute(7001, [
+        relationRow(8101, 7001, "Invoice", 1001),
+        relationRow(8102, 7001, "Order", 3002),
+      ]),
+      DELETE,
+    ]);
+    const { plan, output } = await executeWrite(tool, { ...remove, tag: "Strasse" }, exact);
+    expect(plan.preview.action).toBe("Remove tag 7001 from invoice 1001.");
+    expect(output.data.tag).toEqual({ id: 7001, name: "Strasse" });
+    expect(exact.writes().map((call) => [call.method, call.path])).toEqual([
+      ["DELETE", "/TagRelation/8101"],
+    ]);
+
+    const ambiguous = client([INVOICE, tags]);
+    await expect(prepareWrite(tool, { ...remove, tag: "STRASSE" }, ambiguous)).rejects.toThrow(
+      "Several tags have this name (compared ignoring case, accents and ß/ss).",
+    );
+    expect(ambiguous.writes()).toEqual([]);
+  });
+
+  it("finds the one tag of an ß spelling by its ss spelling (Grosskunde → Großkunde)", async () => {
+    const fake = client([
+      INVOICE,
+      tagsRoute([tagRow(7001, "Großkunde"), tagRow(7002, "Filiale München")]),
+      carries,
+      tagUsesRoute(7001, [
+        relationRow(8101, 7001, "Invoice", 1001),
+        relationRow(8102, 7001, "Order", 3002),
+      ]),
+      DELETE,
+    ]);
+    const { plan, output } = await executeWrite(tool, { ...remove, tag: "Grosskunde" }, fake);
+    expect(plan.preview.facts).toContainEqual({ label: "Tag", value: "Großkunde (id 7001)" });
+    expect(output.data.tag).toEqual({ id: 7001, name: "Großkunde" });
   });
 });

@@ -18,7 +18,8 @@ const output = z.object({
     .optional()
     .describe(
       "The invoice's discount on the whole document (Rabatt), which sevDesk copies from the " +
-        "order; left out when there is none.",
+        "order for mode full; left out when there is none. A partial or advance invoice gets " +
+        "none: its amount is already a share of the discounted total.",
     ),
   orderId: z.number().int().describe("The order the invoice was created from."),
   orderStatus: statusDtoSchema

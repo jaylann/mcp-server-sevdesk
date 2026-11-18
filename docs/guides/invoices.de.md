@@ -106,15 +106,17 @@ Vorschau nennt die entfernte.
 > Gib der Musterfirma 3 % Rabatt auf die ganze Rechnung.
 
 Neben dem Rabatt je Position kann ein Entwurf einen Rabatt auf den Gesamtbetrag tragen: einen
-Prozentsatz vom Nettobetrag oder einen festen Nettobetrag in EUR, mit dem Text, der daneben
-gedruckt wird („Rabatt“, wenn du keinen anderen nennst). Die Vorschau zeigt ihn und die Summe, die
-sich daraus ergibt; das Ergebnis zeigt, was sevDesk abgezogen hat. Angebote, Auftragsbestätigungen
-und Gutschriften nehmen denselben Rabatt. Vorerst setzt der Server ihn nur bei Nettopreisen mit
-einem einzigen Steuersatz und nicht auf einer E-Rechnung: Wie sevDesk die anderen Fälle behandelt,
-ist noch nicht geprüft, und die Werkzeuge sagen das, statt zu raten. Ändert der Assistent den
-Entwurf später, bleibt der Rabatt, solange du ihn nicht ersetzt oder entfernst. Ein Dokument mit
-mehreren Rabatten (sevDesk rechnet dann nur einen davon in die Summen ein) bleibt der Web-App von
-sevDesk überlassen; die Abfragewerkzeuge und die Freigabe weisen darauf hin.
+Prozentsatz vom Nettobetrag oder einen festen Nettobetrag in der Währung des Dokuments, mit dem
+Text, der daneben gedruckt wird („Rabatt“, wenn du keinen anderen nennst). Die Vorschau zeigt ihn
+und die Summe, die sich daraus ergibt; das Ergebnis zeigt, was sevDesk abgezogen hat. Angebote,
+Auftragsbestätigungen und Gutschriften nehmen denselben Rabatt, und eine E-Rechnung führt ihn als
+Abschlag auf die ganze Rechnung. Der Server setzt ihn nur bei Positionen mit einem einzigen
+Steuersatz und bei Bruttopreisen nur als Prozentsatz: sevDesk verteilt einen Rabatt auf mehrere
+Steuersätze und zieht einen festen Betrag vom Bruttobetrag ab, was der Server noch nicht
+berechnet; deshalb verweigern die Werkzeuge diese Fälle, statt die Summe zu raten. Ändert der
+Assistent den Entwurf später, bleibt der Rabatt, solange du ihn nicht ersetzt oder entfernst. Ein
+Dokument mit mehreren Rabatten (sevDesk rechnet dann nur einen davon in die Summen ein) bleibt der
+Web-App von sevDesk überlassen; die Abfragewerkzeuge und die Freigabe weisen darauf hin.
 
 ### Eine englische Rechnung auf anderem Briefpapier
 
@@ -180,18 +182,17 @@ ausdrücklich eine. Das Werkzeug für Lieferscheine verweigert nur, solange ein 
 aus demselben Auftrag noch ein Entwurf ist, denn ein weiterer Lieferschein kann eine Teillieferung
 sein; fertiggestellte nennt seine Vorschau. Fertiggestellt wird der neue Entwurf mit
 [`sevdesk_order_finalize`](../tools.md#sevdesk_order_finalize). Beide Vorschauen führen auch Rabatte
-und Aufschläge auf das ganze Dokument der Vorlage auf; ob sevDesk sie übernimmt, ist nicht geprüft,
-also vergleiche die Summen des neuen Entwurfs, bevor du ihn fertigstellst.
+und Aufschläge auf das ganze Dokument der Vorlage auf. Einen Rabatt übernimmt sevDesk mit denselben
+Summen in die Auftragsbestätigung und in den Lieferschein; ein Aufschlag ist nicht geprüft, also
+vergleiche die Summen des neuen Entwurfs, bevor du ihn fertigstellst.
 
 sevDesk gibt dem neuen Dokument die nächste Nummer seines Nummernkreises, ohne den Zähler
-weiterzuschalten; deshalb reserviert das Werkzeug diese Nummer gleich danach am Zähler, um ihn über
-sie hinaus weiterzuschalten, sonst bekäme die nächste Auftragsbestätigung oder der nächste
-Lieferschein dieselbe Nummer. Dass die Reservierung den AB- und den LI-Zähler weiterschaltet, ist
-angenommen, aber nicht an sevDesk geprüft (geprüft ist das nur für Angebote und Gutschriften). Die
-Reservierung geschieht bei jedem echten Aufruf (nicht bei einem Probelauf), auch für einen
-Entwurf, den du später löschst; dann kann eine Lücke in den AB- oder LI-Nummern bleiben. Aufrufe, die
-Auftragsbestätigungen nummerieren, und Aufrufe, die Lieferscheine nummerieren (diese beiden Werkzeuge
-und [`sevdesk_order_create_draft`](../tools.md#sevdesk_order_create_draft) für einen solchen
+weiterzuschalten; deshalb reserviert das Werkzeug diese Nummer gleich danach am Zähler, was ihn um
+eins weiterschaltet, sonst bekäme die nächste Auftragsbestätigung oder der nächste Lieferschein
+dieselbe Nummer. Die Reservierung geschieht bei jedem echten Aufruf (nicht bei einem Probelauf),
+auch für einen Entwurf, den du später löschst; dann kann eine Lücke in den AB- oder LI-Nummern
+bleiben. Aufrufe, die Auftragsbestätigungen nummerieren, und Aufrufe, die Lieferscheine
+nummerieren (diese beiden Werkzeuge und [`sevdesk_order_create_draft`](../tools.md#sevdesk_order_create_draft) für einen solchen
 Entwurf), laufen je Konto nacheinander, damit zwei davon nicht dieselbe Nummer bekommen. Das
 Ergebnis sagt, was mit dem Zähler geschah, und nennt andere Dokumente mit derselben Nummer, etwa
 solche, die vor diesem Verhalten oder in der Web-App entstanden sind.
@@ -499,9 +500,10 @@ Steuerregel nicht die übliche für den Kunden ist.
   einen pro Minute. Gib im selben Aufruf ein neues Startdatum an. Eine nächste Ausführung heute ist
   sofort fällig, bei einer in der Web-App angelegten Vorlage zu ihrer gespeicherten Uhrzeit.
 - Ein **Rabatt auf den Gesamtbetrag** der Vorlage bleibt, wie er ist; die Änderung setzt nie
-  einen. Bei neuen Positionen rechnet die Summe je Rechnung ihn ein, wo das erfasst ist (ein
-  Nettorabatt, Nettopreise, ein Steuersatz), sonst berechnet sevDesk die Summe. Ob sevDesk den
-  Rabatt behält, wenn alle Positionen ersetzt werden, ist nicht erfasst; die Vorschau sagt das.
+  einen. sevDesk behält ihn, wenn alle Positionen ersetzt werden; er gilt also für die neuen
+  Positionen. Bei neuen Positionen rechnet die Summe je Rechnung ihn ein, wo der Server ihn
+  berechnet (ein Rabatt, ein Steuersatz, ein fester Betrag nur bei Nettopreisen), sonst berechnet
+  sevDesk die Summe.
 
 Nach dem Speichern liest der Assistent die Vorlage zurück und nennt alles, was sevDesk anders
 gespeichert hat, auch eine Position, deren Änderung sevDesk übergangen hat, einen Schalter, der

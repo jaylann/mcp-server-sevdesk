@@ -180,7 +180,8 @@ describe("sevdesk_contact_delete", () => {
         "The contact, its 2 addresses and its 3 communication ways are deleted from sevDesk; " +
           "this cannot be undone.",
         "sevDesk deletes the organisation's 1 contact person (Ansprechpartner) with it; this " +
-          "cannot be undone either.",
+          "cannot be undone either. If a document uses the organisation or its contact person, " +
+          "sevDesk refuses the whole deletion and deletes nothing.",
         "Any custom field values (Kontaktfelder) of the contact and of its contact person are " +
           "deleted with them.",
       ],
@@ -205,7 +206,8 @@ describe("sevdesk_contact_delete", () => {
         "Der Kontakt, seine 2 Adressen und seine 3 Kommunikationswege werden aus sevDesk " +
           "gelöscht; das lässt sich nicht rückgängig machen.",
         "sevDesk löscht den Ansprechpartner der Organisation mit; das lässt sich ebenfalls nicht " +
-          "rückgängig machen.",
+          "rückgängig machen. Verwendet ein Dokument die Organisation oder ihren Ansprechpartner, " +
+          "lehnt sevDesk die ganze Löschung ab und löscht nichts.",
         "Auch die Werte von Kontaktfeldern des Kontakts und seines Ansprechpartners werden " +
           "mitgelöscht.",
       ],
@@ -494,8 +496,8 @@ describe("sevdesk_contact_delete", () => {
       { id: 1005, displayName: "Dr. Erika Mustermann", outcome: "unchecked" },
     ]);
     expect(output.data.notes).toEqual([
-      "Contact person 1002 is still in sevDesk although organisation 1001 was deleted; why " +
-        "sevDesk kept it is not recorded (perhaps a document uses it). Check with " +
+      "Contact person 1002 is still in sevDesk although organisation 1001 was deleted; sevDesk " +
+        "deleted an organisation's contact persons with it when this was recorded. Check with " +
         "sevdesk_contact_get.",
       "Whether contact person 1005 was deleted could not be checked. Check with " +
         "sevdesk_contact_get.",

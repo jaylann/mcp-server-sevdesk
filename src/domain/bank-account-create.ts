@@ -10,7 +10,8 @@
  * cannot be created through the API (`POST /CheckAccount` answers 400), and
  * `DELETE /CheckAccount/{id}` only archives, so a created account stays.
  *
- * Only documented fields are sent: `name`, `importType` (always `CSV`, the recorded value) and,
+ * Only documented fields are sent: `name`, `importType` (always `CSV`, the recorded value; the
+ * spec's `MT940` is refused with 422 "Invalid import type given", recorded 2026-11-18, D-119) and,
  * when the user gives one, `accountingNumber` (D-119: stored as sent; sevDesk refuses a number in
  * use, also by an archived account, and a number it does not allow, both with 422, which become
  * our own messages). The created account is taken from sevDesk's answer, not from the request,

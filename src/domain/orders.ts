@@ -386,7 +386,7 @@ export async function getOrder(
   const discount =
     discounts === undefined
       ? undefined
-      : documentDiscountDto(discounts.rows, record, order.currency);
+      : documentDiscountDto(discounts.rows, record, order.currency, order.priceMode);
   return {
     order,
     positions: positions.rows.map((row) => toPositionDto(row, context)),

@@ -5,17 +5,18 @@
  * Recorded 2026-11-16 (spec/deviations.md D-088, D-089):
  * - `POST /Tag/Factory/create {name, object: {id, objectName}}` tags an invoice, voucher, order or
  *   credit note by name, drafts and finalized documents alike, and answers the TagRelation. A
- *   name that exists, also with other letter case or accents, reuses that tag; a new name creates
- *   the tag. A tag cannot be given by id.
+ *   name that exists, also with other letter case or accents (and, recorded 2026-11-18, ß for ss,
+ *   the ligature ﬁ or a zero-width space), reuses that tag; a new name creates the tag. A tag
+ *   cannot be given by id.
  * - Nothing in the spec takes a tag off a document. The undocumented
  *   `DELETE /TagRelation/{id}` removes one relation; removing a tag's last relation deletes the
  *   tag itself.
  *
  * One document per call: each tag or untag is one request that is never retried, so a call either
  * did everything its preview says or nothing, and the preview can say exactly whether the tag is
- * created or deleted. Where sevDesk's name comparison is not measured (ß/ss and the like), the
- * preview says that sevDesk may reuse a similar tag, and the result reports the tag sevDesk
- * actually used.
+ * created or deleted. Where sevDesk's name comparison is not measured (æ/ae, invisible characters
+ * other than the zero-width space and the soft hyphen), the preview says that sevDesk may reuse a
+ * similar tag, and the result reports the tag sevDesk actually used.
  */
 import type { ConfirmationFact, ConfirmationPreview } from "../safety/write-types.js";
 import { expectSingle } from "../sevdesk/envelope.js";
@@ -138,7 +139,8 @@ async function planAdd(
   if (found.matches.length > 1) {
     // sevDesk picks one of them by name; which one is not measured, so the preview could not say.
     throw validation(
-      "Several tags have this name (compared ignoring case and accents), and sevDesk would pick " +
+      "Several tags have this name (compared ignoring case, accents and ß/ss), and sevDesk would " +
+        "pick " +
         "one of them. Give one a distinct name in sevDesk first; sevdesk_tags_list shows their " +
         "ids.",
     );
@@ -175,20 +177,20 @@ async function planAdd(
   if (existing !== undefined) {
     if (existing.storedName.trim() !== name) {
       warnings.push(
-        "A tag whose name differs only in case or accents exists: sevDesk reuses it, with its " +
-          "own spelling.",
+        "A tag whose name differs only in case, accents or ß/ss exists: sevDesk reuses it, with " +
+          "its own spelling.",
       );
     }
   } else if (similar.length === 0) {
     warnings.push(
-      "No tag has this name yet (compared ignoring case and accents, as sevDesk does): sevDesk " +
-        "creates the tag.",
+      "No tag has this name yet (compared ignoring case, accents and ß/ss, as sevDesk does): " +
+        "sevDesk creates the tag.",
     );
   } else {
     warnings.push(
-      "No tag has exactly this name (compared ignoring case and accents), but one is spelled " +
-        "similarly (e.g. ß for ss, or with invisible characters). sevDesk may reuse that tag " +
-        "instead of creating one: how it compares such spellings is not measured. The result " +
+      "No tag has exactly this name (compared ignoring case, accents and ß/ss), but one is " +
+        "spelled similarly (e.g. æ for ae, or with invisible characters). sevDesk may reuse that " +
+        "tag instead of creating one: how it compares such spellings is not measured. The result " +
         "says which tag was used.",
     );
   }
@@ -250,7 +252,8 @@ async function planRemove(
     tag === undefined ? undefined : await findTagRelation(client, tag.id, object, signal);
   if (tag === undefined || relation === undefined) {
     throw validation(
-      `${documentRef(doc, true)} does not carry this tag (compared ignoring case and accents); ` +
+      `${documentRef(doc, true)} does not carry this tag (compared ignoring case, accents and ` +
+        "ß/ss); " +
         "nothing to remove. sevdesk_tags_list lists the tags.",
     );
   }
@@ -321,7 +324,8 @@ export async function executeTagChange(
   const relation = parseTagRelation(expectSingle(answer, "tag relation"));
   const base = { relationId: relation.id, tagId: relation.tagId };
   // Judged from the answer, not the preview: sevDesk may have reused a tag whose name this
-  // server did not match (its comparison is measured for case and accents only, D-088).
+  // server did not match (its comparison is measured for case, accents, ß/ss, the ligature ﬁ and
+  // some invisible characters only, D-088).
   const used = state.tags.known.get(relation.tagId);
   if (used !== undefined) return { ...base, tagName: used.name, tagCreated: false };
   const tagName = display(state.name);

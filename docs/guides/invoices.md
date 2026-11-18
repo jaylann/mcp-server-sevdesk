@@ -97,12 +97,14 @@ refused before anything is saved. An update that does not name a cost centre kee
 > Give Musterfirma 3 % off the whole invoice.
 
 Besides a discount per position, a draft can carry one discount on the whole document (Rabatt auf
-den Gesamtbetrag): a percentage of the net total or a fixed net amount in EUR, with the text
-printed next to it ("Rabatt" unless you name another). The preview shows it and the total it
-leads to; the result shows what sevDesk deducted. Offers, order confirmations and credit notes take
-the same discount. For now the server sets one only on net prices with a single tax rate, and not
-on an e-invoice: sevDesk's handling of the other cases is not verified yet, and the tools say so
-instead of guessing. Changing the draft later keeps the discount unless you replace it or remove
+den Gesamtbetrag): a percentage of the net total or a fixed net amount in the document's currency,
+with the text printed next to it ("Rabatt" unless you name another). The preview shows it and the
+total it leads to; the result shows what sevDesk deducted. Offers, order confirmations and credit
+notes take the same discount, and an e-invoice carries it as an allowance on the whole invoice.
+The server sets one only on positions with a single tax rate, and on gross prices only as a
+percentage: sevDesk spreads a discount over several tax rates and takes a fixed amount off the
+gross total, which the server does not compute yet, so the tools refuse those cases instead of
+guessing the total. Changing the draft later keeps the discount unless you replace it or remove
 it. A document with several discounts (sevDesk's totals then count only one of them) is left to
 the sevDesk web app, and the get tools and the approval warn about it.
 
@@ -168,16 +170,16 @@ delivery note tool refuses only while an earlier delivery note from the same ord
 draft, because a further delivery note can be a partial delivery; finalized ones are named in its
 preview. The new draft is finalized with
 [`sevdesk_order_finalize`](../tools.md#sevdesk_order_finalize). Both previews also list discounts
-or surcharges on the whole source document; whether sevDesk takes them over has not been checked,
-so compare the new draft's totals before finalizing it.
+or surcharges on the whole source document. sevDesk copies a discount to the confirmation and the
+delivery note with the same totals; a surcharge has not been checked, so compare the new draft's
+totals before finalizing it.
 
 sevDesk gives the new document the next number of its range without moving the counter, so the
-tool reserves that number on the counter right afterwards to move the counter past it; otherwise
-the next confirmation or delivery note would get the same number. That a reservation moves the AB
-and LI counters is assumed, not checked against sevDesk (it was checked for offers and credit
-notes only). The reservation happens on every real call (not on a dry run), also for a draft you
-delete later, which can leave a gap in the AB or LI numbers. Calls that number
-order confirmations, and calls that number delivery notes (these two tools, and
+tool reserves that number on the counter right afterwards, which moves the counter on by one;
+otherwise the next confirmation or delivery note would get the same number. The reservation
+happens on every real call (not on a dry run), also for a draft you delete later, which can leave
+a gap in the AB or LI numbers. Calls that number order confirmations, and calls that number
+delivery notes (these two tools, and
 [`sevdesk_order_create_draft`](../tools.md#sevdesk_order_create_draft) for such a draft), run one
 at a time per account, so two of them cannot take the same number. The result says what happened
 to the counter, and names other documents that carry the same number, for example ones created
@@ -463,9 +465,9 @@ also warns if the tax rule is not the usual one for the customer.
   the same call. A next run today is due at once, or at its stored time of day for a template made
   in the web app.
 - A **discount on the whole document** (Rabatt) on the template stays as it is; the change never
-  sets one. With new positions the total per invoice counts it where that is recorded (one net
-  discount, net prices, one tax rate), else sevDesk computes the total. Whether sevDesk keeps the
-  discount when every position is replaced is not recorded, so the preview says so.
+  sets one. sevDesk keeps it when every position is replaced, so it applies to the new positions.
+  With new positions the total per invoice counts it where the server computes it (one discount,
+  one tax rate, a fixed amount only on net prices), else sevDesk computes the total.
 
 After saving, the assistant reads the template back and names every way sevDesk stored something
 else, including a position whose change sevDesk ignored, a switch that did not take and a discount

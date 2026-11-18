@@ -22,10 +22,11 @@
  *   with the ones sent, so a change sevDesk ignored becomes a note.
  * - A discount on the whole document (Rabatt, D-116) is read like the invoice draft update reads
  *   it (`getDiscounts`) and left alone: the body has no discount keys. New positions' expected
- *   totals count a single net discount (`updateTotals`); with several, a surcharge, a gross amount
- *   or what is not recorded for discounts, sevDesk computes the total and the preview says so.
- *   Whether sevDesk keeps the discount when every position is replaced is not recorded, so the
- *   preview says that too, and the read-back compares the discounts with the ones before.
+ *   totals count a single discount where `updateTotals` computes one; with several, a surcharge,
+ *   or what it does not compute, sevDesk computes the total and the preview says so. sevDesk keeps
+ *   the discount when every position is replaced (recorded 2026-11-18, D-116), and the preview
+ *   says it applies to the new positions; the read-back still compares the discounts with the
+ *   ones before.
  *
  * A template with automatic sending on, or whose settings sevDesk does not return, is not changed
  * here (`assertNoAutoSending`): sevDesk would e-mail invoices from it with no further approval.
@@ -42,6 +43,7 @@ import type { SevdeskClient } from "../../sevdesk/types.js";
 import { cleanText, isoDateInput } from "../common.js";
 import type { CountryReadOptions } from "../country-codes.js";
 import {
+  appliedDiscount,
   type DiscountRow,
   type DocumentDiscount,
   readDocumentDiscounts,
@@ -416,16 +418,14 @@ export async function prepareRecurringInvoiceUpdate(
   );
   const positions = basics.positions;
   // The discount is kept (no discount keys); new positions' totals count it as the invoice draft
-  // update does, or leave the computing to sevDesk where that is not recorded.
+  // update does, or leave the computing to sevDesk where this server does not compute it.
   const totals = updateTotals({
     change: planDiscountChange(undefined, discounts, `Recurring invoice template ${doc.id}`),
     positions,
     storedPositions: current.positions,
     mode: basics.mode,
-    currency: basics.currency,
     currencyChanged: basics.currencyChanged,
     stored: doc,
-    eInvoice: doc.propertyIsEInvoice === true,
   });
   const expected = totals.expected;
   const charged =
@@ -636,7 +636,7 @@ export async function executeRecurringInvoiceUpdate(
         ? settingsDifferences(state.generationOn, schedule)
         : []),
       ...positionNotes(state, details),
-      ...discountNotes(state.keptDiscounts, details.discount),
+      ...discountNotes(state.keptDiscounts, details.discount, details.invoice.priceMode),
     ],
   };
 }
@@ -697,18 +697,22 @@ function positionNotes(state: RecurringInvoiceUpdateState, details: InvoiceDetai
 
 /**
  * A trusted note when the discounts on the whole document read back differ from the ones the
- * template had (the change sends no discount keys; whether replacing every position keeps them is
- * not recorded). Only counts are named, never the stored texts.
+ * template had. The change sends no discount keys, and sevDesk keeps them when every position is
+ * replaced (recorded 2026-11-18, D-116), so a difference means something else changed them. The
+ * kept rows are compared with the basis the read-back's DTO applies on its price mode
+ * (`appliedDiscount`). Only counts are named, never the stored texts.
  */
 function discountNotes(
   kept: readonly DiscountRow[],
   actual: DocumentDiscount | undefined,
+  priceMode: "net" | "gross" | undefined,
 ): string[] {
   const items = actual?.items ?? [];
   const same =
     items.length === kept.length &&
-    kept.every((row, index) => {
+    kept.every((stored, index) => {
       const item = items[index];
+      const row = appliedDiscount(stored, priceMode);
       return (
         item !== undefined &&
         (item.surcharge === true) === row.surcharge &&

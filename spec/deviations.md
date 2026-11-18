@@ -166,6 +166,7 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
 | [D-142](#d-142-an-account-with-booked-transactions-is-not-archived-the-refusal-is-http-200)        | An account with booked transactions is not archived; the refusal is HTTP 200           | Open                  |
 | [D-143](#d-143-an-archived-account-cannot-be-restored-and-archiving-clears-its-iban)               | An archived account cannot be restored, and archiving clears its IBAN                  | Open                  |
 | [D-144](#d-144-put-checkaccount-refuses-a-booking-account-in-use-with-400-not-422)                 | `PUT /CheckAccount` refuses a booking account in use with 400, not 422                 | Open                  |
+| [D-145](#d-145-transaction-lists-run-newest-first-by-valuedate)                                    | Transaction lists run newest first by `valueDate`                                      | Open                  |
 
 ## Entries
 
@@ -650,21 +651,29 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   dates equal, so it does not settle the question; so do all eight transactions of our recording
   (created by bookings, D-071, and one cash entry). A transaction created through
   `POST /CheckAccountTransaction` with a `valueDate` three days before its `entryDate` reads both
-  back as sent (recorded 2026-11-08); that does not tell which description is right either. The
-  list filters `startDate`/`endDate` compare `entryDate` (D-047). The response model also has
-  status 350 (D-031).
+  back as sent (recorded 2026-11-08); that does not tell which description is right either. A
+  row created without an `entryDate` key, or with `entryDate: null`, gets the value day as its
+  `entryDate` (12:00, like the `valueDate` sent), not the day it was created (recorded
+  2026-11-18). On the trial's 55 existing rows `entryDate` was the same instant as `valueDate`
+  on 54 (20 on CSV file-import accounts, 29 on the clearing account, 5 on the cash register) and
+  later on one CSV row; the trial has no bank-connected account. The list filters
+  `startDate`/`endDate` compare `entryDate` (D-047). The response model also has status 350
+  (D-031).
 - **Sources:** spec;
   [emuuu/sevDesk.NET recorded responses](https://github.com/emuuu/sevDesk.NET) (2026-02-19);
   recorded 2026-11-07, trial account, Update 2.0 (probe `read-transaction-date-filters`:
-  inconclusive); recorded 2026-11-08 (probe `write-transaction-create`). Settling it needs
-  imported bank transactions with different dates.
+  inconclusive); recorded 2026-11-08 (probe `write-transaction-create`); recorded 2026-11-18,
+  trial account, Update 2.0 (probes `write-transaction-entry-date`, `read-transaction-entry-dates`).
+  Settling which description is right needs imported bank transactions with different dates
+  (open: real account).
 - **Impact:** The transaction DTO keeps both dates and describes each one. `valueDate` is treated
   as the transaction's date because the request model requires it, and date ranges apply to it by
   default. `entryDate` is an optional second date (the import date per the request model); a range
-  applies to it with `dateField: "entry"` (D-047).
+  applies to it with `dateField: "entry"` (D-047). `sevdesk_transaction_create` sends both dates
+  (the same noon), so it does not depend on the default.
 - **Test:** `test/unit/tools/banking/transactions.test.ts` (both dates, `entryDate` missing).
-  Live: probes `write-transaction-entry-date` (what a row sent without `entryDate` holds) and
-  `read-transaction-entry-dates` (the account's rows per kind of account, imported ones if any;
+  Live: probes `write-transaction-entry-date` (observed 2026-11-18: the value day) and
+  `read-transaction-entry-dates` (observed 2026-11-18: no imported rows on the trial;
   `test/unit/scripts/gaps-banking-probes.test.ts`, #136).
 
 ### D-017: `origin.objectName` only allowed `Invoice`
@@ -738,24 +747,34 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   only transactions in that status. Recorded: on eight booked (400) transactions, `isBooked=1`,
   `isBooked=0` and `isBooked=false` all returned the eight (so `0` and `false` do not select
   unbooked rows), and `status=400` returned only rows with that status; on 2026-11-08 `status=100`
-  returned only the 3 rows at 100 of 28. The `depth` default could not be checked: the trial
-  account had no person contact.
+  returned only the 3 rows at 100 of 28. The `depth` default could not be checked at first (the
+  trial account had no person contact); the name search below shows it leaves persons out. The
+  `name` filter of `GET /Contact` is a case-insensitive search
+  for a part of the shown name (recorded 2026-11-18): an organisation is found by its full name,
+  in lower and upper case and by a middle part, also without `depth`; a person by its
+  familyname, in lower case, by a middle part of it, by the shown name "first last" and by its
+  first name alone, but by its familyname only with `depth=1` (without it, persons are left out).
 - **Sources:** [genz-its/sevdesk](https://github.com/genz-its/sevdesk) docs and
   [`CLAUDE.md`](https://github.com/genz-its/sevdesk/blob/main/CLAUDE.md);
   [jernoxit/sevdesk-rs `src/query.rs`](https://github.com/jernoxit/sevdesk-rs/blob/main/src/query.rs)
   (measured); recorded 2026-11-07, trial account, Update 2.0 (probes
   `read-transaction-boolean-filters`, `read-transaction-status-filter`; `read-contact-depth`
-  inconclusive); recorded 2026-11-08 (probe `read-transaction-status-filter`).
+  inconclusive); recorded 2026-11-08 (probe `read-transaction-status-filter`); recorded
+  2026-11-18, trial account, Update 2.0 (probe `write-contact-name-search`).
 - **Impact:** The client serializes booleans as `1`/`0` and always sends `depth=1` for contact
-  lists. `sevdesk_transactions_list` never sends `isBooked`. With exactly one status (for example
+  lists, so `sevdesk_contacts_search` `query` and the contact name suggestions of the prompts
+  find persons too, by any part of the name, in any letter case. `sevdesk_transactions_list`
+  never sends `isBooked`. With exactly one status (for example
   `created`) it sends `status=<code>` to narrow the read; several statuses cannot go into one
   filter and are not sent. Either way it checks every row's status itself, so a server that
   ignores the filter changes nothing, and its output says that it filtered locally.
 - **Test:** `test/unit/tools/contacts/search.test.ts` (`depth=1`),
   `test/regressions/b16-zero-values.test.ts` (booleans as `1`/`0`),
   `test/unit/tools/banking/transactions.test.ts` ("filters unbooked (created) transactions locally
-  and counts sevDesk rows, not matches", "combines several statuses and a direction"). `depth`:
-  pending: recording session, probe `read-contact-depth` (no person contact in the account).
+  and counts sevDesk rows, not matches", "combines several statuses and a direction"). Live:
+  probe `read-contact-depth` (inconclusive on 2026-11-07: no person contact in the account), and
+  `write-contact-name-search` for the name search and `depth` (observed 2026-11-18;
+  `test/unit/scripts/gaps-contacts-probes.test.ts`).
 
 ### D-021: Validation errors can come back as 500
 
@@ -1112,7 +1131,9 @@ content}}` for invoices, credit notes and orders (recorded; key casing: D-072). 
     `createPackingListFromOrder` give the new `AB` or `LI` the number `getNextOrderNumber` peeks
     for its type without advancing the counter, so consecutive ones share a number (D-107).
     Saving or deleting a draft with a peeked number does not move the counter either; a draft
-    that leaves status 100 through `PUT /Order/{id}` gets a new number (D-108).
+    that leaves status 100 through `PUT /Order/{id}` gets a new number (D-108). Recorded again on
+    2026-11-18 for an `AB` and an `LI` made from a draft offer: each took the peeked number, the
+    counter did not move, and deleting the copy left the counter where it was.
   - Placeholders: none of the 48 invoice, credit note and order numbers of the trial account
     contained `%…%`. In exlo89/laravel-sevdesk-api#16 an invoice got the number `RE-%YYYY%MM1038`
     because the library filled the number itself from the number range, whose format comes back
@@ -1131,7 +1152,8 @@ content}}` for invoices, credit notes and orders (recorded; key casing: D-072). 
   recorded 2026-11-16, trial account, Update 2.0 (probes `write-order-contract-note-from-order`,
   `write-order-packing-list-from-order`, `write-delete-draft-order-credit-note`,
   `write-order-status-accept-reject`);
-  manual check (lead) of saving and finalizing with peeked and reserved numbers.
+  manual check (lead) of saving and finalizing with peeked and reserved numbers; recorded
+  2026-11-18, trial account, Update 2.0 (probe `write-reserved-number-ab-li`, opt-in).
 - **Impact:** No tool ever sends a number it made up (B4): the create inputs do not accept one,
   and updates send the stored number unchanged, or none when none is stored. Invoices are created
   without a number and get it from `sendBy`. Orders and credit notes take their number from
@@ -1146,10 +1168,9 @@ content}}` for invoices, credit notes and orders (recorded; key casing: D-072). 
   (`src/domain/lifecycle/transitions.ts`) (fix in this PR). `sevdesk_order_create_confirmation`
   and `sevdesk_order_create_delivery_note` do the same for the `AB` and `LI` counters
   (`src/domain/order-follow-ups.ts`, #134): after the factory request, when the peek still offers
-  the new order's number, it is reserved once, so consecutive confirmations or delivery notes no
-  longer share a number, provided the reservation advances the `AB` and `LI` counters (assumed,
-  not recorded: D-066; previews, descriptions and the result note say so). Every real create
-  therefore reserves a number, also for a draft that
+  the new order's number, it is reserved once, which advances the `AB` or `LI` counter by one
+  (recorded 2026-11-18, D-066), so consecutive confirmations or delivery notes no longer share a
+  number. Every real create therefore reserves a number, also for a draft that
   is deleted later, which can leave a gap in the range (D-066 recorded the number coming back only
   for the draft saved with the number reserved last; for a factory draft it is not recorded). The
   two tools, and `sevdesk_order_create_draft` for an `AB` or `LI` draft, hold the range's
@@ -1169,7 +1190,8 @@ content}}` for invoices, credit notes and orders (recorded; key casing: D-072). 
   (D-027)"); `test/unit/domain/drafts/numbering.test.ts`, `test/unit/tools/drafts/numbering.test.ts`
   (peek, reservation, collisions); `test/contract/recorded-fixtures.test.ts` ("lists credit notes,
   including one without a number"). Live: probes `write-numbering-invoice`, `write-numbering-credit-note`,
-  `write-numbering-order-draft`, `write-next-order-number`.
+  `write-numbering-order-draft`, `write-next-order-number`, and `write-reserved-number-ab-li`
+  (opt-in; observed 2026-11-18: factory copies do not move the counter).
 
 ### D-028: Kleinunternehmer tax rule id differs between spec sections
 
@@ -1215,13 +1237,16 @@ content}}` for invoices, credit notes and orders (recorded; key casing: D-072). 
 
 ### D-031: Transaction status 350 exists only in the response model
 
-- **Status:** Open. **Evidence:** spec.
+- **Status:** Open. **Evidence:** spec + recorded.
 - **Spec says:** The CheckAccountTransaction tag docs list statuses 100, 200, 300 and 400.
 - **Actual behavior:** The transaction response model also allows 350 ("auto-booked without
-  confirmation"). Not seen yet: every transaction of the trial account was at 400 (recorded
-  2026-11-07), and at 100 or 400 on 2026-11-08.
+  confirmation"). Not seen yet from sevDesk itself: every transaction of the trial account was at
+  400 (recorded 2026-11-07), and at 100 or 400 on 2026-11-08. A `PUT {status: 350}` on an open
+  hand-made row of a file-import account is accepted, and the row reads back at 350 (recorded
+  2026-11-18, D-098). No tool sets a status of 350.
 - **Sources:** `spec/openapi.yaml` (`Model_CheckAccountTransactionResponse`); recorded 2026-11-07
-  and 2026-11-08, trial account, Update 2.0 (probe `read-transaction-status-filter`).
+  and 2026-11-08, trial account, Update 2.0 (probe `read-transaction-status-filter`); recorded
+  2026-11-18, trial account, Update 2.0 (probe `write-transaction-enshrine-statuses`, opt-in).
 - **Impact:** Reference data includes 350. `sevdesk_transactions_list` labels it ("Auto-booked
   without user confirmation") and can filter for it (`auto_booked`).
 - **Test:** `test/regressions/b9-reference-ids.test.ts` (status list),
@@ -1570,6 +1595,8 @@ content}}` for invoices, credit notes and orders (recorded; key casing: D-072). 
   positions: sending USD net 100 at 19 % with rate `"0.9"` stores EUR sums `"90"`, `"17.1"`,
   `"107.1"` and foreign sums `"100"`, `"19"`, `"119"`. Position amounts returned in plain
   `sum…` fields are therefore EUR, even though the amounts sent to `saveVoucher` are USD (D-082).
+  A CHF invoice draft with a fixed 10.00 discount (recorded 2026-11-18, D-116) shows the same
+  split for the discount: `sumDiscountsForeignCurrency` -10 (CHF), `sumDiscounts` -10.81 (EUR).
 - **Sources:** [numtide/freelancer-toolbox](https://github.com/numtide/freelancer-toolbox)
   (`sevdesk-cli`, vouchers);
   [firsttris/haben `docs/sevdesk.md`](https://github.com/firsttris/haben/blob/main/docs/sevdesk.md)
@@ -1578,6 +1605,7 @@ content}}` for invoices, credit notes and orders (recorded; key casing: D-072). 
   account, Update 2.0 (probes `write-paid-amount-foreign-currency`, `read-paid-amount-currency`).
   Recorded 2026-11-13, trial account, Update 2.0 (probes `write-voucher-usd-rate`,
   `write-voucher-usd-deadline`, `write-voucher-usd-rate-update`, `write-voucher-convert-to-eur`).
+  Recorded 2026-11-18, trial account, Update 2.0 (probe `write-discount-foreign-currency`).
 - **Impact:** For EUR documents the tools use the plain sums and never the `…ForeignCurrency`
   fields. For another currency with non-zero `…ForeignCurrency` sums, amounts are shown in the
   document's currency and the EUR base separately (`base` on vouchers, `totalsEur` on invoices,
@@ -1703,7 +1731,8 @@ content}}` for invoices, credit notes and orders (recorded; key casing: D-072). 
   2026-11-08 (probes `write-transaction-create`, `read-transaction-date-filters`).
 - **Impact:** `sevdesk_transactions_list` has `dateField: "value" | "entry"` (default `value`).
   For a value-date range it sends no `startDate`/`endDate` and filters `valueDate` itself, reading
-  sevDesk pages up to its scan cap (5,000 rows per call; `filteredLocally`, no total). For an
+  sevDesk pages up to its scan cap (5,000 rows per call; `filteredLocally`, no total) or, since
+  sevDesk lists rows newest first by value date (D-145), up to the first row before the range. For an
   entry-date range it sends `startDate`/`endDate` as ISO date-times with the Berlin offset
   (00:00:00 to 23:59:59) and checks `entryDate` again; that re-check does not start a scan, so
   sevDesk's total stays.
@@ -2528,21 +2557,31 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   draft leaves no gap. Whether a number from further back comes back once later numbers were
   reserved was not recorded. Saving or deleting a draft with a peeked number moves nothing.
 
+  Recorded 2026-11-18 for order confirmations (`orderType=AB`) and delivery notes (`LI`) the
+  same way: `useNextNumber=true` returned the peeked number and moved the counter by one
+  (`AB-0001` → `AB-0002`, `LI-0003` → `LI-0004`); saving a draft with it did not move it again;
+  deleting that draft gave the number back (the peek showed `AB-0001` and `LI-0003` again). An
+  `AB` or `LI` made by `createContractNoteFromOrder` or `createPackingListFromOrder` took the
+  peeked number without moving the counter (D-027), so deleting it gave nothing back. Whether
+  deleting a factory draft whose number was reserved afterwards gives the number back is not
+  recorded.
+
 - **Sources:** recorded 2026-11-07, trial account, Update 2.0 (probe `write-next-order-number`:
   two peeks, the same number); manual check (lead) of `useNextNumber=true`, the credit note and
   invoice endpoints, and saving and finalizing with peeked numbers; recorded 2026-11-16, trial
   account, Update 2.0 (probes `write-reserved-number-delete-draft`,
-  `write-delete-draft-order-credit-note`).
+  `write-delete-draft-order-credit-note`); recorded 2026-11-18, trial account, Update 2.0 (probe
+  `write-reserved-number-ab-li`, opt-in).
 - **Impact:** The order and credit note draft tools peek the number for the preview and reserve
   it in execute, right before `saveOrder`/`saveCreditNote` (`peekNextNumber`,
   `reserveNextNumber` in `src/domain/drafts/numbering.ts`; D-027); invoices are never reserved,
   since `sendBy` numbers them. The credit note and order factory tools reserve once after their
   request to move the counter past the number sevDesk handed out (D-027, D-107). That
-  `useNextNumber=true` reserves and advances was recorded for `orderType=AN` and the credit note
-  counter only; the `AB` and `LI` reservations of the order draft tool and the order factory tools
-  assume the same of `getNextOrderNumber` for those types, which is not recorded. If sevDesk did
-  not advance them, the counter step would report the counter as moved, and the same-number check
-  after the next confirmation or delivery note would name the clash. A failure that may still have reserved a number says that the
+  `useNextNumber=true` reserves and advances is recorded for `orderType=AN`, `AB` and `LI` and the
+  credit note counter, so the `AB` and `LI` reservations of the order draft tool and the order
+  factory tools say that the counter moves; the same-number check after a confirmation or
+  delivery note stays as a safety net for numbers shared from before and for the web app. A
+  failure that may still have reserved a number says that the
   number may stay unused (a gap in the Nummernkreis). `resolveGetSafety` (`src/sevdesk/paths.ts`)
   treats any `getNext…Number` GET whose `useNextNumber` is not clearly off as a side effect of the
   `write` tier ("it reserves the next document number"): it is refused in read-only and dry-run
@@ -2562,10 +2601,11 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   `write-reserved-number-delete-draft` (it consumes a number of each sequence; the catalog test in
   `test/unit/scripts/probes.test.ts` allows `useNextNumber=true` only through its helper). Order
   confirmations (AB) and delivery notes (LI): the opt-in probe `write-reserved-number-ab-li`
-  (reserving moves the counter by one? deleting the draft gives the number back? and the same for
-  drafts made by `createContractNoteFromOrder` and `createPackingListFromOrder`; #134, #136;
-  `test/unit/scripts/gaps-documents-probes.test.ts`, "reserves AB and LI numbers only when
-  named…").
+  (observed 2026-11-18: reserving moves the counter by one, deleting the draft gives the number
+  back, factory copies move nothing; #134, #136; `test/unit/scripts/gaps-documents-probes.test.ts`,
+  "reserves AB and LI numbers only when named…"); `test/unit/domain/order-follow-ups.test.ts` and
+  `test/regressions/order-factory-number-counter.test.ts` pin the reservation after the factory
+  request.
 
 ### D-067: `GET /SevClient` tells the taxation regime, and sevDesk checks it only when finalizing
 
@@ -2807,8 +2847,8 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   `write-transaction-create`, `write-cash-register-transaction` (cash registers; the simulated
   register in `test/unit/scripts/gaps-banking-probes.test.ts` replays its answers),
   `write-transaction-create-answer` (the answer of the POST recorded on 2026-11-17, with and
-  without a purpose; `test/unit/scripts/gaps-banking-probes.test.ts`, "re-checks the facts
-  recorded on 2026-11-16/17…").
+  without a purpose; confirmed 2026-11-18; `test/unit/scripts/gaps-banking-probes.test.ts`,
+  "re-checks the facts recorded on 2026-11-16/17…").
 
 ### D-072: `getPdf` answers `mimetype` and `base64Encoded`, not the spec's casing
 
@@ -3259,19 +3299,27 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   also deletes its contact persons (the persons whose `parent` it is): after `DELETE` of an
   organisation with one such person, neither referenced by a document, answered `[null]`, `GET` of
   the organisation and of the person both answered 404, and a `DELETE` of the person answered 404.
-  Not measured: an organisation whose contact person a document references (whether the whole
-  delete is refused or only the person stays), and contact persons with addresses or
-  communication ways of their own.
+  Recorded again on 2026-11-18 with two persons: the `DELETE` answered a list of one, and the
+  organisation and both persons read 404 afterwards. An organisation whose contact person a draft
+  invoice names is not deleted at all: the `DELETE` is refused inside HTTP 200 ("Cannot delete
+  because of existing necessary references", D-085), and afterwards the organisation, the person
+  (still with the organisation as `parent`) and the invoice (status 100, still naming the person)
+  are unchanged. Not measured: contact persons with addresses or communication ways of their own,
+  and what deleting a person does to contacts stored with that person as `parent` (D-083).
 - **Sources:** spec (`deleteContact`, `deleteContactAddress`, `deleteCommunicationWay`); recorded
   2026-11-16, trial account, Update 2.0 (probes `write-contact-delete`,
   `write-contact-delete-referenced`, `write-contact-address-delete`,
   `write-communication-way-delete`); the contact persons: recorded 2026-11-16, trial account,
-  Update 2.0 (one-off check by the orchestrator, run tag `MCP-E2E 20261116-2319-p4jr`).
+  Update 2.0 (one-off check by the orchestrator, run tag `MCP-E2E 20261116-2319-p4jr`); recorded
+  2026-11-18, trial account, Update 2.0 (probe `write-contact-delete-cascade`).
 - **Impact:** `sevdesk_contact_delete` says in its preview that the addresses and communication
   ways go too, and for an organisation lists the contact persons that go with it (up to 20 by name
   and id, the rest counted; it refuses an organisation with more than 100, which it cannot all
-  read). It reads them for a person too, since sevDesk stores a person as parent (D-083), and
-  says that sevDesk may delete them with it (not measured). The approval is bound to the ids of
+  read) and says, in English and German, that sevDesk refuses the whole deletion and deletes
+  nothing when a document uses the organisation or one of its persons. The refusal is reported
+  as such (`stillReferenced`, D-085), never as a deletion. It reads the persons for a person too,
+  since sevDesk stores a person as parent (D-083), and says that sevDesk may delete them with it
+  (not measured). The approval is bound to the ids of
   those persons, so a person added in between asks again. Afterwards it reads each person back and
   says so when one is still there or could not be checked. A 404 on the DELETE counts as "already
   gone". Removing an address or way says when it removes the billing address or the main entry,
@@ -3289,9 +3337,11 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   last and says what is left", "warns when the billing address goes and nothing replaces it",
   "adds a new billing address when the billing address goes, and leaves the delivery address
   alone", "adds a new main e-mail when the main one goes, and leaves the other e-mail alone",
-  "counts an entry sevDesk no longer has as already gone"). Live: the four probes above, and
-  `write-contact-delete-cascade` for the contact-person cascade (an organisation with persons
-  under it, and one whose person a draft invoice names; #134,
+  "counts an entry sevDesk no longer has as already gone");
+  `test/regressions/contact-delete-referenced.test.ts` ("refuses an organisation whose contact
+  person a document uses: nothing deleted (D-084)": the preview warning in both languages and
+  the HTTP 200 refusal through the real client). Live: the four probes above, and
+  `write-contact-delete-cascade` for the contact-person cascade (observed 2026-11-18; #134,
   `test/unit/scripts/gaps-contacts-probes.test.ts`, "reports what deleting an organisation does
   to its contact persons (#134)").
 
@@ -3305,9 +3355,12 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   answer HTTP **200** with an error body ("Cannot delete because of existing necessary
   references") instead of `objects`. Nothing is deleted: the contact, the cost centre and the
   referencing document stay unchanged (the voucher keeps its `costCentre`). The same trap as the
-  `cancelInvoice` refusals (D-058).
+  `cancelInvoice` refusals (D-058). The same HTTP 200 refusal comes for an organisation when a
+  draft invoice names one of its contact persons; then the organisation and the person stay too
+  (recorded 2026-11-18, D-084).
 - **Sources:** spec (`deleteContact`); recorded 2026-11-16, trial account, Update 2.0 (probes
-  `write-contact-delete-referenced`, `write-cost-centre-delete`).
+  `write-contact-delete-referenced`, `write-cost-centre-delete`); recorded 2026-11-18, trial
+  account, Update 2.0 (probe `write-contact-delete-cascade`).
 - **Impact:** The client already turns a 2xx body with an `error` member and no `objects` into an
   `unexpected_response` error with status 200 and sevDesk's message as `upstreamMessage`
   (`readJsonEnvelope` in `src/sevdesk/client.ts`), so such a refusal never passes as a successful
@@ -3324,8 +3377,9 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   words, not as a deletion, and never retried", through the real client);
   `test/unit/tools/masterdata/contact-delete.test.ts` ("reports sevDesk's refusal of a referenced
   contact in its own words (D-085)", "does not claim nothing was deleted when a contact person is
-  gone after a refusal"). Live: probes `write-contact-delete-referenced`,
-  `write-cost-centre-delete`.
+  gone after a refusal"); `test/regressions/contact-delete-referenced.test.ts` also for an
+  organisation whose contact person is referenced (D-084). Live: probes
+  `write-contact-delete-referenced`, `write-cost-centre-delete`, `write-contact-delete-cascade`.
 
 ### D-086: Custom contact fields: 30-character names, no contact embed, cascading deletes
 
@@ -3408,8 +3462,9 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   ("lists the account's custom contact fields with limit 1000, GET only (D-086)"). Live: probes
   `write-custom-field-settings`, `write-custom-field-values`, and `write-custom-field-limits`
   for the name and value limits, one value per setting, the search paging and both cascading
-  deletes recorded on 2026-11-16/17 (`test/unit/scripts/gaps-contacts-probes.test.ts`,
-  "re-checks the custom field facts of D-086…").
+  deletes recorded on 2026-11-16/17 (confirmed 2026-11-18;
+  `test/unit/scripts/gaps-contacts-probes.test.ts`, "re-checks the custom field facts of
+  D-086…").
 
 ### D-087: `checkCustomerNumberAvailability` answers a bare boolean and needs a number
 
@@ -3443,10 +3498,17 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
     voucher at status 100 and a credit note at status 200; and the other order types: an order
     confirmation (AB, status 500) and a delivery note (LI, status 100).
   - A name that exists reuses that tag, ignoring case (the same name in upper case gave the same
-    tag id) and accents (`… Café` on one document and `… Cafe` on another gave the same tag id;
-    only this é/e pair was measured, not ß, ligatures or other letters); a new name creates the
-    tag. Tagging a document that already has the tag answers its existing relation (same
-    relation id): the call is idempotent.
+    tag id) and accents (`… Café` on one document and `… Cafe` on another gave the same tag id);
+    a new name creates the tag. Tagging a document that already has the tag answers its existing
+    relation (same relation id): the call is idempotent.
+  - Recorded 2026-11-18, each variant after its base name: `ß` for `ss`, the ligature U+FB01 for
+    `fi` and a zero-width space inside the name reuse the base's tag (its name stays the base's);
+    a soft hyphen inside the name and a doubled inner space create a new tag, named as sent.
+    `GET /Tag?name=<variant>` found one row each time: the reused tag for the first three, the
+    new tag (not the base's) for the last two.
+  - An unfiltered `GET /TagRelation` is stable across offsets (recorded 2026-11-18, 23 rows):
+    two reads with limit 1000 and pages of 3 gave the same ids in the same order, none missing or
+    twice; the ids run neither ascending nor descending.
   - `{tag: {id, objectName: "Tag"}, object}` without `name` is refused with 400 "Invalid type of
     parameter": a tag is added by name only.
   - `GET /Tag` rows: `id`, `objectName`, `additionalInformation`, `create`, `name`, `objectType`
@@ -3459,16 +3521,20 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   `write-tag-create-on-documents`, `write-tag-relation-filters`, `read-tag-lists`; the lists in
   `test/fixtures/recorded/2026-11-16/tags/`); recorded 2026-11-16, trial account, Update 2.0
   (one-off check by the orchestrator, run tag `MCP-E2E 20261116-2308-evj7`: finalized documents,
-  AB and LI, accents).
+  AB and LI, accents); recorded 2026-11-18, trial account, Update 2.0 (probes
+  `write-tag-name-matching`, `write-tag-relation-paging`).
 - **Impact:** `sevdesk_document_tag` adds a tag by name to any document status and order type; its
-  preview says whether the name is new or reuses a tag whose name differs only in case or accents
-  (names are folded with NFKD, combining marks dropped, lower case, as far as measured). The same
-  folding finds the tag to remove and the tag of the list filter (D-090); when several tags fold
-  to one name, the exact spelling wins, otherwise the call is refused. Names are compared, and
-  sent back, as sevDesk stores them, not in their cleaned form. When no tag matches but one does
-  after also dropping invisible characters and spelling out ß, æ, œ and ø (not measured), the
-  preview says sevDesk may reuse it; whether the tag was created is decided afterwards by the tag
-  id in sevDesk's answer. `sevdesk_tags_list` counts uses from the relations.
+  preview says whether the name is new or reuses a tag whose name differs only in case, accents
+  or ß/ss (names are folded as measured: zero-width spaces dropped, NFKD, which also splits
+  ligatures, combining marks dropped, lower case, ß as ss; `foldName` in `src/domain/tags.ts`).
+  The same folding finds the tag to remove and the tag of the list filter (D-090); when several
+  tags fold to one name, the exact spelling wins, otherwise the call is refused. Names are
+  compared, and sent back, as sevDesk stores them, not in their cleaned form. A soft hyphen and
+  inner spaces are kept, as sevDesk keeps them. When no tag matches but one does after also
+  dropping the other invisible characters `cleanText` drops and spelling out æ, œ and ø (not
+  measured), the preview says sevDesk may reuse it; whether the tag was created is decided
+  afterwards by the tag id in sevDesk's answer. `sevdesk_tags_list` counts uses from the
+  relations, read in pages of 1000, which the paging record makes safe.
 - **Test:** `test/contract/recorded-gaps-contacts.test.ts` (both recorded lists: keys, references,
   no usage count, the object types; the probe `read-tag-lists` on them);
   `test/unit/scripts/gaps-contacts-probes.test.ts` ("tags documents of every kind, reuses a tag by
@@ -3479,14 +3545,17 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   unknown, without naming it", "refuses to add when tags differ only in accents, since sevDesk's
   pick is unknown", "matches the name sevDesk stores and sends it back unchanged (invisible
   characters, spaces)", "does not take a cleaned name for the stored one, and says sevDesk may
-  reuse that tag", "never matches the placeholder of a tag without a name", "reports the tag
-  sevDesk reused for a similar spelling, not a created one (Großkunde = Grosskunde)", "leaves
-  tagCreated out when sevDesk used a tag beyond the tags read"),
+  reuse that tag", "never matches the placeholder of a tag without a name", "reuses a tag spelled
+  with ß for ss or with a zero-width space (recorded 2026-11-18, D-088)", "previews a soft hyphen
+  and a doubled inner space as a new tag (recorded 2026-11-18, D-088)", "reports the tag sevDesk
+  reused for a similar spelling, not a created one (Cæsar = Caesar)", "leaves tagCreated out when
+  sevDesk used a tag beyond the tags read"),
   `test/unit/tools/documents/tags-list.test.ts`
   ("pages the recorded tags with an explicit limit and counts uses per kind from the relations",
   "says when the cap cut the counts short"). Live: the three probes above, and
   `write-tag-name-matching` for ß/ss, the fi ligature, invisible characters and inner spaces,
-  and `write-tag-relation-paging` for the unfiltered relation list across offsets (#136;
+  and `write-tag-relation-paging` for the unfiltered relation list across offsets (both observed
+  2026-11-18; #136;
   `test/unit/scripts/gaps-contacts-probes.test.ts`, "tells reused tags from new ones per
   spelling, and the rule of two tag filters (#105)", "compares the paged relation list with one
   read of 1000 (#119)").
@@ -3528,9 +3597,11 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
 - **Actual behavior:** `tags[0][id]=<tagId>&tags[0][objectName]=Tag` filters all four lists on
   the server (only the tagged draft, not the untagged control). `tag[id]` + `tag[objectName]` and
   `tag=<id>` are ignored without an error: the whole list comes back. `tags=<id>` answers 400 "Bad
-  Request". More than one tag (`tags[1][…]`) is not measured.
+  Request". Two tags (`tags[0][…]` and `tags[1][…]`) on `GET /Invoice` select only documents that
+  carry both (AND): of three drafts with the first tag, the second or both, and two untagged ones,
+  only the draft with both came back (recorded 2026-11-18).
 - **Sources:** recorded 2026-11-16, trial account, Update 2.0 (probe `write-tag-list-filters`,
-  run twice).
+  run twice); recorded 2026-11-18, trial account, Update 2.0 (probe `write-tag-name-matching`).
 - **Impact:** #87's `tag` filter on the list tools must send `tags[0][id]` and
   `tags[0][objectName]`; an ignored filter would return every document, so the parameter names are
   pinned by tests and the rows are checked against the tag's relations where the tool can. The
@@ -3555,7 +3626,9 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   relations than were read"); `test/unit/domain/reports/pnl-tags-cost-centres.test.ts` ("limits
   the figures to the documents of every kind that carry the tag", "reports the figures as
   truncated when the tag has more uses than were read"). Live: probe `write-tag-list-filters`,
-  and `write-tag-name-matching` for a filter by two tags (`tags[0]` and `tags[1]`, #136).
+  and `write-tag-name-matching` for a filter by two tags (`tags[0]` and `tags[1]`, #136; observed
+  2026-11-18: both tags). The tools filter by one tag; a filter by several would send them as
+  `tags[n]` and get documents with all of them.
 
 ### D-091: Cost centres are managed through the undocumented `/CostCentre` endpoints
 
@@ -3619,11 +3692,18 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   (43 rows, 4 with a cost centre; the tested draft's row matched its read by id), and the list
   honours `costCentre[id]` + `costCentre[objectName]=CostCentre` like the invoice and voucher
   lists: it answered exactly one row, the draft, carrying that cost centre.
+  A voucher position sent with a cost centre of its own reads back without one (recorded
+  2026-11-18): a draft
+  voucher saved with cost centre A on the head and B on its one position read back with A on the
+  head and none on the position (`GET /VoucherPos`), and one with B on the position only read
+  back with none on the head and none on the position. sevDesk accepted both without an error
+  (D-003).
 - **Sources:** spec (`Model_Voucher`, `Model_VoucherUpdate`, `Model_InvoiceResponse`); recorded
   2026-11-16, trial account, Update 2.0 (probes `write-cost-centre-documents`,
   `write-cost-centre-list-filters`); recorded 2026-11-17, trial account, Update 2.0 (one-off check
   by the orchestrator: `costCentre: null` on updates); recorded 2026-11-17, trial account, Update
-  2.0 (one-off check by the orchestrator: credit-note list rows and the credit-note list filter).
+  2.0 (one-off check by the orchestrator: credit-note list rows and the credit-note list filter);
+  recorded 2026-11-18, trial account, Update 2.0 (probe `write-voucher-position-cost-centre`).
 - **Impact:** `costCentre` is an argument of the create and update draft tools of invoices,
   vouchers and credit notes (`sevdesk_invoice_create_draft`, `sevdesk_invoice_update_draft`,
   `sevdesk_voucher_create_draft`, `sevdesk_voucher_update_draft`,
@@ -3638,9 +3718,9 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   (`costCentreUpdate` in `src/domain/cost-centres.ts`). No update saves a draft unchanged for it:
   `removeCostCentre: false` asks for nothing (a call with nothing else is refused as nothing to
   change), and `removeCostCentre: true` on a draft without a cost centre is refused ("This draft
-  has no cost centre.") when the call asks for nothing else. Not recorded, so not offered: cost
-  centres on voucher positions. The reports (#87) treat the cost centre as a property of the
-  whole document: `sevdesk_records_summarize` filters invoices, vouchers and credit notes through
+  has no cost centre.") when the call asks for nothing else. Cost centres on voucher positions
+  are not offered: a position reads back without one. The reports (#87) treat the cost centre as a
+  property of the whole document, as sevDesk does, and say so: `sevdesk_records_summarize` filters invoices, vouchers and credit notes through
   these lists (both keys and the row check); `sevdesk_profit_and_loss` checks every document's
   head itself. Their breakdown by cost centre has one group per document ("none" without one), so
   the groups add up to the totals.
@@ -3671,7 +3751,8 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   the result down per cost centre; the groups, none included, add up", "answers through the tool
   with costCentre by name"). Live: the two probes above; the removal, the credit-note list rows
   and the credit-note list filter by the 2026-11-17 one-off checks (no probe); cost centres on
-  voucher positions: probe `write-voucher-position-cost-centre` (#136;
+  voucher positions: probe `write-voucher-position-cost-centre` (observed 2026-11-18: not kept;
+  #136;
   `test/unit/scripts/gaps-contacts-probes.test.ts`, "says which cost centre a voucher position
   keeps and deletes vouchers and cost centres (#119)").
 
@@ -3740,11 +3821,17 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   row with `deletedAt`, and on each of the seven active accounts listed then (the six of the
   banking run and the file-import account of `write-transaction-enshrine`) `getBalanceAtDate`
   equalled the sum of the listed rows. A soft-deleted row stays readable only by id.
+  On an archived file-import account (recorded 2026-11-18) the open row archiving had already
+  marked deleted (`deletedAt` set, status 100, D-097) took a `DELETE` the same way: 2xx, answer
+  a list of one, the row afterwards status 100 with `deletedAt`. The `DELETE`s of the run's other
+  hand-made rows (2026-11-18) answered the same.
 - **Sources:** spec (`deleteCheckAccountTransaction`); recorded 2026-11-16, trial account,
   Update 2.0 (probes `write-transaction-delete`, `write-check-account-factories`,
   `read-transaction-soft-delete`); recorded 2026-11-17, trial account, Update 2.0 (one-off check
   by the orchestrator, run tag `MCP-E2E 20261117-0037-nb2e`: two rows created by hand, each
-  DELETE answered `[null]` and the read-back had `deletedAt` set).
+  DELETE answered `[null]` and the read-back had `deletedAt` set); recorded 2026-11-18, trial
+  account, Update 2.0 (probes `write-transaction-delete-archived-account`,
+  `write-transaction-create-answer`).
 - **Impact:** A delete tool (#88) must treat 2xx plus `deletedAt` as deleted, never a 404 or a
   missing row; it must refuse rows that are not at status 100 (and name the reset or "back to
   unbooked" step for private rows), and a read by id must not mistake a row with `deletedAt` for
@@ -3767,8 +3854,9 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   live one"); `test/regressions/manual-transactions.test.ts` ("a soft-deleted row is reported as
   deleted and never as live"). Live: probes `write-transaction-delete`,
   `read-transaction-soft-delete`, `write-transaction-create-answer` (the `[null]` answer and the
-  read-back with `deletedAt` of the 2026-11-17 check), `write-transaction-delete-archived-account`
-  (a row of an archived file-import account, #136).
+  read-back with `deletedAt` of the 2026-11-17 check; confirmed 2026-11-18),
+  `write-transaction-delete-archived-account` (a row of an archived file-import account, #136;
+  observed 2026-11-18: soft-deleted like any other).
 
 ### D-097: Check accounts come only from two factories, and `DELETE` archives them
 
@@ -3861,8 +3949,16 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
     information" (the row was fully used as well, so this does not separate the two reasons);
   - `resetToOpen` on the paid voucher: **400** "Already enshrined by transaction", not the 422
     code 322 sevdesk-rs measured for invoices (D-060); the voucher stays paid (1000).
+  - Recorded 2026-11-18 on three more tagged rows of a file-import account: one set to 300
+    (private) by `PUT`, one linked (200) by booking 10 of its −22 on an open voucher (type `N`,
+    D-075), and one set to 350 by `PUT` (sevDesk took it on a hand-made row, D-031). Each
+    enshrine answered 2xx (`objects` null), set `enshrined` and kept the status; afterwards each
+    `PUT {status: 100}` was refused with the same 422 and each `DELETE` with 409 "… can only be
+    deleted in status 100 but is status 300" (200, 350). What sevDesk does with the unassigned
+    rest of the row at 200 (booking it after locking) was not tried.
 - **Sources:** spec (`checkAccountTransactionEnshrine`); recorded 2026-11-16, trial account,
-  Update 2.0 (probe `write-transaction-enshrine`, opt-in).
+  Update 2.0 (probe `write-transaction-enshrine`, opt-in); recorded 2026-11-18, trial account,
+  Update 2.0 (probe `write-transaction-enshrine-statuses`, opt-in).
 - **Impact:** An enshrine tool (#88) is `commit`, irreversible, and only offered for rows at 200
   or higher; its preview says that the row can no longer be changed, deleted or reset and that
   the document it pays can no longer be reset to open. A reset of a document whose payment is
@@ -3870,8 +3966,8 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   `commit`, `destructiveHint`, preview marked irreversible in English and German) refuses rows
   below 200, enshrined and deleted rows before anything is sent, names the documents from the
   booking log, says that the documents themselves are not enshrined, warns that the rest of a
-  partly linked row may not be bookable afterwards (locking at 200, 300 and 350 rests on the
-  spec), and confirms `enshrined` on the read-back. `resetDocument` (`lifecycle/actions.ts`)
+  partly linked row may not be bookable afterwards (locking at 200, 300 and 350 is recorded, the
+  rest's booking is not), and confirms `enshrined` on the read-back. `resetDocument` (`lifecycle/actions.ts`)
   turns sevDesk's 400 "Already enshrined by transaction" and 422 "Already enshrined by payment"
   into our own explanation (`SevdeskError.explained`, shown by the error rendering without
   sevDesk's text), for the document reset tools and `sevdesk_transaction_reset` alike.
@@ -3885,8 +3981,8 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   transaction is enshrined", the same for 422); `test/unit/tools/tool-errors.test.ts` ("shows our
   own explanation of a known sevDesk refusal, without sevDesk's text"). Live: probes
   `write-transaction-enshrine` (opt-in, status 400) and `write-transaction-enshrine-statuses`
-  (opt-in, #136: 300, 200 and 350, where a trial can reach them; `gaps-banking-probes.test.ts`,
-  "enshrines its own rows at 300 and 200 only when named…").
+  (opt-in, #136: 300, 200 and 350; observed 2026-11-18: all three locked;
+  `gaps-banking-probes.test.ts`, "enshrines its own rows at 300 and 200 only when named…").
 
 ### D-099: Private-transaction rules did not mark hand-made transactions
 
@@ -3898,7 +3994,9 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
 - **Actual behavior:**
   - `GET` with `limit`/`offset` answers `{objects: [...]}`; without `countAll` no `total` was
     seen, with `countAll=true` it reports one (0 before, 8 after eight creations), and
-    `limit`/`offset` page properly (two pages of two, no shared id).
+    `limit`/`offset` page properly (two pages of two, no shared id). It lists rules by ascending
+    id, which is the order they were created in (oldest first), and pages of one give the same
+    rows in the same order as one page (recorded 2026-11-18, three rules).
   - `POST` answers 2xx with the rule wrapped in `objects` (keys `id`, `objectName`,
     `additionalInformation`, `create`, `update`, `sevClient`, `paymentPurpose`, `counterpartName`;
     the field not sent is `null`; ids were small integers, `951`). It stores a text exactly as
@@ -3918,7 +4016,9 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   `deletePrivateTransactionRule`); recorded 2026-11-16, trial account, Update 2.0 (probe
   `write-private-transaction-rule`); recorded 2026-11-17, trial account, Update 2.0 (one-off
   checks by the orchestrator: `countAll`, paging, both texts, duplicates, spaces, lengths, no
-  text; eight tagged rules, all deleted again).
+  text; eight tagged rules, all deleted again); recorded 2026-11-18, trial account, Update 2.0
+  (probes `write-private-transaction-rule-order`, and `write-private-transaction-rule-storage`,
+  which confirmed the storage facts of 2026-11-17).
 - **Impact:** The rule tools of #88 can list, create and delete rules, but a preview of which
   open transactions a new rule "would match" cannot rely on sevDesk applying it to existing or
   hand-made rows: it must say that sevDesk is expected to apply rules to imported transactions
@@ -3938,12 +4038,14 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   sentence that sevDesk is expected to act on bank imports and could not be tested on a trial
   account. Both tools confirm the write by reading the rule list back (no read by id is
   recorded); create compares the stored text exactly with the trimmed text it sent and notes any
-  difference. The order of the list is not recorded, so every search of it (the duplicate check,
-  the delete lookup and both read-backs, #132) reads up to five pages of 1000 with an explicit
-  `limit`: a longer list makes the create preview say how many rules the duplicate check read,
-  the delete refusal say "among the first N rules", and the create result show the rule as
-  sevDesk answered the POST with a note that its stored text was not checked. The delete preview
-  says that private transactions stay private.
+  difference. The list runs oldest first, so a rule looked up by id or text can be on any page
+  and every search of it (the duplicate check, the delete lookup and both read-backs, #132) reads
+  up to five pages of 1000 with an explicit `limit`: a longer list makes the create preview say
+  that the duplicate check read the oldest N rules, the delete refusal say "among the first N
+  rules", and the create result show the rule as sevDesk answered the POST with a note that its
+  stored text was not checked (a new rule is listed last). The estimate reads the newest open
+  transactions by value date (D-145). The delete preview says that private transactions stay
+  private.
 - **Test:** `test/unit/scripts/gaps-banking-probes.test.ts` ("answers the banking questions as
   recorded…": no row turns private, the rules are deleted);
   `test/unit/tools/banking/private-rules.test.ts` (list, refusals, the estimate and its labels,
@@ -3957,8 +4059,9 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   private-transaction rules": both requests need `commit`, the list stays a read). The recorded
   list was empty, so no fixture was kept; the tests build rows with the recorded keys. Live:
   probes `write-private-transaction-rule` and `write-private-transaction-rule-storage` (spaces
-  kept, duplicates stored, the cut of D-130), and `write-private-transaction-rule-order` for the
-  order of the list (#136; `test/unit/scripts/gaps-banking-probes.test.ts`, "asks the #136
+  kept, duplicates stored, the cut of D-130; confirmed 2026-11-18), and
+  `write-private-transaction-rule-order` for the order of the list (#136; observed 2026-11-18:
+  ascending id, stable pages; `test/unit/scripts/gaps-banking-probes.test.ts`, "asks the #136
   list-order, account, entryDate and image questions…").
 
 ### D-100: A receipt's `contentHash` is the SHA-256 of the file; rendered PDFs have none
@@ -3989,17 +4092,31 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
     later, by id and in the embedded list rows. Its `filesize` is the number of bytes sent (1,435
     for the PDF, 70 for the PNG), `extension` is `pdf` / `png` and `mimeType` null. So only
     receipts uploaded through `uploadTempFile` + `saveVoucher` carry a checksum.
+  - Images are kept as uploaded (recorded 2026-11-18): for a 70-byte PNG and a 286-byte JPEG,
+    the `uploadTempFile` answer (`mimeType` and `originMimeType` as sent) and the Document of the
+    draft voucher carry the SHA-256 of the uploaded bytes, `filesize` is the upload's, `extension`
+    `png` / `jpg`, and `GET /Document/{id}/download` gives the very bytes back. In
+    `GET /Voucher?embed=document` both vouchers embed their Document with that hash.
+  - The order of `GET /Voucher?embed=document` depends on the page size (recorded 2026-11-18, 57
+    vouchers): pages of one (`limit=1`, offsets 0 to 4) did not give the rows of one page of 1000
+    in the same order, from offset 0 on (the newest voucher came first with `limit=1000`, second
+    with `limit=1`). Whether pages of the same size are stable was not measured.
 - **Sources:** spec (`uploadTempFile`, `getVouchers`); recorded 2026-11-16, trial account, Update
   2.0 (probes `write-receipt-hash`, `read-document-hash`); recorded 2026-11-17, trial account,
   Update 2.0 (manual check (lead): `embed=document` on the voucher list and its later pages, two
-  receipts made by `createVoucherFromFile`).
+  receipts made by `createVoucherFromFile`); recorded 2026-11-18, trial account, Update 2.0
+  (probes `write-receipt-image-reencode`, `read-document-hash`: the three newest documents again
+  had `contentHash` null).
 - **Impact:** The receipt checks of #92 compare SHA-256 checksums with the `contentHash` sevDesk
   lists with each voucher (`GET /Voucher?embed=document`, one request per 1,000 vouchers, no read
   by id), not with `GET /Document` (which leaves receipts of drafts out). A null or missing hash
   means "unknown", never "no match": rendered invoices and receipts made by the recognition have
   none, so a result counts such receipts and words an unmatched file accordingly, and counts a
   list row without the embedded document apart. A file matches a receipt by hash only; the same
-  `filesize` and `extension` are a hint, never a match.
+  `filesize` and `extension` are a hint, never a match. Since images are not re-encoded, a PNG or
+  JPEG uploaded through the API matches its local file like a PDF does. The checks read the list
+  in pages of 1,000; with more vouchers in the period, a list whose order changes between pages
+  could skip or repeat a voucher (not measured for one page size; #154).
 - **Test:** `test/unit/scripts/gaps-banking-probes.test.ts` ("compares receipt hashes without
   showing them": SHA-256 match, new token per upload, Document gone with the draft, null hashes
   of rendered documents); `test/unit/domain/voucher-receipt-hash.test.ts` (the embedded
@@ -4017,7 +4134,8 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   the checksum check of `sevdesk_voucher_recognize_receipt` before its upload (#127, see D-103).
   Live: probes `write-receipt-hash`, `read-document-hash`, and `write-receipt-image-reencode`
   (whether a PNG and a JPEG come back as uploaded, and `embed=document` paged by one; #136,
-  `test/unit/scripts/gaps-banking-probes.test.ts`).
+  `test/unit/scripts/gaps-banking-probes.test.ts`; observed 2026-11-18: not re-encoded, pages of
+  one in another order).
 
 ### D-101: The ZIP exports answer files only with `download=true` and change no document
 
@@ -4288,10 +4406,15 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
     the offer stays at 500. From a **rejected** offer (300) it works too and sets the offer to 500:
     the request silently turns a rejection into an acceptance. `createPackingListFromOrder` from a
     **draft** offer (100) works, gives a draft `LI` with `origin` the offer, and leaves the offer at 100.
+  - Discounts (recorded 2026-11-18): from a sent offer of 150.00 net with 10 % off, the `AB` and
+    the `LI` each got their own discount row (10 %, `isNet` "1") and the offer's sums (net
+    135.00, gross 160.65). The numbers again: the copies took the peeked number and the counter
+    did not move (D-066).
 - **Sources:** spec (`createContractNoteFromOrder`, `createPackingListFromOrder`,
   `Model_CreatePackingListFromOrder`); recorded 2026-11-16, trial account, Update 2.0 (probes
   `write-order-contract-note-from-order`, `write-order-packing-list-from-order`); recorded
-  2026-11-16, trial account, Update 2.0 (one-off check by the orchestrator).
+  2026-11-16, trial account, Update 2.0 (one-off check by the orchestrator); recorded 2026-11-18,
+  trial account, Update 2.0 (probes `write-discount-order-derived`, `write-reserved-number-ab-li`).
 - **Impact:** `sevdesk_order_create_confirmation` (commit tier, because it accepts the offer)
   takes sent (200) and accepted (500) offers only, and its preview says whether the offer becomes
   accepted or stays so. It refuses drafts (that would accept an offer the customer never received)
@@ -4315,8 +4438,8 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   finalized delivery notes from the same source in a warning (a further one can be a partial
   delivery). Both previews list the source's discounts on the whole document with the rest of its
   content (the shared reader and facts of D-116, so the confirmation's approval binds them too; a
-  row of another record is refused), warn when there are several, and say that whether the
-  factory copies them has not been checked. (#89)
+  row of another record is refused), warn when there are several, and say that sevDesk copies a
+  discount with the same totals (a surcharge was not checked). (#89)
 - **Test:** `test/unit/tools/orders/create-confirmation.test.ts` ("creates the confirmation with
   the offer in query and body, and reads both back", "creates one from an accepted offer and says
   the offer stays accepted", "refuses a draft offer before any request (sevDesk would accept it
@@ -4336,7 +4459,8 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   Live: probes
   `write-order-contract-note-from-order`, `write-order-packing-list-from-order` (their reporting:
   `test/unit/scripts/gaps-documents-probes.test.ts`, "describes order confirmations and delivery
-  notes against their source").
+  notes against their source"), and `write-discount-order-derived` for the discounts (observed
+  2026-11-18: copied to `AB` and `LI`).
 
 ### D-108: `PUT /Order/{id}` sets an offer's status; on a draft it also renumbered it
 
@@ -4496,12 +4620,30 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
     date) and `deliveryDateUntil` (the last day of its period).
   - What sevDesk does when a template reaches its end date (whether it stops, and whether
     removing the end date later restarts it with a catch-up) is not recorded.
+  - Recorded again on 2026-11-18 (`write-recurring-schedule-fields`): `accountStartDate` as Unix
+    seconds, ISO or `dd.mm.yyyy` stores start and next run; `accountNextInvoice` alone (ISO) and
+    `invoiceDate` alone store no schedule date; `accountEndDate` in all three forms stores the end
+    alone; the same through an update with the id (`saveInvoice` and `PUT /Invoice/{id}`); an
+    update to status 200 keeps the schedule, and such a template is deleted only after status 50.
+  - Month ends (recorded 2026-11-18): monthly templates starting on 29, 30 or 31 January 2027
+    store that day as start and next run; one starting on 31 January with an end on 28 February
+    stores both. `POST /Invoice/Factory/calculateInvoicingRange` (monthly, not deferred, start
+    31 January) answers the period 31 January to 27 February and the next invoice date 28
+    February: the web app's computation moves the 31st to the month's last day. Whether the
+    scheduler does the same, and whether it returns to the 31st in March, is not recorded.
+  - A template saved with its start (and next run) yesterday and a 10 % discount had generated
+    nothing right after the save (recorded 2026-11-18, `write-recurring-template-due`); the probe
+    does not switch automatic generation on, which is off by default (D-132), so nothing is
+    expected. What it shows the next day, and whether generated invoices carry a template's
+    discount, is not recorded yet (`read-recurring-generated`, `read-recurring-generated-discounts`).
 - **Sources:** spec (`Model_Invoice`, `Model_InvoiceResponse`); recorded 2026-11-16, trial
   account, Update 2.0 (probes `write-recurring-template-create`, `write-recurring-interval-formats`,
   `write-recurring-schedule-fields`, `write-recurring-template-due`;
   `test/fixtures/recorded/2026-11-16/invoices/recurring-templates.json`); recorded 2026-11-17,
   trial account, Update 2.0 (a template made in the web app by the account owner, a browser
-  export of that session, and one-off checks by the orchestrator).
+  export of that session, and one-off checks by the orchestrator); recorded 2026-11-18, trial
+  account, Update 2.0 (probes `write-recurring-schedule-fields`, `write-recurring-month-end`,
+  `write-recurring-template-due`, opt-in).
 - **Impact:** A recurring template is created with `invoiceType: "WKR"`, a validated
   `accountIntervall` (the server checks the ISO-8601 form itself, since sevDesk does not: one of
   `P0Y1M0W`, `P0Y3M0W`, `P0Y6M0W`, `P1Y0M0W`) and `accountStartDate`, optionally
@@ -4547,8 +4689,10 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   stored time, the later runs not listed", "names the stored run time of a next run today that is
   later than now (web app)"). Live (#136): probe `write-recurring-month-end` stores start dates
   on the 29th, 30th and 31st and an end date (`test/unit/scripts/gaps-documents-probes.test.ts`,
-  "stores month-end start dates, asks for the invoicing range and deletes every template"); the
-  run day in a shorter month and the effect of the end date need a template that runs for weeks.
+  "stores month-end start dates, asks for the invoicing range and deletes every template";
+  observed 2026-11-18, see above); the run day in a shorter month and the effect of the end date
+  need a template that runs for weeks (open). `src/domain/recurring/schedule.ts` therefore still
+  says that a run on the 29th to 31st may move in a shorter month.
 
 ### D-112: Recurring templates: status 50 ends, status 200 blocks `DELETE`, lists hide them
 
@@ -4765,12 +4909,43 @@ pdf, sevClient, name, default, img}]}`, `GET /DocServer/getTemplatesWithThumb?ty
   - `POST /Invoice/Factory/createInvoiceFromOrder` copies the order's discount: a sent offer (status
     200; a `saveOrder` update with `orderPosSave: null` had put 10 % on it, 90/17.1/107.1) gave an
     invoice draft with the same row and the same sums, and the offer went to status 1000.
+  - Recorded 2026-11-18 (the probe sent no `isNet` unless named; positions 100.00 net at 19 %,
+    on gross prices 119.00):
+    - `isNet` is stored as sent and `"1"` when left out. It does not decide what is deducted on
+      gross prices: on an invoice, an order and a credit note with `showNet` false, a fixed
+      10.00 gave `sumNet` 91.6, `sumTax` 17.4, `sumGross` 109 (`sumDiscountNet` -8.4,
+      `sumDiscountGross` -10) with `isNet` `"1"`, and an invoice sent `isNet: false` (stored
+      `"0"`) gave exactly the same: a fixed amount comes off the gross total there. With
+      `showNet` true and `isNet` `"1"` it comes off the net total (90, 17.1, 107.1). `isNet`
+      `"0"` with net prices was not tried.
+    - 10 % on gross prices gave the same sums as on net prices (90, 17.1, 107.1).
+    - 19 % and 7 % (100.00 each, net): sevDesk splits the discount by the rates' shares of the
+      net total. 10 % gave 180, 23.4, 203.4 (`sumDiscountGross` -22.6); a fixed 10.00 gave 190,
+      24.7, 214.7 (`sumDiscountGross` -11.3). The positions keep their undiscounted sums
+      (`sumDiscount` 0 on each).
+    - A fixed 10.00 on a CHF invoice is 10.00 CHF: the `…ForeignCurrency` sums were 90, 17.1,
+      107.1 (`sumDiscountsForeignCurrency` -10); the plain sums are the EUR conversion (D-043).
+    - From a sent offer with 10 % (150.00 net), the order confirmation and the delivery note got
+      the same row and sums (D-107). A partial invoice (`partialType` TR) and an advance invoice
+      (AR), each 50 % by percentage, got **no** discount row and sums 67.5, 12.83, 80.33: half of
+      the discounted total.
+    - A recurring template (WKR) takes a 10 % `discountSave`, `getDiscounts` reads it, and an
+      update with the id that replaces every position (`invoicePosSave` a new one,
+      `invoicePosDelete` the old ids, no discount keys) keeps the row (same id); the sums follow
+      the new positions (72, 13.68, 85.68 for 2 × 40.00).
+    - An e-invoice (finalized with `sendBy`) with 10 % on 100.00 net: `getXml` answered CII with
+      the XRechnung 3.0 profile and one document-level `SpecifiedTradeAllowanceCharge`
+      (`ChargeIndicator` false, amount 10.00), `AllowanceTotalAmount` 10.00 and
+      `TaxBasisTotalAmount` 90.
 - **Sources:** spec (`createInvoiceByFactory`, `createcreditNote`, `getDiscounts`,
   `Model_Discount`); recorded 2026-11-16, trial account, Update 2.0 (probes
   `write-document-discount`, `read-order-get-discounts`;
   `test/fixtures/recorded/2026-11-16/orders/order-discounts.json`); recorded 2026-11-17, trial
   account, Update 2.0 (one-off check by the orchestrator: replacement in one request, several
-  rows, invoice from an offer; tagged test drafts, removed afterwards; no fixture).
+  rows, invoice from an offer; tagged test drafts, removed afterwards; no fixture); recorded
+  2026-11-18, trial account, Update 2.0 (probes `write-discount-net-gross`,
+  `write-discount-mixed-tax`, `write-discount-foreign-currency`, `write-discount-order-derived`,
+  `write-recurring-template-discount`, and the opt-in `write-einvoice-discount`).
 - **Impact:** A document discount goes out as `discountSave: [{…}]` on all three factories and is
   read back with `/<kind>/{id}/getDiscounts`; updates that change it delete the stored rows in
   `discountDelete` (a list) and save the new one in the same request. `sumDiscounts` is negative and
@@ -4791,18 +4966,23 @@ pdf, sevClient, name, default, img}]}`, `GET /DocServer/getTemplatesWithThumb?ty
   replaced or removed by the draft tools (the refusal says that sevDesk's totals do not count all
   of them), and the get tools, the from-order tool and all of these approvals warn about it. A
   kept discount is never refused: when the totals cannot be computed with it, the draft update
-  preview says that sevDesk computes them. Not measured, so a new discount is refused with a
-  reason: on gross prices, on positions with several tax rates, a fixed amount on a document in
-  another currency than EUR, and on an e-invoice. What a partial or advance invoice from an order does with its discount is
-  not checked either; the from-order preview says so. The replacement was checked on an invoice;
-  orders and credit notes send the same discount keys. The read-back still says when sevDesk
-  stored something other than what was sent. `sevdesk_invoice_update_recurring` reads a recurring
-  template's discounts with the same reader and never sends discount keys: the totals of new
-  positions count a kept single net discount as the invoice draft update does (`updateTotals`),
-  and otherwise the preview says that sevDesk computes them. Not recorded: whether sevDesk keeps a
-  discount when every position is replaced (the preview says so and the read-back compares the
-  discounts with the ones before), `getDiscounts` on a template (only on drafts), and whether the
-  invoices a template generates carry its discount.
+  preview says that sevDesk computes them. With the 2026-11-18 answers (#134), a new discount is
+  accepted on e-invoices, in other currencies than EUR (a fixed amount in the document's
+  currency, shown with that currency) and as a percentage on gross prices; it is refused with a
+  reason only where this server does not compute the totals yet: a fixed amount on gross prices
+  and positions with several tax rates (#155). The basis a preview and the DTO show for a fixed
+  amount follows the document's price mode, not `isNet` (`appliedDiscount`): gross on gross
+  prices. A kept row stored with `isNet` "0" is still left to sevDesk's totals. The from-order
+  tool says that a partial or advance invoice gets no discount row. The replacement was checked
+  on an invoice; orders and credit notes send the same discount keys. The read-back still says
+  when sevDesk stored something other than what was sent. `sevdesk_invoice_update_recurring`
+  reads a recurring template's discounts with the same reader and never sends discount keys:
+  sevDesk keeps them when every position is replaced (recorded), which the preview says; the
+  totals of new positions count a kept single discount as the invoice draft update does
+  (`updateTotals`), and otherwise the preview says that sevDesk computes them; the read-back
+  still compares the discounts with the ones before. Not recorded: whether the invoices a
+  template generates carry its discount (`read-recurring-generated-discounts`, pending), and a
+  surcharge (`discount` "0") anywhere.
 - **Test:** `test/contract/recorded-gaps-documents.test.ts` ("answers an empty list with total
   null for an order without discounts", "reads through the document discount reader: no rows,
   nothing shown or bound"), `test/unit/domain/drafts/discount.test.ts` ("gives the recorded sums
@@ -4819,14 +4999,15 @@ pdf, sevClient, name, default, img}]}`, `GET /DocServer/getTemplatesWithThumb?ty
   flag"), `test/unit/tools/orders/create-confirmation.test.ts` ("shows
   and binds the offer's document discounts in both languages (review of #112, L5)"),
   `test/unit/tools/invoices/recurring-update.test.ts` ("a discount on the whole template (D-116;
-  review of #124, M2)"). Live: probes `write-document-discount`, `read-order-get-discounts`. The
-  open questions above have probes (#136, #134; `test/unit/scripts/gaps-documents-probes.test.ts`):
-  `write-discount-net-gross` (`isNet` and `value` on net and gross invoices, orders and credit
-  notes), `write-discount-mixed-tax` (19 % and 7 %), `write-discount-foreign-currency` (a fixed
-  discount on CHF), `write-discount-order-derived` (AB, LI, partial and advance invoice of a
-  discounted offer), `write-recurring-template-discount` (a template's discount through a
-  replacement of every position), `read-recurring-generated-discounts` (invoices generated from
-  the discounted template of `write-recurring-template-due`, the day after) and
+  review of #124, M2)"); the 2026-11-18 answers: `test/unit/domain/drafts/discount.test.ts`
+  ("gives the sums recorded on 2026-11-18 for 10 % on gross prices and 10.00 in CHF", "refuses a
+  new discount on … (recorded, not computed here)", "shows a stored fixed amount on gross prices
+  as gross, whatever isNet says (D-116)"). Live: probes `write-document-discount`,
+  `read-order-get-discounts`, and (#136, #134; `test/unit/scripts/gaps-documents-probes.test.ts`;
+  all observed 2026-11-18 but the last but one) `write-discount-net-gross`,
+  `write-discount-mixed-tax`, `write-discount-foreign-currency`, `write-discount-order-derived`,
+  `write-recurring-template-discount`, `read-recurring-generated-discounts` (invoices generated
+  from the discounted template of `write-recurring-template-due`, the day after; pending) and
   `write-einvoice-discount` (opt-in: the allowance in the e-invoice XML).
 
 ### D-119: The account factories refuse an `accountingNumber` in use or not allowed (422)
@@ -4854,12 +5035,16 @@ pdf, sevClient, name, default, img}]}`, `GET /DocServer/getTemplatesWithThumb?ty
   - Without a number, `fileImportAccount` took `"1807"`, the next free number of the 18xx range;
     it skipped 1803 and 1804, which the archived accounts hold, so an archived account keeps its
     number (D-097: archived accounts are not listed).
-  - Whether `MT940` and `iban` are taken is still not recorded (`MT940`: probe
-    `write-transaction-mt940-account`, #136).
+  - `importType: "MT940"` is refused: `fileImportAccount` answered 422 "Invalid import type
+    given" and created no account (recorded 2026-11-18), although the spec lists it. Whether
+    `iban` is taken is still not recorded.
+  - Both refusals of a number were confirmed on 2026-11-18 on both factories.
 - **Sources:** spec (`createFileImportAccount`, `createClearingAccount`); recorded 2026-11-16,
   trial account, Update 2.0 (one-off checks by the orchestrator, run tags
   `MCP-E2E 20261116-2324-hg4n` and `MCP-E2E 20261116-2325-tgpq`; every account created was
-  archived again); recorded 2026-11-16 (probe `write-check-account-factories`).
+  archived again); recorded 2026-11-16 (probe `write-check-account-factories`); recorded
+  2026-11-18, trial account, Update 2.0 (probes `write-transaction-mt940-account`,
+  `write-check-account-number-refusals`).
 - **Impact:** `sevdesk_bank_account_create` (#88) sends `accountingNumber` only when the user
   gives one, as a JSON integer, after checking that no listed account has it (archived accounts
   hold their numbers but are not listed, so sevDesk's own check remains the last word). The two
@@ -4869,7 +5054,8 @@ pdf, sevClient, name, default, img}]}`, `GET /DocServer/getTemplatesWithThumb?ty
   picks one, and name the 18xx range only as recorded on SKR04 (the trial account's chart; which
   number another chart gets is not recorded). The result takes the number from sevDesk's
   answer and reports a different or missing one. The tool always sends `importType` `CSV`, the
-  recorded value, and never `iban` or `MT940`.
+  only value sevDesk takes, and never `iban` or `MT940`. The account list still reads `MT940` as
+  a file-import account should one exist (from the web app or an older API).
 - **Test:** `test/unit/domain/bank-account-create.test.ts` ("sends a file-import account as CSV,
   with a booking account number when given", "refuses a booking account number another account
   (archived ones too) already has", "reads a given booking account back as stored, a string",
@@ -4878,7 +5064,9 @@ pdf, sevClient, name, default, img}]}`, `GET /DocServer/getTemplatesWithThumb?ty
   refusals, and refusals without a booking account, as sevDesk sent them"). Live: the one-off
   checks above, and the probe `write-check-account-number-refusals` (both refusals on both
   factories, with the number of the run's own file-import account and 3321;
-  `test/unit/scripts/gaps-banking-probes.test.ts`).
+  `test/unit/scripts/gaps-banking-probes.test.ts`; confirmed 2026-11-18), and
+  `write-transaction-mt940-account` (observed 2026-11-18: `MT940` refused with 422; #136).
+  `test/unit/domain/bank-account-create.test.ts` pins `CSV` as the only import type sent.
 
 ### D-130: `PrivateTransactionRule` cuts texts over 255 characters without notice
 
@@ -4898,7 +5086,7 @@ pdf, sevClient, name, default, img}]}`, `GET /DocServer/getTemplatesWithThumb?ty
 - **Test:** `test/unit/tools/banking/private-rules.test.ts` ("refuses a text over 100 characters
   in its arguments", "notes a stored text cut short, as sevDesk cuts texts over 255 characters").
   Live: the one-off checks above, and the probe `write-private-transaction-rule-storage` (255
-  characters kept, 256 cut; `test/unit/scripts/gaps-banking-probes.test.ts`).
+  characters kept, 256 cut; confirmed 2026-11-18; `test/unit/scripts/gaps-banking-probes.test.ts`).
 
 ### D-132: Recurring templates: generation and auto-sending are switches read by `embed`
 
@@ -5107,8 +5295,10 @@ transaction>], "objectToDelete": <the account>}, "responseCode": 200, "exception
   API. `DELETE` set the stored `iban` to null and kept `bic`. A second `DELETE` on the archived
   account answered 200 and changed nothing. A `PUT {name}` on an archived account was stored, and
   the account stayed archived. Whether the web app restores an archived account was not checked.
+  The rows of an archived account stay readable by id, and a `DELETE` of one is answered like on
+  an active account (recorded 2026-11-18, D-096).
 - **Sources:** recorded 2026-11-18, trial account, Update 2.0 (one-off check by the orchestrator,
-  run tag `MCP-E2E 20261118-0925-lgtm`).
+  run tag `MCP-E2E 20261118-0925-lgtm`; probe `write-transaction-delete-archived-account`).
 - **Impact:** Archiving is irreversible as far as the server can tell. Handling (#128):
   `sevdesk_bank_account_archive` marks its preview irreversible, says that the account cannot be
   restored through the API and, when the account has an IBAN, that sevDesk clears it; it refuses
@@ -5143,3 +5333,37 @@ transaction>], "objectToDelete": <the account>}, "responseCode": 200, "exception
   booking account in use: nothing of the request was stored (D-144)", "refuses a booking account
   in use, and one on an account with booked transactions", "takes the booking account number of
   an archived account (D-144)").
+
+### D-145: Transaction lists run newest first by `valueDate`
+
+- **Status:** Open. **Evidence:** recorded.
+- **Spec says:** `GET /CheckAccountTransaction` documents no order and no sort parameter.
+- **Actual behavior:** The list runs by `valueDate`, newest first, and pages stably (recorded
+  2026-11-18). Three tagged rows created in the order A (value day two days back), B (today), C
+  (yesterday) on a file-import account were listed B, C, A with `checkAccount[id]`, with
+  `checkAccount[id]` and `status=100`, with `status=100` alone (19 rows) and without a filter (58
+  rows): `valueDate` descending in all four, while `id`, `create` and, without a filter,
+  `entryDate` went up and down. Pages of one (offsets 0 to 2) gave the same rows in the same
+  order as one page. The order among rows of the same value day was not measured. The trial has
+  no bank-connected account, so a list with bank imports was not seen.
+- **Sources:** recorded 2026-11-18, trial account, Update 2.0 (probe
+  `write-transaction-list-order`).
+- **Impact:** `listTransactions` (`src/domain/banking.ts`) ends a value-date range scan at the
+  first row dated before the range instead of reading on to its cap of 5,000 rows; it checks
+  that the rows it read came in that order and reads on when one did not. So the duplicate check
+  of `sevdesk_transaction_create` (#118) reads the account's rows from the newest down to the
+  day it checks and warns of its cap only when more than 5,000 rows are dated that day or later
+  (`src/domain/reconciliation/manual-transactions.ts`); `sevdesk_transactions_list` with a value
+  range answers `hasMore: false` once it passed the range. The estimate of
+  `sevdesk_private_transaction_rule_create` (#122) examines the 500 newest open transactions and
+  says so (D-099). The order of `GET /PrivateTransactionRule` is in D-099, that of
+  `GET /TagRelation` in D-088.
+- **Test:** `test/unit/tools/banking/transactions.test.ts` ("ends a value-date scan at the first
+  older row without reading further pages (D-145)", "reads on past an older row once a row breaks
+  the newest-first order"); `test/unit/domain/reconciliation/manual-transactions.test.ts` ("ends
+  the scan at the first row before that day, without a cap warning (D-145)", "says the scan may
+  not have reached that day when it stopped at its row cap"); `test/unit/tools/reports/summarize.test.ts`
+  ("filters value dates and status here (sevDesk's date filter cuts by entry date)");
+  `test/unit/tools/banking/private-rules.test.ts` (the estimate's "newest" wording).
+  Live: probe `write-transaction-list-order` (#136; `test/unit/scripts/gaps-banking-probes.test.ts`,
+  "asks the #136 list-order, account, entryDate and image questions…").

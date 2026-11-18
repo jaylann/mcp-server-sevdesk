@@ -378,7 +378,7 @@ export async function prepareCreditNoteCreate(
   );
   const { contact, contactPerson, address, currency, mode } = basics;
   if (source !== undefined) checkSourceCurrency(source, currency);
-  const expected = createTotals(basics.positions, mode, discount, currency);
+  const expected = createTotals(basics.positions, mode, discount);
   const duplicateQuery = { contactId: args.contactId, date, gross: expected.gross, currency };
   const duplicates = await findDuplicates(client, { kind: "creditNote" }, duplicateQuery, signal);
   const peeked = await peekNextNumber(client, { kind: "creditNote" }, signal);
@@ -532,7 +532,6 @@ export async function prepareCreditNoteUpdate(
     positions: basics.positions,
     storedPositions: current.positions,
     mode: basics.mode,
-    currency: basics.currency,
     currencyChanged: basics.currencyChanged,
     stored: doc,
   });
@@ -606,7 +605,7 @@ export async function prepareCreditNoteUpdate(
   if (centre !== undefined) {
     log.value("cost centre", "Cost centre (Kostenstelle)", ...costCentreChange(centre));
   }
-  const keptDiscount = logDiscountChange(log, change, discounts.rows, basics.currency);
+  const keptDiscount = logDiscountChange(log, change, discounts.rows, basics.currency, basics.mode);
 
   const customer = customerText(basics.contact.contact.displayName, basics.contact.contact.id);
   const facts: PreviewFact[] = [

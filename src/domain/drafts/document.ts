@@ -13,6 +13,7 @@ import {
   storedDiscountText,
   type UpdateTotals,
 } from "./discount.js";
+import type { PriceMode } from "./positions.js";
 import { addressText, type DraftPreview, fact, type PreviewFact, totalsText } from "./preview.js";
 import type { DocumentAddress } from "./recipient.js";
 import {
@@ -255,15 +256,17 @@ export function logPricingChanges(
 
 /**
  * Logs a replaced or removed document discount (D-116); a kept one comes back as a fact, so the
- * preview of every update says which discount the draft carries.
+ * preview of every update says which discount the draft carries. `mode` is the draft's price mode
+ * after the call, on which sevDesk applies a stored fixed amount (`appliedDiscount`).
  */
 export function logDiscountChange(
   log: ChangeLog,
   change: DiscountChange,
   stored: readonly DiscountRow[],
   currency: string,
+  mode: PriceMode,
 ): PreviewFact[] {
-  const before = storedDiscountText(stored, currency);
+  const before = storedDiscountText(stored, currency, mode);
   if (change.changed) {
     const planned = change.planned;
     log.value(

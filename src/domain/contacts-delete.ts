@@ -9,14 +9,19 @@
  *   Model_<Name> with the id <id> was found": a 404 on a DELETE means "already gone".
  * - Deleting a contact deletes its addresses and communication ways with it (and its custom field
  *   values, recorded 2026-11-17, D-086), and deleting an
- *   organisation deletes its contact persons (the persons whose `parent` it is) as well. Not
- *   measured: a contact person a document uses (the whole deletion refused, or the person kept),
- *   so every person is read back afterwards.
+ *   organisation deletes its contact persons (the persons whose `parent` it is) as well (recorded
+ *   again 2026-11-18 with two persons, probe `write-contact-delete-cascade`).
  * - sevDesk refuses to delete a contact a document references (recorded: a draft invoice), but
  *   inside HTTP 200: `{objects: null, error: {message: "Cannot delete because of existing
  *   necessary references"}}`, which the client raises as `unexpected_response` with status 200.
- *   Nothing is deleted. It is reported as a refusal in our own words after a read confirms that
- *   the contact is still there; sevDesk's text never reaches the result.
+ *   Nothing is deleted. The same refusal comes for an organisation when a document references
+ *   one of its contact persons, and then nothing is deleted either: the organisation, the person
+ *   and the document stay unchanged (recorded 2026-11-18, D-084). The preview says so. It is
+ *   reported as a refusal in our own words after a read confirms that the contact is still there;
+ *   sevDesk's text never reaches the result. Every person is still read back afterwards, so an
+ *   outcome that does not match this is reported, not assumed away.
+ * - Not measured: what deleting a person does to contacts stored with that person as their
+ *   parent (sevDesk stores any contact as a parent, D-083), so the preview says "may".
  * - An address or communication way can be deleted although it is the billing address, the main
  *   entry of its type or the last one, and sevDesk then makes no other entry the billing address or
  *   the main one; the update preview says so.
@@ -448,12 +453,18 @@ export async function prepareContactDelete(
   const personCount = persons.length;
   const onePerson = personCount === 1;
   if (personCount > 0 && organisation) {
+    // Recorded 2026-11-18 (D-084): a document that names one of the persons blocks the whole
+    // deletion, inside HTTP 200, and nothing is deleted.
     warnings.push(
       phrase(
         `sevDesk deletes the organisation's ${String(personCount)} contact ` +
-          `person${plural(personCount)} (Ansprechpartner) with it; this cannot be undone either.`,
+          `person${plural(personCount)} (Ansprechpartner) with it; this cannot be undone either. ` +
+          `If a document uses the organisation or ${onePerson ? "its contact person" : "one of them"}, ` +
+          "sevDesk refuses the whole deletion and deletes nothing.",
         `sevDesk löscht ${onePerson ? "den Ansprechpartner" : `die ${String(personCount)} Ansprechpartner`} ` +
-          "der Organisation mit; das lässt sich ebenfalls nicht rückgängig machen.",
+          "der Organisation mit; das lässt sich ebenfalls nicht rückgängig machen. Verwendet ein " +
+          `Dokument die Organisation oder ${onePerson ? "ihren Ansprechpartner" : "einen davon"}, ` +
+          "lehnt sevDesk die ganze Löschung ab und löscht nichts.",
       ),
     );
   } else if (personCount > 0) {
@@ -754,7 +765,7 @@ function personNotes(
       `Contact ${one ? "person" : "persons"} ${remaining.join(", ")} ` +
         `${one ? "is" : "are"} still in sevDesk although ${parent} was deleted; ` +
         (parentKind === "organisation"
-          ? `why sevDesk kept ${one ? "it" : "them"} is not recorded (perhaps a document uses it). `
+          ? "sevDesk deleted an organisation's contact persons with it when this was recorded. "
           : `whether sevDesk deletes contacts stored under a person is not recorded. `) +
         "Check with sevdesk_contact_get.",
     );
@@ -780,7 +791,8 @@ function personNotes(
 
 /**
  * sevDesk's refusal (D-085) in our words. "Nothing was deleted" only while no contact person read
- * back as gone: a partial cascade is not measured, and the reads afterwards may show one.
+ * back as gone: a refusal deleted nothing when recorded (D-084, 2026-11-18), but the reads
+ * afterwards decide what the note claims.
  */
 function refusalNote(contactId: number, hasPersons: boolean, personGone: boolean): string {
   const referenced = hasPersons ? "it or one of its contact persons" : "it";

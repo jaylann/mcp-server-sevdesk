@@ -43,6 +43,7 @@ import { cleanText, moneyFromUpstream, splitTotals, trimmedText } from "../commo
 import { COST_CENTRE_UNREAD, costCentreFacts, storedCostCentre } from "../cost-centres.js";
 import type { CreditNoteDetail } from "../credit-notes.js";
 import {
+  appliedDiscount,
   type DiscountRow,
   discountRowText,
   discountTotals,
@@ -746,11 +747,17 @@ function listedPositions<T>(
 }
 
 /**
- * One document discount as `discountRowText` writes it, then its text as stored on the line below
- * (like a position's text).
+ * One document discount as `discountRowText` writes it, with the basis sevDesk applies on the
+ * document's price mode (`appliedDiscount`), then its text as stored on the line below (like a
+ * position's text).
  */
-function documentDiscountText(row: DiscountRow, currency: string, lang: PreviewLanguage): string {
-  const line = discountRowText(row, currency, lang);
+function documentDiscountText(
+  row: DiscountRow,
+  currency: string,
+  priceMode: "net" | "gross" | undefined,
+  lang: PreviewLanguage,
+): string {
+  const line = discountRowText(appliedDiscount(row, priceMode), currency, lang);
   return trimmedText(row.text) === undefined
     ? line
     : `${line}\n${TEXT[lang].text}: ${row.text ?? ""}`;
@@ -769,10 +776,11 @@ function discountFacts(
 ): Fact[] {
   if (discounts.length === 0) return [];
   const t = TEXT[lang];
+  const { priceMode } = doc.dto as SalesDetail;
   const facts = discounts.map((row, index) => ({
     label:
       discounts.length === 1 ? t.documentDiscount : `${t.documentDiscount} ${String(index + 1)}`,
-    value: documentDiscountText(row, doc.currency, lang),
+    value: documentDiscountText(row, doc.currency, priceMode, lang),
   }));
   push(facts, t.discountsTotal, sumsText(discountTotals(record, doc.currency), t, lang));
   return facts;

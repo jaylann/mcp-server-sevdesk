@@ -27,7 +27,8 @@ export const contactDeleteTool = defineWriteTool({
     "duplicate, a test contact or for an erasure request (DSGVO). Deleting an organisation also " +
     "deletes all its contact persons (Ansprechpartner); the preview lists them. Cannot be " +
     "undone. sevDesk refuses it while documents (invoices, also drafts) still reference the " +
-    "contact; then nothing is deleted and the result says so (stillReferenced). To remove only " +
+    "contact, or one of an organisation's contact persons; then nothing is deleted and the " +
+    "result says so (stillReferenced). To remove only " +
     "one address, e-mail or phone number, or a person's link to its organisation (which keeps " +
     "the person), use sevdesk_contact_update with remove. Commit tier: asks a human to confirm " +
     "the preview, which names the contact and what goes with it; dryRun only previews. Before: " +
@@ -58,7 +59,10 @@ export const contactDeleteTool = defineWriteTool({
     stillReferenced: z
       .boolean()
       .optional()
-      .describe("True when sevDesk refused because documents still reference the contact."),
+      .describe(
+        "True when sevDesk refused because documents still reference the contact or one of its " +
+          "contact persons.",
+      ),
     contactPersons: z
       .array(contactPersonOutcomeSchema)
       .optional()
@@ -97,8 +101,8 @@ export const contactDeleteTool = defineWriteTool({
       .map((person) => ({ objectName: "Contact", id: String(person.id) }));
     const seeNotes = result.notes.length === 0 ? "" : " See notes.";
     if (result.stillReferenced) {
-      // A contact person may read back as gone although sevDesk refused (a partial cascade is not
-      // measured): then "nothing was deleted" would be untrue.
+      // sevDesk deleted nothing when it refused (recorded 2026-11-18, D-084), but should a contact
+      // person read back as gone all the same, "nothing was deleted" would be untrue.
       return {
         data,
         summary:

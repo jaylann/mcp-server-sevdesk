@@ -272,7 +272,7 @@ export async function prepareOrderCreate(
     options,
   );
   const { contact, contactPerson, address, currency, mode } = basics;
-  const expected = createTotals(basics.positions, mode, discount, currency);
+  const expected = createTotals(basics.positions, mode, discount);
   const duplicateQuery = { contactId: args.contactId, date, gross: expected.gross, currency };
   const duplicates = await findDuplicates(
     client,
@@ -385,7 +385,6 @@ export async function prepareOrderUpdate(
     positions: basics.positions,
     storedPositions: current.positions,
     mode: basics.mode,
-    currency: basics.currency,
     currencyChanged: basics.currencyChanged,
     stored: doc,
   });
@@ -449,7 +448,7 @@ export async function prepareOrderUpdate(
   if (args.deliveryTerms !== undefined)
     log.value("delivery terms", "Delivery terms", doc.deliveryTerms, args.deliveryTerms);
   logPricingChanges(log, doc, basics, current.positions.length);
-  const keptDiscount = logDiscountChange(log, change, discounts.rows, basics.currency);
+  const keptDiscount = logDiscountChange(log, change, discounts.rows, basics.currency, basics.mode);
 
   const typeName = orderTypeLabel(code);
   const customer = customerText(basics.contact.contact.displayName, basics.contact.contact.id);

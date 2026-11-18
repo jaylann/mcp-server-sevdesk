@@ -7,8 +7,9 @@
  * What is recorded (trial account, Update 2.0, spec/deviations.md D-099 and D-130):
  * - `GET /PrivateTransactionRule` with `limit`/`offset` answers `{objects: [...]}`, rows with `id`,
  *   `objectName`, `create`, `update`, `sevClient`, `paymentPurpose` and `counterpartName`; with
- *   `countAll=true` (the client always sends it) it reports `total`, and paging works. In which
- *   order it lists rules is not recorded.
+ *   `countAll=true` (the client always sends it) it reports `total`, and paging works. It lists
+ *   rules by ascending id (oldest first), and pages of one give the same rows in the same order
+ *   as one page (recorded 2026-11-18, probe `write-private-transaction-rule-order`).
  * - `POST /PrivateTransactionRule` with `objectName` and one of the two texts answers 2xx with the
  *   rule wrapped in `objects`; the text not sent is `null`. It stores a text exactly as sent
  *   (spaces included), cuts one over 255 characters to 255 without notice (D-130), accepts a rule
@@ -54,9 +55,9 @@ const OBJECT_NAME = "PrivateTransactionRule";
 const RULES_PAGE_SIZE = 1000;
 /**
  * Pages every search of the rules reads at most: the duplicate check, the delete lookup and both
- * read-backs. In which order sevDesk lists rules is not recorded, so on an account with more than
- * {@link RULES_PAGE_SIZE} rules the one looked for can be on any page; five pages (5000 rules)
- * bound the requests.
+ * read-backs. sevDesk lists rules oldest first (ascending id, D-099), so on an account with more
+ * than {@link RULES_PAGE_SIZE} rules a new one is on the last page and an older one can be on any;
+ * five pages (5000 rules) bound the requests.
  */
 const RULE_SEARCH_PAGES = 5;
 
@@ -251,7 +252,7 @@ type PrivateRuleCreatePayload = z.output<typeof createPayloadSchema>;
 
 /** The open transactions that look like what a new rule is meant for (see the module comment). */
 interface RuleEstimate {
-  /** Matches in the order sevDesk listed them, at most {@link ESTIMATE_LISTED_MAX}. */
+  /** Matches newest first by value date, as sevDesk lists them; at most {@link ESTIMATE_LISTED_MAX}. */
   readonly listed: readonly TransactionDto[];
   /** All matches among the examined transactions. */
   readonly matches: number;
@@ -364,7 +365,8 @@ function singleText(input: PrivateRuleCreateInput): { field: RuleField; text: st
 /**
  * The open (unbooked, status 100) transactions whose counterparty or purpose contains `text`,
  * ignoring case and extra spaces: the local stand-in for sevDesk's unmeasured matching. Reads at
- * most {@link ESTIMATE_SCAN_LIMIT} open transactions, newest pages as sevDesk lists them.
+ * most {@link ESTIMATE_SCAN_LIMIT} open transactions, the newest by value date (sevDesk lists them
+ * newest first, D-145).
  */
 async function estimateMatches(
   client: SevdeskClient,

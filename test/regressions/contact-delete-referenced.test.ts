@@ -12,6 +12,12 @@
  * `sevdesk_contact_delete` recognizes the refusal, reads the contact back, and reports
  * `deleted: false` and `stillReferenced: true` with a note in its own words. The DELETE is sent
  * exactly once. This runs through the real HTTP client with a scripted `fetch`.
+ *
+ * The same HTTP 200 refusal comes for an organisation when a document references one of its
+ * contact persons, and sevDesk then deletes nothing: neither the organisation nor the person
+ * (recorded 2026-11-18, probe `write-contact-delete-cascade`, D-084). Read as a success, the tool
+ * would report the organisation and its person as deleted; the preview says beforehand that such a
+ * reference blocks the whole deletion.
  */
 import { describe, expect, it } from "vitest";
 
@@ -23,6 +29,9 @@ import { createFakeClock, createFakeFetch, envelope, jsonResponse } from "../hel
 import { executeWrite } from "../helpers/write-tools.js";
 
 const PERSON = (loadFixture("contacts/contact-1002.json").body as { objects: unknown[] }).objects;
+/** Organisation 1001, the parent of person 1002. */
+const ORGANISATION = (loadFixture("contacts/contact-1001.json").body as { objects: unknown[] })
+  .objects;
 const REFUSAL = {
   objects: null,
   error: {
@@ -52,8 +61,32 @@ function answer(request: { readonly url: URL; readonly method: string }): Respon
   throw new Error(`unexpected request: ${request.method} ${path}`);
 }
 
-function setup() {
-  const fake = createFakeFetch(...Array.from({ length: 10 }, () => answer));
+/**
+ * sevDesk as recorded on 2026-11-18: organisation 1001 whose contact person 1002 a draft invoice
+ * names. The DELETE of the organisation is refused inside HTTP 200, and both contacts stay.
+ */
+function answerOrganisation(request: { readonly url: URL; readonly method: string }): Response {
+  const path = request.url.pathname.replace(/^\/api\/v1/, "");
+  if (request.method === "DELETE" && path === "/Contact/1001") return jsonResponse(REFUSAL, 200);
+  if (request.method === "GET" && path === "/Contact/1001") return envelope(ORGANISATION);
+  if (request.method === "GET" && path === "/Contact/1002") return envelope(PERSON);
+  // The contacts whose parent the organisation is: person 1002 on the first page, then none.
+  if (request.method === "GET" && path === "/Contact") {
+    return request.url.searchParams.get("offset") === "0"
+      ? envelope(PERSON, "1")
+      : envelope([], "1");
+  }
+  if (
+    request.method === "GET" &&
+    (path === "/ContactAddress" || path === "/CommunicationWay" || path === "/ContactCustomField")
+  ) {
+    return envelope([], "0");
+  }
+  throw new Error(`unexpected request: ${request.method} ${path}`);
+}
+
+function setup(respond: typeof answer = answer) {
+  const fake = createFakeFetch(...Array.from({ length: 10 }, () => respond));
   const clock = createFakeClock();
   const client = createSevdeskClient(
     {
@@ -98,5 +131,42 @@ describe("D-085: a refused contact deletion arrives as HTTP 200", () => {
     // The read afterwards is what proves the contact is still there.
     expect(fake.requests.at(-1)).toMatchObject({ method: "GET" });
     expect(fake.requests.at(-1)?.url.pathname).toBe("/api/v1/Contact/1002");
+  });
+
+  it("refuses an organisation whose contact person a document uses: nothing deleted (D-084)", async () => {
+    const { client, fake } = setup(answerOrganisation);
+    const { plan, output } = await executeWrite(tool, { id: 1001 }, client);
+
+    // The preview says beforehand that such a reference blocks the whole deletion.
+    expect(plan.preview.warnings).toContain(
+      "sevDesk deletes the organisation's 1 contact person (Ansprechpartner) with it; this " +
+        "cannot be undone either. If a document uses the organisation or its contact person, " +
+        "sevDesk refuses the whole deletion and deletes nothing.",
+    );
+    expect(plan.previewDe.warnings).toContain(
+      "sevDesk löscht den Ansprechpartner der Organisation mit; das lässt sich ebenfalls nicht " +
+        "rückgängig machen. Verwendet ein Dokument die Organisation oder ihren Ansprechpartner, " +
+        "lehnt sevDesk die ganze Löschung ab und löscht nichts.",
+    );
+
+    expect(output.data.deleted).toBe(false);
+    expect(output.data.stillReferenced).toBe(true);
+    expect(output.data.contactPersons).toEqual([
+      expect.objectContaining({ id: 1002, outcome: "remaining" }),
+    ]);
+    expect(output.summary).toBe(
+      "sevDesk refused to delete contact 1001: documents still reference it. Nothing was " +
+        "deleted. See notes.",
+    );
+    expect(output.data.notes).toEqual([
+      expect.stringMatching(
+        /^sevDesk refused to delete contact 1001: documents still reference it or one of its contact persons/,
+      ),
+    ]);
+    expect(output.affected).toEqual([]);
+    expect(JSON.stringify(output)).not.toMatch(/necessary references/i);
+
+    const deletes = fake.requests.filter((request) => request.method === "DELETE");
+    expect(deletes.map((request) => request.url.pathname)).toEqual(["/api/v1/Contact/1001"]);
   });
 });

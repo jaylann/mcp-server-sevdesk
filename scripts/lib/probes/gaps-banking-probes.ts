@@ -2152,7 +2152,7 @@ export const GAPS_BANKING_PROBES: readonly ProbeDefinition[] = [
     mode: "write",
     question:
       "In which order does GET /CheckAccountTransaction list rows (#136: the duplicate check of #118 searches 5,000 rows, the rule estimate of #122 reads 500 open ones)? On the tagged file-import account three tagged rows (status 100) are created in the order A (value day two days ago), B (today), C (yesterday). Read with checkAccount[id], with checkAccount[id] and status=100, with status=100 alone and without a filter (limit 1000 each): do ids, valueDate, entryDate and create run ascending, descending or mixed, and where do A, B and C appear? Do pages of 1 (offsets 0 to 4) give the same rows as one page? The three rows are soft-deleted at the end, also when a step fails.",
-    deviations: ["NEW", "D-047", "D-096"],
+    deviations: ["D-145", "D-047", "D-096"],
     async run(ctx) {
       const imported = await importAccount(ctx);
       if (imported.id === undefined) return inconclusive(imported.note);

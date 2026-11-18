@@ -3,7 +3,12 @@ import { describe, expect, it, vi } from "vitest";
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
 import { transactionsListTool as tool } from "../../../../src/tools/banking/transactions.js";
 import type { ToolContext } from "../../../../src/tools/types.js";
-import { type FakeRoute, FakeSevdeskClient, testContext } from "../../../helpers/fake-client.js";
+import {
+  type FakeRoute,
+  FakeSevdeskClient,
+  loadFixture,
+  testContext,
+} from "../../../helpers/fake-client.js";
 
 const accountsRoute: FakeRoute = {
   path: "/CheckAccount",
@@ -12,6 +17,17 @@ const accountsRoute: FakeRoute = {
 const transactionsRoute: FakeRoute = {
   path: "/CheckAccountTransaction",
   response: { fixture: "banking/transactions-list.json" },
+};
+/** The same rows newest first by value date, the order sevDesk lists them in (D-145). */
+const newestFirstRoute: FakeRoute = {
+  path: "/CheckAccountTransaction",
+  response: {
+    body: {
+      objects: [
+        ...(loadFixture("banking/transactions-list.json").body as { objects: unknown[] }).objects,
+      ].reverse(),
+    },
+  },
 };
 
 async function run(
@@ -160,19 +176,75 @@ describe("sevdesk_transactions_list (community: recorded transaction shape, fake
   });
 
   it("filters a value-date range here only, since sevDesk's date filters cut by entryDate", async () => {
-    const { listCalls, result } = await run({ from: "2026-01-07", to: "2026-01-31" });
+    // sevDesk lists transactions newest first by value date (recorded 2026-11-18, D-145): the
+    // fixture's rows in that order.
+    const { listCalls, result } = await run({ from: "2026-01-07", to: "2026-01-31" }, [
+      accountsRoute,
+      newestFirstRoute,
+    ]);
     // D-047: sending startDate/endDate would silently drop rows whose entry date is outside.
     expect(listCalls[0]?.query).not.toHaveProperty("startDate");
     expect(listCalls[0]?.query).not.toHaveProperty("endDate");
     // 5002 has value date 7 Jan but entry date 8 Jan; it is in a value-date range from 7 Jan.
     expect(result.data.items.map((item) => [item.id, item.valueDate])).toEqual([
-      [5002, "2026-01-07"],
-      [5003, "2026-01-15"],
-      [5004, "2026-01-20"],
       [5005, "2026-01-31"],
+      [5004, "2026-01-20"],
+      [5003, "2026-01-15"],
+      [5002, "2026-01-07"],
     ]);
-    expect(result.data).toMatchObject({ filteredLocally: true, rowsScanned: 7 });
+    // 5001 (5 Jan), the first row before the range, ends the scan: every later row is older.
+    expect(result.data).toMatchObject({ filteredLocally: true, rowsScanned: 6, hasMore: false });
     expect(result.data.total).toBeUndefined();
+  });
+
+  it("ends a value-date scan at the first older row without reading further pages (D-145)", async () => {
+    const objects = [
+      ...Array.from({ length: 150 }, (_, index) => ({
+        id: String(70_000 + index),
+        valueDate: "2026-03-02T00:00:00+01:00",
+        amount: "-1",
+        checkAccount: { id: "4002", objectName: "CheckAccount" },
+        status: "400",
+      })),
+      ...Array.from({ length: 1000 }, (_, index) => ({
+        id: String(80_000 + index),
+        valueDate: "2026-01-01T00:00:00+01:00",
+        amount: "-1",
+        checkAccount: { id: "4002", objectName: "CheckAccount" },
+        status: "100",
+      })),
+    ];
+    const { listCalls, result } = await run({ from: "2026-03-01", status: ["created"] }, [
+      accountsRoute,
+      { path: "/CheckAccountTransaction", response: { body: { objects } } },
+    ]);
+    // Pages of 100: the second page reaches the first row of January and the scan ends there.
+    expect(listCalls.map((call) => call.query["offset"])).toEqual([0, 100]);
+    expect(result.data.items).toEqual([]);
+    expect(result.data).toMatchObject({ rowsScanned: 150, hasMore: false });
+  });
+
+  it("reads on past an older row once a row breaks the newest-first order", async () => {
+    const row = (id: string, day: string) => ({
+      id,
+      valueDate: `${day}T00:00:00+01:00`,
+      amount: "-1",
+      checkAccount: { id: "4002", objectName: "CheckAccount" },
+      status: "100",
+    });
+    // 31 Jan after 20 Jan breaks the recorded order, so 5 Jan does not end the scan.
+    const objects = [
+      row("1", "2026-01-20"),
+      row("2", "2026-01-31"),
+      row("3", "2026-01-05"),
+      row("4", "2026-01-15"),
+    ];
+    const { result } = await run({ from: "2026-01-07" }, [
+      accountsRoute,
+      { path: "/CheckAccountTransaction", response: { body: { objects } } },
+    ]);
+    expect(result.data.items.map((item) => item.id)).toEqual([1, 2, 4]);
+    expect(result.data).toMatchObject({ rowsScanned: 4, hasMore: false });
   });
 
   it("lets sevDesk filter an entry-date range and re-checks entryDate", async () => {

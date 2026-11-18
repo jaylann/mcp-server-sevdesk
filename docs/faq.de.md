@@ -303,9 +303,10 @@ Gutschriften, Aufträge und Belege jeden tragen. `sevdesk_invoices_list`,
 `tag`-Namen und zeigen nur die Dokumente mit diesem Tag; ein unbekannter Name wird abgelehnt,
 statt alles aufzulisten. `sevdesk_document_tag` (Stufe `write`) fügt einem Dokument einen Tag
 hinzu oder entfernt ihn, ein Dokument pro Aufruf. Tags haben einen Namen, keine Nummer, und
-sevDesk vergleicht Namen ohne Rücksicht auf Groß- und Kleinschreibung und Akzente („Café“ ist
-„cafe“): Ein Name, den sevDesk noch nicht kennt, legt den Tag an, und wer einen Tag von seinem
-letzten Dokument entfernt, löscht ihn in sevDesk; die Vorschau sagt beides.
+sevDesk vergleicht Namen ohne Rücksicht auf Groß- und Kleinschreibung, Akzente und ß/ss („Café“
+ist „cafe“, „Straße“ ist „Strasse“): Ein Name, den sevDesk noch nicht kennt, legt den Tag an,
+und wer einen Tag von seinem letzten Dokument entfernt, löscht ihn in sevDesk; die Vorschau sagt
+beides.
 
 ### Kann es Rechnungen und Belege auf eine Kostenstelle buchen?
 

@@ -504,7 +504,8 @@ describe("sevdesk_invoice_create_from_order with a discount on the whole order",
     );
   });
 
-  it("names a fixed amount with its currency, and none on a document in another currency", async () => {
+  it("names a fixed amount with the order's currency, as gross on gross prices (D-116, recorded 2026-11-18)", async () => {
+    // Order 3002 has gross prices: sevDesk takes a fixed amount off the gross total there.
     const fixed = [discountRow("Order", 3002, { percentage: "0", value: "5" })];
     const euro = await prepareWrite(
       tool,
@@ -513,7 +514,7 @@ describe("sevdesk_invoice_create_from_order with a discount on the whole order",
     );
     expect(euro.preview.facts).toContainEqual({
       label: "Order discount",
-      value: '5.00 EUR net ("Rabatt")',
+      value: '5.00 EUR gross ("Rabatt")',
     });
 
     const francs = await prepareWrite(
@@ -525,11 +526,11 @@ describe("sevdesk_invoice_create_from_order with a discount on the whole order",
     );
     expect(francs.preview.facts).toContainEqual({
       label: "Order discount",
-      value: '5.00 net (fixed amount) ("Rabatt")',
+      value: '5.00 CHF gross ("Rabatt")',
     });
   });
 
-  it("says that a partial or advance invoice's handling of the discount is not verified", async () => {
+  it("says that a partial or advance invoice gets no discount of its own (D-116, 2026-11-18)", async () => {
     const client = new FakeSevdeskClient(
       routes({
         order: order(sums),
@@ -538,9 +539,8 @@ describe("sevdesk_invoice_create_from_order with a discount on the whole order",
     );
     const plan = await prepareWrite(tool, { orderId: 3002, mode: "partial", amount: 50 }, client);
     expect(plan.preview.warnings).toContain(
-      "The order has a discount on the whole document. sevDesk copies it into an invoice for the " +
-        "whole order; what it does with it in a partial or advance invoice is not verified, so " +
-        "check the draft's total with sevdesk_invoice_get before finalizing.",
+      "The order has a discount on the whole document. A partial or advance invoice gets no " +
+        "discount of its own: sevDesk takes its share of the discounted order total.",
     );
   });
 

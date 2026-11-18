@@ -698,6 +698,12 @@ export interface TransactionListResult {
  * rows. `nextOffset` always counts sevDesk rows, so the next call continues exactly after the
  * last row examined, and no unexamined row is skipped. The account and entry-date re-checks only
  * drop rows sevDesk should not have sent; they do not start a scan.
+ *
+ * Order: sevDesk lists transactions by `valueDate`, newest first, with or without the account
+ * and status filters, and pages them stably (recorded 2026-11-18, probe
+ * `write-transaction-list-order`, D-145). So a value-date range scan ends at the first row dated
+ * before `from`: every later row is older still. Rows read so far are checked to come in that
+ * order; once one does not, the scan stops trusting it and reads on as before.
  */
 export async function listTransactions(
   client: SevdeskClient,
@@ -765,6 +771,7 @@ export async function listTransactions(
   }
 
   const pageSize = Math.min(1000, Math.max(100, params.limit * 4));
+  const pastRange = valueRangeEnd(params);
   let position = params.offset;
   let total: number | undefined;
   let ended = false;
@@ -788,6 +795,11 @@ export async function listTransactions(
     let filled = false;
     for (const raw of page.items) {
       const record = parseTransaction(raw);
+      if (pastRange(record)) {
+        // Newest first by value date (D-145): no row from here on falls in the range.
+        ended = true;
+        break;
+      }
       position += 1;
       if (matches(record)) keep(record);
       if (items.length >= params.limit) {
@@ -796,7 +808,7 @@ export async function listTransactions(
       }
     }
     await options.onProgress?.(position - params.offset, total);
-    if (filled) break;
+    if (filled || ended) break;
     if (total !== undefined && position >= total) {
       ended = true;
       break;
@@ -811,6 +823,29 @@ export async function listTransactions(
     scanCapped,
     hasMore: !ended && (total === undefined || position < total),
     nextOffset: position,
+  };
+}
+
+/**
+ * For a value-date range with `from`: a check, called on every row in list order, that is true
+ * at the first row dated before `from` while the rows so far came newest first by value date
+ * (D-145). After a row out of that order it stays false, so the scan reads on. Always false for
+ * an entry-date range or one without `from`. Stateful: one per scan.
+ */
+function valueRangeEnd(params: TransactionListParams): (record: TransactionRecord) => boolean {
+  const { from } = params;
+  if (params.dateField === "entry" || from === undefined) return () => false;
+  let previous: string | undefined;
+  let ordered = true;
+  return (record) => {
+    const day = record.valueDate;
+    if (day === undefined || !ordered) return false;
+    if (previous !== undefined && day > previous) {
+      ordered = false;
+      return false;
+    }
+    previous = day;
+    return day < from;
   };
 }
 

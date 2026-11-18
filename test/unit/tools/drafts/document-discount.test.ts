@@ -202,11 +202,13 @@ describe("create with a discount", () => {
     expect(plan.state.body).not.toHaveProperty("discountDelete");
   });
 
+  // What sevDesk does here is recorded (2026-11-18, D-116); this server does not compute the
+  // totals of a fixed amount on gross prices or of several tax rates.
   it.each([
     [
-      "gross prices",
-      { priceMode: "gross", discount: { percent: 3 } },
-      "only verified for net prices",
+      "a fixed amount on gross prices",
+      { priceMode: "gross", discount: { amount: 5 } },
+      "On gross prices sevDesk takes a fixed discount off the gross total",
     ],
     [
       "several tax rates",
@@ -217,9 +219,8 @@ describe("create with a discount", () => {
         ],
         discount: { percent: 3 },
       },
-      "one tax rate",
+      "splits a discount on the whole document over several tax rates",
     ],
-    ["a fixed amount in USD", { currency: "USD", discount: { amount: 5 } }, "in percent"],
     ["more than the net total", { discount: { amount: "55.01" } }, "more than the net total"],
     ["percent and amount", { discount: { percent: 3, amount: 5 } }, "not both"],
   ])("refuses a discount on %s before anything is written", async (_label, extra, message) => {
@@ -229,6 +230,35 @@ describe("create with a discount", () => {
       invoiceCreateRoutes,
     );
     expect(error.message).toContain(message);
+  });
+
+  it("takes a percentage on gross prices and a fixed amount in USD (recorded 2026-11-18)", async () => {
+    // A percentage on gross prices gives the same totals as on net prices; a fixed amount is in
+    // the document's currency (D-116).
+    const gross = await prepareWrite(
+      invoiceCreateDraftTool,
+      { ...invoiceCreateArgs, priceMode: "gross", discount: { percent: 10 } },
+      new FakeSevdeskClient(invoiceCreateRoutes),
+    );
+    expect(gross.state.body).toMatchObject({ discountSave: [savedTen], discountDelete: null });
+    expect(gross.preview.facts).toContainEqual({
+      label: "Discount",
+      value: '10 % of the net total ("Rabatt")',
+    });
+
+    const usd = await prepareWrite(
+      invoiceCreateDraftTool,
+      { ...invoiceCreateArgs, currency: "USD", discount: { amount: "5.50" } },
+      new FakeSevdeskClient(invoiceCreateRoutes),
+    );
+    expect(usd.state.body).toMatchObject({
+      discountSave: [{ ...savedTen, percentage: false, value: 5.5 }],
+    });
+    expect(usd.state.expected).toEqual(discounted);
+    expect(usd.preview.facts).toContainEqual({
+      label: "Discount",
+      value: '5.50 USD net ("Rabatt")',
+    });
   });
 });
 
@@ -490,20 +520,7 @@ describe("update: keep, replace, remove", () => {
       "positions with several tax rates (stored 19 % and 7 %)",
       { id: 2102, discount: { percent: 10 } },
       invoiceUpdateRoutes,
-      "one tax rate",
-    ],
-    [
-      "an e-invoice",
-      {
-        id: 2102,
-        positions: [{ name: "Beratung", quantity: 1, unitPrice: 100, taxRate: 19 }],
-        discount: { percent: 10 },
-      },
-      withRoutes(
-        invoiceUpdateRoutes,
-        record("/Invoice/2102", "drafts/invoice-2102-draft.json", { propertyIsEInvoice: "1" }),
-      ),
-      "e-invoice",
+      "over several tax rates",
     ],
     [
       "a draft with several discounts",
@@ -529,18 +546,39 @@ describe("update: keep, replace, remove", () => {
     expect(error.message).toContain(message);
   });
 
-  it("refuses a gross price mode for a new discount on a credit note", async () => {
+  it("takes a discount on an e-invoice, which carries it as an allowance (recorded 2026-11-18)", async () => {
+    const client = new FakeSevdeskClient(
+      withRoutes(
+        invoiceUpdateRoutes,
+        record("/Invoice/2102", "drafts/invoice-2102-draft.json", { propertyIsEInvoice: "1" }),
+      ),
+    );
+    const plan = await prepareWrite(
+      invoiceUpdateDraftTool,
+      {
+        id: 2102,
+        positions: [{ name: "Beratung", quantity: 1, unitPrice: 100, taxRate: 19 }],
+        discount: { percent: 10 },
+      },
+      client,
+    );
+    expect(plan.state.body).toMatchObject({ discountSave: [savedTen] });
+    expect(plan.state.expected).toEqual({ net: "90.00", tax: "17.10", gross: "107.10" });
+    expect(client.writes()).toEqual([]);
+  });
+
+  it("refuses a fixed amount on gross prices for a new discount on a credit note", async () => {
     const error = await refusal(
       creditNoteUpdateDraftTool,
       {
         id: 2202,
         priceMode: "gross",
         positions: [{ name: "Minderung", quantity: 1, unitPrice: 11.9, taxRate: 19 }],
-        discount: { percent: 10 },
+        discount: { amount: 1 },
       },
       creditNoteUpdateRoutes,
     );
-    expect(error.message).toContain("only verified for net prices");
+    expect(error.message).toContain("takes a fixed discount off the gross total");
   });
 
   it("refuses a discount row of another document instead of replacing it", async () => {

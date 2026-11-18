@@ -171,10 +171,10 @@ deleting the rules changed nothing either. So how sevDesk matches a rule (the wh
 of it, upper and lower case), and whether a CSV file import applies rules too, is not known.
 
 **The estimate in the preview.** The create preview lists open transactions that look like what
-the rule is meant for: up to ten of at most 500 open (unbooked) transactions whose counterparty or
-purpose contains the text, ignoring case. It is the server's own estimate, labelled as one, not
-sevDesk's matching, and creating the rule changes none of them. To mark one of them private now,
-use `sevdesk_transaction_mark_private`.
+the rule is meant for: up to ten of at most 500 open (unbooked) transactions, the newest by value
+date, whose counterparty or purpose contains the text, ignoring case. It is the server's own
+estimate, labelled as one, not sevDesk's matching, and creating the rule changes none of them. To
+mark one of them private now, use `sevdesk_transaction_mark_private`.
 
 The create tool refuses, before anything is sent:
 

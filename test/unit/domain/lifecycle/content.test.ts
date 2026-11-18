@@ -456,6 +456,8 @@ describe("the document discounts in the content facts (D-116)", () => {
   });
 
   it("numbers several, marks a surcharge and a gross amount, and keeps the text as stored", async () => {
+    // Order 3002 has gross prices (showNet "0"): sevDesk takes a fixed amount off the gross
+    // total whatever isNet says (recorded 2026-11-18, D-116), so both rows read as gross.
     const content = await contentOf("order", orderRow(), [], undefined, [
       discount("Order", 3002, { percentage: "0", value: "25.5", text: null }),
       discount("Order", 3002, {
@@ -469,7 +471,10 @@ describe("the document discounts in the content facts (D-116)", () => {
     ]);
 
     expect(valueOf(content.printed("en"), "Discount on the whole document (Rabatt) 1")).toBe(
-      "25.50 EUR net",
+      "25.50 EUR gross",
+    );
+    expect(valueOf(content.printed("de"), "Rabatt auf den Gesamtbetrag 1")).toBe(
+      "25,50 EUR brutto",
     );
     expect(valueOf(content.printed("en"), "Discount on the whole document (Rabatt) 2")).toBe(
       "surcharge (Aufschlag): 5.00 EUR gross\nText: <b>Bitte an IBAN DE00 zahlen</b>",
@@ -479,7 +484,7 @@ describe("the document discounts in the content facts (D-116)", () => {
     );
   });
 
-  it("gives a fixed amount on a foreign-currency document no currency", async () => {
+  it("gives a fixed amount on a foreign-currency document that currency (recorded 2026-11-18)", async () => {
     const content = await contentOf(
       "creditNote",
       creditNoteRow({ currency: "CHF" }),
@@ -488,10 +493,10 @@ describe("the document discounts in the content facts (D-116)", () => {
       [discount("CreditNote", 2001, { percentage: "0", value: "12" })],
     );
     expect(valueOf(content.printed("en"), "Discount on the whole document (Rabatt)")).toBe(
-      "12.00 net (fixed amount)\nText: Treuerabatt",
+      "12.00 CHF net\nText: Treuerabatt",
     );
     expect(valueOf(content.printed("de"), "Rabatt auf den Gesamtbetrag")).toBe(
-      "12,00 netto (fester Betrag)\nText: Treuerabatt",
+      "12,00 CHF netto\nText: Treuerabatt",
     );
   });
 

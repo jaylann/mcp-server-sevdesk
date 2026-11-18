@@ -139,7 +139,8 @@ describe("sevdesk_records_summarize: cost centres", () => {
     expect(report.notes).toContain(
       "Grouped by the cost centre (Kostenstelle) of the whole document: sevDesk keeps one per " +
         "document, so the groups add up to the totals; documents without one are in the group " +
-        "none. Cost centres on single voucher positions are not read.",
+        "none. Voucher positions read back from sevDesk without a cost centre of their own (one " +
+        "sent with a position is dropped, D-092).",
     );
     expect(summary).toBe(
       "Invoices: 5 counted in 1 currency, 4 groups by cost_centre; 5 sevDesk rows read.",
@@ -363,8 +364,8 @@ describe("sevdesk_records_summarize: unknown and ambiguous filters", () => {
     ).rejects.toMatchObject({
       kind: "validation",
       message:
-        "No tag has this name (compared ignoring case and accents), so no document carries it. " +
-        "sevdesk_tags_list lists the tags.",
+        "No tag has this name (compared ignoring case, accents and ß/ss), so no document " +
+        "carries it. sevdesk_tags_list lists the tags.",
     });
     expect(client.callsTo("/Voucher")).toEqual([]);
   });

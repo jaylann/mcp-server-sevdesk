@@ -9,8 +9,10 @@
  *   rows (`tag: {id, objectName: "Tag"}`, `object: {id, objectName}`), and `GET /TagRelation`
  *   honours `tag[id]` + `tag[objectName]` and `object[id]` + `object[objectName]`, with `total`.
  *   Usage counts are therefore counted from the relations.
- * - sevDesk compares tag names ignoring case and accents when it tags a document by name. How
- *   `GET /Tag`'s own `name` filter matches is not measured, so names are looked up here, folded
+ * - sevDesk compares tag names ignoring case and accents when it tags a document by name, and
+ *   (recorded 2026-11-18) ß/ss, the ligature ﬁ and zero-width spaces, but not soft hyphens or a
+ *   doubled inner space. `GET /Tag`'s own `name` filter found the same tags for those variants,
+ *   but whether it matches a part of a name is not measured, so names are looked up here, folded
  *   the same way ({@link foldName}), against all of the account's tags.
  * - The document lists filter by tag only with `tags[0][id]` + `tags[0][objectName]=Tag`; the
  *   spellings `tag[id]` and `tag` are ignored without an error (the whole list comes back). The
@@ -200,7 +202,7 @@ export async function listTags(
 
 /** The account's tags as compared with one name; see {@link findTagsByName}. */
 export interface TagMatches {
-  /** The tags whose stored name equals the name, ignoring case and accents ({@link foldName}). */
+  /** The tags whose stored name equals the name as sevDesk compares them ({@link foldName}). */
   readonly matches: readonly TagRecord[];
   /**
    * Tags that do not match but whose name differs only in what {@link looseFoldName} also
@@ -213,29 +215,48 @@ export interface TagMatches {
   readonly complete: boolean;
 }
 
+/** The zero-width space, which sevDesk's tag factory ignores (recorded 2026-11-18, D-088). */
+const ZERO_WIDTH_SPACE = /\u{200B}/gu;
+
 /**
  * A tag name as sevDesk's tag factory compares it, as far as measured (D-088): trimmed, letter
- * case and accents ignored ("Café" and "cafe" are one tag). Only case and the é/e pair were
- * measured; sevDesk's exact collation (ß, ligatures, …) is not known. NFKD splits accented
- * letters into base letter and combining mark, and the marks are dropped.
+ * case and accents ignored ("Café" and "cafe" are one tag), ß the same as ss, the ligature ﬁ the
+ * same as fi, and zero-width spaces ignored (recorded 2026-11-18, probe `write-tag-name-matching`).
+ * NFKD splits accented letters into base letter and combining mark (the marks are dropped) and
+ * ligatures into their letters. A soft hyphen and a doubled inner space are not ignored: sevDesk
+ * made a new tag for each.
  */
 function foldName(name: string): string {
-  return name.trim().normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase();
+  return name
+    .trim()
+    .replace(ZERO_WIDTH_SPACE, "")
+    .normalize("NFKD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .replace(/ß/gu, "ss");
 }
 
-/** Letters NFKD keeps whole that collations commonly spell out (`utf8mb4_unicode_ci`: ß = ss). */
-const SPELLED_OUT: Readonly<Record<string, string>> = { ß: "ss", æ: "ae", œ: "oe", ø: "o" };
+/** Letters NFKD keeps whole that collations commonly spell out (not measured on sevDesk). */
+const SPELLED_OUT: Readonly<Record<string, string>> = { æ: "ae", œ: "oe", ø: "o" };
+
+/**
+ * Invisible characters whose handling by sevDesk is not measured: the format and default-ignorable
+ * characters `cleanText` drops (bidi marks, zero-width joiners, …), less the soft hyphen, which
+ * sevDesk keeps (D-088). The zero-width space is folded already ({@link foldName}).
+ */
+const UNMEASURED_INVISIBLE = /(?!\u{00AD})[\p{Cf}\p{Default_Ignorable_Code_Point}]/gu;
 
 /**
  * A looser comparison than {@link foldName}, only to warn that sevDesk may reuse a tag: it also
- * drops the invisible characters `cleanText` drops (zero-width spaces, bidi marks, soft hyphens),
- * collapses runs of white space and spells out ß, æ, œ and ø. Database collations commonly ignore
- * these differences, but whether sevDesk does is not measured (D-088).
+ * drops the invisible characters whose handling is not measured and spells out æ, œ and ø.
+ * Database collations commonly ignore these differences, but whether sevDesk does is not measured
+ * (D-088).
  */
 function looseFoldName(name: string): string {
-  return foldName(name.replace(/[\p{Cf}\p{Default_Ignorable_Code_Point}]/gu, ""))
-    .replace(/\s+/gu, " ")
-    .replace(/[ßæœø]/gu, (letter) => SPELLED_OUT[letter] ?? letter);
+  return foldName(name.replace(UNMEASURED_INVISIBLE, "")).replace(
+    /[æœø]/gu,
+    (letter) => SPELLED_OUT[letter] ?? letter,
+  );
 }
 
 /**
@@ -270,8 +291,8 @@ export async function findTagsByName(
 
 /**
  * The one tag a name means: the only match, or among several matches (tags whose names differ
- * only in case or accents, or a rename that duplicated a name, D-089) the only one with exactly
- * that spelling. `undefined` when no tag has the name; a `validation` error when it stays
+ * only in case, accents or ß/ss, or a rename that duplicated a name, D-089) the only one with
+ * exactly that spelling. `undefined` when no tag has the name; a `validation` error when it stays
  * ambiguous.
  */
 export function pickTag(found: TagMatches, name: string): TagRecord | undefined {
@@ -279,7 +300,7 @@ export function pickTag(found: TagMatches, name: string): TagRecord | undefined 
   const exact = found.matches.filter((tag) => tag.storedName.trim() === name.trim());
   if (exact.length === 1) return exact[0];
   throw validation(
-    "Several tags have this name (compared ignoring case and accents). Give one of them a " +
+    "Several tags have this name (compared ignoring case, accents and ß/ss). Give one of them a " +
       "distinct name in sevDesk first; sevdesk_tags_list shows their ids.",
   );
 }
@@ -352,7 +373,8 @@ export const tagFilterInputShape = {
     .max(TAG_NAME_MAX)
     .optional()
     .describe(
-      "Only documents with this tag (name, case and accents ignored; see sevdesk_tags_list).",
+      "Only documents with this tag (name; case, accents and ß/ss ignored; see " +
+        "sevdesk_tags_list).",
     ),
 };
 
@@ -427,7 +449,8 @@ async function resolveTagUses(
   if (tag === undefined) {
     throw validation(
       found.complete
-        ? "No tag has this name (compared ignoring case and accents), so no document carries it. " +
+        ? "No tag has this name (compared ignoring case, accents and ß/ss), so no document " +
+            "carries it. " +
             "sevdesk_tags_list lists the tags."
         : `The account has more than ${TAG_READ_MAX.toLocaleString("en-US")} tags and none of ` +
             "the first ones has this name; this server cannot filter by it.",

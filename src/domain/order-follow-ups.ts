@@ -18,12 +18,12 @@
  * So after the request the new order is read back and the counter of its range is moved past its
  * number (#134), the way `sevdesk_credit_note_create_from_invoice` moves the credit note counter:
  * when the peek (`useNextNumber=false`) still offers the new number, it is reserved once
- * (`useNextNumber=true`, a write-tier side-effect GET). That the reservation advances the counter
- * was recorded for the AN and credit note counters only (D-066); for AB and LI it is assumed, as
- * the order draft tool already assumes for its AB and LI drafts. If sevDesk did not advance them,
- * the same-number check of the next call would name the clash. Every real create advances the
- * counter, also for a draft that is deleted later (a gap in the range unless sevDesk hands that
- * number out again, which D-066 recorded only for a draft saved with the number reserved last).
+ * (`useNextNumber=true`, a write-tier side-effect GET). The reservation advances the AB and LI
+ * counters by one, as it does the AN and credit note counters (D-066, recorded for AB and LI on
+ * 2026-11-18, probe `write-reserved-number-ab-li`). Every real create advances the counter, also
+ * for a draft that is deleted later. Deleting the draft saved with the number reserved last gives
+ * that number back (D-066); for a factory draft, numbered before its reservation, that is not
+ * recorded, so deleting one may leave a gap in the range.
  * The tools hold the range's account-wide lock (`ACCOUNT_ORDER_NUMBERS`) from `prepare` to the
  * end, so two of this server's calls cannot take the same number between the request and the
  * reservation.
@@ -374,13 +374,10 @@ async function advanceOrderCounter(client: SevdeskClient, target: NumberTarget):
           "Nummernkreis).",
       ];
     }
-    // Hedged: that `useNextNumber=true` advances the AB and LI counters is assumed, not recorded
-    // (D-066 recorded AN and credit notes only).
+    // A reservation moves the AB and LI counters by one (D-066, recorded 2026-11-18).
     return [
-      `The new ${info.noun}'s number (${NUMBER_FIELD}) was reserved on ${counter}, which ` +
-        `should move the counter past it so that the next ${info.noun} does not get it again. ` +
-        `That a reservation moves the ${info.type} counter is assumed, not checked against ` +
-        `sevDesk; if it did not, the next call names the ${info.noun} with the same number.`,
+      `The new ${info.noun}'s number (${NUMBER_FIELD}) was reserved on ${counter}, which moves ` +
+        `the counter past it so that the next ${info.noun} does not get it again.`,
     ];
   } catch (error) {
     if (!(error instanceof SevdeskError)) {
