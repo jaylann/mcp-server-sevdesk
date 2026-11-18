@@ -4135,7 +4135,10 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   Live: probes `write-receipt-hash`, `read-document-hash`, and `write-receipt-image-reencode`
   (whether a PNG and a JPEG come back as uploaded, and `embed=document` paged by one; #136,
   `test/unit/scripts/gaps-banking-probes.test.ts`; observed 2026-11-18: not re-encoded, pages of
-  one in another order).
+  one in another order), `read-voucher-paging-order` and `write-voucher-paging-seed` (whether
+  pages of five skip or repeat vouchers against one page of 1000, with the checks' date filter,
+  with and without `embed=document`; #154, `test/unit/scripts/gaps-documents-probes.test.ts`,
+  "voucher list paging probes (#154)").
 
 ### D-101: The ZIP exports answer files only with `download=true` and change no document
 

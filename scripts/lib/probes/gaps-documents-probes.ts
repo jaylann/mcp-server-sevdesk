@@ -3,7 +3,8 @@
  * notes from an order, accepting or rejecting an offer, order discounts), drafts (#90: deleting
  * order and credit note drafts, updating credit note drafts), recurring invoice templates (#91) and
  * the layout of documents (#94: language, letterpaper and template, text templates, a discount on
- * the whole document).
+ * the whole document). Two probes ask whether the voucher list the receipt checks read in pages
+ * is stable between pages (#154); the write one creates tagged draft vouchers and deletes them.
  *
  * Like every write probe they run only with `--allow-writes` on a trial account and create their
  * own tagged data through `createTestData` (contact, drafts, headers and notes carry the run tag),
@@ -24,6 +25,7 @@
  * 2026-11-16, D-066); a run that stops between the reservation and the delete leaves a gap in
  * the trial's sequence.
  */
+import { documentDateFilter } from "../../../src/domain/common.js";
 import { rowsOf } from "../fixture-plan.js";
 import { RUN_TAG_PREFIX } from "../live-env.js";
 import {
@@ -44,9 +46,11 @@ import {
   str,
   type TestData,
 } from "./core.js";
+import { deleteDraftVouchers, orderOf } from "./gaps-banking-probes.js";
 import { eInvoiceSyntax, scrubEInvoiceXml, xmlFromAnswer } from "./m4-einvoice-probes.js";
 import {
   changedFields,
+  createVoucher,
   data,
   firstRow,
   inconclusive,
@@ -54,6 +58,7 @@ import {
   outcomeOf,
   shapeOf,
   slug,
+  voucherFailure,
   withCleanup,
 } from "./m4-shared-probes.js";
 
@@ -1959,6 +1964,322 @@ async function generatedDiscounts(ctx: ProbeContext): Promise<ProbeOutcome> {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Voucher list paging (#154)
+// ---------------------------------------------------------------------------------------------
+
+/** Page size of the paged reads: small, so a few dozen vouchers make several pages. */
+const PAGING_PAGE = 5;
+/** Fewest vouchers in the range for a comparison worth making (four full pages). */
+const PAGING_MIN_ROWS = 20;
+/** Most rows a paged read goes through (100 requests per pass). */
+const PAGING_MAX_ROWS = 500;
+/** Draft vouchers `write-voucher-paging-seed` creates, all dated the run's day. */
+export const PAGING_SEED_COUNT = 25;
+/** The parameters the client sends with every list read, besides the filters (no order). */
+const CLIENT_LIST_PARAMS = "limit, offset and countAll";
+
+/** How a paged read compares with the one page of the same query. */
+export interface PagingComparison {
+  /** The same ids in the same order. */
+  readonly identical: boolean;
+  /** Every id of the one page exactly once and nothing else, in whatever order. */
+  readonly sameRows: boolean;
+  /** Ids of the one page the paged read never gave. */
+  readonly missing: number;
+  /** Extra occurrences of ids the paged read gave more than once. */
+  readonly repeated: number;
+  /** Ids the paged read gave that the one page does not have. */
+  readonly extra: number;
+  /** First position (0-based) where the two differ; -1 when identical. */
+  readonly firstDifference: number;
+}
+
+/** Compares the ids of a paged read with those of the one page, by position and as sets. */
+export function comparePaging(
+  single: readonly string[],
+  paged: readonly string[],
+): PagingComparison {
+  const singleSet = new Set(single);
+  const seen = new Set<string>();
+  let repeated = 0;
+  for (const id of paged) {
+    if (seen.has(id)) repeated += 1;
+    seen.add(id);
+  }
+  const missing = single.filter((id) => !seen.has(id)).length;
+  const extra = [...seen].filter((id) => !singleSet.has(id)).length;
+  const length = Math.max(single.length, paged.length);
+  let firstDifference = -1;
+  for (let index = 0; index < length; index += 1) {
+    if (single[index] !== paged[index]) {
+      firstDifference = index;
+      break;
+    }
+  }
+  return {
+    identical: firstDifference === -1,
+    sameRows: missing === 0 && repeated === 0 && extra === 0,
+    missing,
+    repeated,
+    extra,
+    firstDifference,
+  };
+}
+
+/** A paged read in words, against the one page. */
+export function pagingText(comparison: PagingComparison): string {
+  if (comparison.identical) return "the same rows in the same order as the one page";
+  if (comparison.sameRows) {
+    return `every row of the one page exactly once, but in another order (from position ${comparison.firstDifference + 1} on)`;
+  }
+  return `NOT the rows of the one page: ${comparison.missing} missing, ${comparison.repeated} repeated, ${comparison.extra} not on the one page`;
+}
+
+/** Identical, reordered (every row once) or broken (rows missing or repeated). */
+type PagingKind = "identical" | "reordered" | "broken";
+
+function kindOf(comparison: PagingComparison): PagingKind {
+  return comparison.identical ? "identical" : comparison.sameRows ? "reordered" : "broken";
+}
+
+const KIND_RANK: Readonly<Record<PagingKind, number>> = { identical: 0, reordered: 1, broken: 2 };
+
+/** Rows whose `voucherDate` another row of the list shares (ties a date order cannot settle). */
+function sharedDates(rows: readonly Row[]): number {
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    const date = str(row, "voucherDate");
+    counts.set(date, (counts.get(date) ?? 0) + 1);
+  }
+  return rows.filter((row) => (counts.get(str(row, "voucherDate")) ?? 0) > 1).length;
+}
+
+/** One page of 1000 of the voucher list with sevDesk's total, or why it failed. */
+async function voucherPage(
+  ctx: ProbeContext,
+  query: Query,
+): Promise<{
+  readonly rows: Row[];
+  readonly total: number | undefined;
+  readonly failure?: string;
+}> {
+  const page = await ctx.read.page("/Voucher", query, 1000);
+  return page.result.ok
+    ? { rows: page.rows, total: page.total }
+    : { rows: [], total: undefined, failure: outcomeOf(page.result) };
+}
+
+/**
+ * Reads `query` in pages of {@link PAGING_PAGE} from offset 0 until a page comes back short (or
+ * {@link PAGING_MAX_ROWS} rows were read), with an explicit `limit` and `countAll` as the client
+ * sends them. The ids in the order given, or where it failed.
+ */
+async function pagedVoucherIds(
+  ctx: ProbeContext,
+  query: Query,
+): Promise<{ readonly ids: string[]; readonly failure?: string }> {
+  const ids: string[] = [];
+  for (let offset = 0; offset <= PAGING_MAX_ROWS; offset += PAGING_PAGE) {
+    const result = await ctx.http.get("/Voucher", {
+      ...query,
+      limit: PAGING_PAGE,
+      offset,
+      countAll: true,
+    });
+    if (!result.ok) {
+      return { ids, failure: `limit ${PAGING_PAGE} at offset ${offset} ${outcomeOf(result)}` };
+    }
+    const rows =
+      result.objects === undefined || result.objects === null ? [] : rowsOf(result.objects);
+    ids.push(...rows.map((row) => str(row, "id")));
+    if (rows.length < PAGING_PAGE) break;
+  }
+  return { ids };
+}
+
+/** What {@link compareVoucherPaging} found. */
+interface PagingFindings {
+  /** Rows of the first one-page read (no embed). */
+  readonly rows: number;
+  /** Worst result of the default-order paged reads; undefined when one could not be compared. */
+  readonly worst: PagingKind | undefined;
+  /** One line per read; empty when `rows` was out of range and nothing was compared. */
+  readonly lines: readonly string[];
+}
+
+/** The two forms the checks read the list in: plain, and with the receipts (`embed=document`). */
+const PAGING_VARIANTS: readonly { readonly label: string; readonly query: Query }[] = [
+  { label: "Without embed", query: {} },
+  { label: "With embed=document (the receipt checks)", query: { embed: "document" } },
+];
+
+/**
+ * Explicit orders tried with `embed=document`: the one the spec documents for `GET /Voucher`
+ * (`orderByVoucherNumber`, ASC/DESC) and sevDesk's generic `orderBy[0][field]`, which the spec
+ * does not document for vouchers.
+ */
+const PAGING_ORDERS: readonly { readonly label: string; readonly query: Query }[] = [
+  {
+    label: "orderByVoucherNumber=ASC (documented in the spec)",
+    query: { orderByVoucherNumber: "ASC" },
+  },
+  {
+    label: "orderBy[0][field]=id, orderBy[0][arrangement]=asc (not in the spec)",
+    query: { "orderBy[0][field]": "id", "orderBy[0][arrangement]": "asc" },
+  },
+];
+
+/**
+ * The comparison of #154 for the vouchers (VOU) dated `from`–`to`, with the filters
+ * `listDocumentHeaders` sends (`voucherType=VOU`, `startDate`/`endDate` from
+ * `documentDateFilter`): per variant (plain, `embed=document`) one page of 1000 and two passes in
+ * pages of {@link PAGING_PAGE}, each compared with the one page; then the explicit orders, one
+ * page and one paged pass each. Counts and positions only, never ids or values. Stops after the
+ * first read when the range holds fewer than {@link PAGING_MIN_ROWS} vouchers or more than
+ * {@link PAGING_MAX_ROWS}.
+ */
+async function compareVoucherPaging(
+  ctx: ProbeContext,
+  from: string,
+  to: string,
+): Promise<PagingFindings> {
+  const filter: Query = { voucherType: "VOU", ...documentDateFilter({ from, to }).query };
+  const lines: string[] = [];
+  let worst: PagingKind | undefined = "identical";
+  let rows = 0;
+  let defaultIds: readonly string[] | undefined;
+  for (const [index, variant] of PAGING_VARIANTS.entries()) {
+    const query = { ...filter, ...variant.query };
+    const single = await voucherPage(ctx, query);
+    if (index === 0) rows = single.rows.length;
+    if (single.failure !== undefined) {
+      lines.push(`${variant.label}: one page (limit 1000) ${single.failure}`);
+      worst = undefined;
+      continue;
+    }
+    if (index === 0 && (rows < PAGING_MIN_ROWS || rows > PAGING_MAX_ROWS)) {
+      return { rows, worst: undefined, lines };
+    }
+    const ids = single.rows.map((row) => str(row, "id"));
+    defaultIds ??= ids;
+    const passes = [await pagedVoucherIds(ctx, query), await pagedVoucherIds(ctx, query)];
+    const described = passes.map((pass, number) => {
+      const label = number === 0 ? "first pass" : "second pass";
+      if (pass.failure !== undefined) {
+        worst = undefined;
+        return `${label} stopped: ${pass.failure}`;
+      }
+      const comparison = comparePaging(ids, pass.ids);
+      if (worst !== undefined && KIND_RANK[kindOf(comparison)] > KIND_RANK[worst]) {
+        worst = kindOf(comparison);
+      }
+      return `${label} ${pass.ids.length} rows, ${pagingText(comparison)}`;
+    });
+    const [first, second] = passes;
+    const agree =
+      first?.failure === undefined &&
+      second?.failure === undefined &&
+      comparePaging(first?.ids ?? [], second?.ids ?? []).identical;
+    lines.push(
+      `${variant.label}: one page (limit 1000) ${orderOf(single.rows, ["voucherDate", "create"])}, total ${single.total ?? "none"}, ` +
+        `${sharedDates(single.rows)} rows share their voucherDate with another; pages of ${PAGING_PAGE}: ${described.join("; ")}; ` +
+        `the two passes ${agree ? "gave the same ids in the same order" : "differ from each other"}`,
+    );
+  }
+  for (const order of PAGING_ORDERS) {
+    const query = { ...filter, embed: "document", ...order.query };
+    const single = await voucherPage(ctx, query);
+    if (single.failure !== undefined) {
+      lines.push(`${order.label}: ${single.failure}`);
+      continue;
+    }
+    const ids = single.rows.map((row) => str(row, "id"));
+    const pass = await pagedVoucherIds(ctx, query);
+    const sameAsDefault =
+      defaultIds !== undefined && comparePaging(defaultIds, ids).identical
+        ? "the same order as without it (ignored?)"
+        : "another order than without it";
+    lines.push(
+      `${order.label}: one page ${orderOf(single.rows, ["voucherDate", "create"])}, ${sameAsDefault}; pages of ${PAGING_PAGE}: ` +
+        (pass.failure === undefined
+          ? pagingText(comparePaging(ids, pass.ids))
+          : `stopped: ${pass.failure}`),
+    );
+  }
+  return { rows, worst, lines };
+}
+
+/** The plain answer that opens the finding. */
+function pagingAnswer(worst: PagingKind | undefined): string {
+  switch (worst) {
+    case undefined:
+      return "No answer: a read was refused or stopped (see below)";
+    case "identical":
+      return `Answer: pages of ${PAGING_PAGE} gave the same vouchers in the same order as one page of 1000, in both passes, with and without embed=document; paging was stable here`;
+    case "reordered":
+      return `Answer: pages of ${PAGING_PAGE} gave every voucher exactly once, but not in the order of one page of 1000; no voucher was skipped or repeated here`;
+    case "broken":
+      return `Answer: paging is NOT stable: pages of ${PAGING_PAGE} skipped or repeated vouchers against one page of 1000, so a check that reads the list in pages can miss a voucher`;
+    default: {
+      const unexpected: never = worst;
+      return String(unexpected);
+    }
+  }
+}
+
+/** The finding of a comparison over `from`–`to`. */
+function pagingOutcome(findings: PagingFindings, range: string, before: string): ProbeOutcome {
+  const finding =
+    `${pagingAnswer(findings.worst)}. ${before}Vouchers (voucherType=VOU) dated ${range}, with the date filter the checks send (startDate/endDate); ` +
+    `the client sends no order parameter (only the filters and ${CLIENT_LIST_PARAMS}). ${findings.lines.join(". ")}.`;
+  return findings.worst === undefined ? inconclusive(finding) : { verdict: "observed", finding };
+}
+
+/** The body of `read-voucher-paging-order`: the account's own vouchers of two years and a month. */
+async function voucherPagingOrder(ctx: ProbeContext): Promise<ProbeOutcome> {
+  const from = addDays(ctx.today, -730);
+  const to = addDays(ctx.today, 31);
+  const range = `${from} to ${to}`;
+  const findings = await compareVoucherPaging(ctx, from, to);
+  if (findings.lines.length === 0) {
+    return inconclusive(
+      findings.rows < PAGING_MIN_ROWS
+        ? `${findings.rows} vouchers (VOU) dated ${range}; the comparison needs at least ${PAGING_MIN_ROWS}. Run write-voucher-paging-seed: it creates ${PAGING_SEED_COUNT} tagged draft vouchers, compares the same reads and deletes them again.`
+        : `${findings.rows} vouchers (VOU) dated ${range}; the probe pages through at most ${PAGING_MAX_ROWS}, so it did not compare.`,
+    );
+  }
+  return pagingOutcome(findings, range, "");
+}
+
+/**
+ * The body of `write-voucher-paging-seed`: {@link PAGING_SEED_COUNT} tagged draft vouchers dated
+ * the run's day (one date for all: the ties a date order cannot settle), then the comparison over
+ * that day. Created vouchers go into `own`.
+ */
+async function seededVoucherPaging(ctx: ProbeContext, own: number[]): Promise<ProbeOutcome> {
+  for (let number = 1; number <= PAGING_SEED_COUNT; number += 1) {
+    const voucher = await createVoucher(ctx, { label: `Seite ${String(number).padStart(2, "0")}` });
+    if (voucher.id === undefined) {
+      return inconclusive(
+        `Draft voucher ${number} of ${PAGING_SEED_COUNT}: ${voucherFailure(voucher)}.`,
+      );
+    }
+    own.push(voucher.id);
+  }
+  const findings = await compareVoucherPaging(ctx, ctx.today, ctx.today);
+  if (findings.lines.length === 0) {
+    return inconclusive(
+      `${findings.rows} vouchers (VOU) listed for ${ctx.today} after creating ${PAGING_SEED_COUNT}; the comparison needs between ${PAGING_MIN_ROWS} and ${PAGING_MAX_ROWS}.`,
+    );
+  }
+  return pagingOutcome(
+    findings,
+    ctx.today,
+    `The probe created ${PAGING_SEED_COUNT} tagged draft vouchers dated ${ctx.today}. `,
+  );
+}
+
+// ---------------------------------------------------------------------------------------------
 // Probes
 // ---------------------------------------------------------------------------------------------
 
@@ -3059,6 +3380,37 @@ export const GAPS_DOCUMENTS_PROBES: readonly ProbeDefinition[] = [
       return withCleanup(
         () => eInvoiceDiscount(ctx, own),
         () => deleteOwnDocuments(ctx, own),
+      );
+    },
+  },
+  // --- #154: paging of the voucher list ------------------------------------------------------
+  {
+    id: "read-voucher-paging-order",
+    title: "Is GET /Voucher stable between pages, with and without embed=document",
+    mode: "read",
+    question:
+      "Can reading GET /Voucher in pages skip or repeat a voucher (#154, D-100)? Over the vouchers (VOU) dated two years before the run to 31 days after it, with the " +
+      "filters listDocumentHeaders sends (voucherType=VOU, startDate/endDate), without and with embed=document: one page of 1000, then pages of 5 from offset 0 to the end, " +
+      "twice. Are the ids of each paged pass those of the one page, in the same order; is any id missing or repeated; do the two passes agree; how many rows share a " +
+      "voucherDate; what order (id, voucherDate, create) the one page has. Then the same with orderByVoucherNumber=ASC (the order the spec documents for vouchers) and " +
+      `orderBy[0][field]=id (not in the spec). Needs at least ${PAGING_MIN_ROWS} vouchers in the range; otherwise run write-voucher-paging-seed. Counts and positions only.`,
+    deviations: ["D-100"],
+    run: voucherPagingOrder,
+  },
+  {
+    id: "write-voucher-paging-seed",
+    title: `${PAGING_SEED_COUNT} tagged draft vouchers of one day: is GET /Voucher stable between pages`,
+    mode: "write",
+    question:
+      `The question of read-voucher-paging-order (#154, D-100) on ${PAGING_SEED_COUNT} tagged draft vouchers the probe creates, all dated the run's day (ties a date ` +
+      "order cannot settle), over that one day: one page of 1000 against two passes in pages of 5, without and with embed=document, then the explicit orders. " +
+      "Every draft voucher is deleted at the end, also when a step fails.",
+    deviations: ["D-100"],
+    async run(ctx) {
+      const own: number[] = [];
+      return withCleanup(
+        () => seededVoucherPaging(ctx, own),
+        () => deleteDraftVouchers(ctx, own),
       );
     },
   },
