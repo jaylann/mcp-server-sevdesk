@@ -598,21 +598,21 @@ function keptDiscount(counted: boolean): Phrase {
 /** New positions whose total with the kept discounts this server does not compute. */
 const DISCOUNTS_NOT_COMPUTED: Readonly<Record<"one" | "other", Phrase>> = {
   one: phrase(
-    "The total per invoice with the kept discount is not computed here (this server computes it " +
-      "for one tax rate, a fixed amount only on net prices, and a discount no larger than the " +
-      "net total): sevDesk computes it. Check it in the result before the template's next run.",
-    "Die Summe je Rechnung mit dem erhaltenen Rabatt wird hier nicht berechnet (dieser Server " +
-      "berechnet sie bei einem Steuersatz, einen festen Betrag nur bei Nettopreisen und einen " +
-      "Rabatt bis zum Nettobetrag): sevDesk berechnet sie. Prüfe sie im Ergebnis vor der " +
-      "nächsten Ausführung der Vorlage.",
+    "The total per invoice with the kept discount is not computed here (a fixed amount on " +
+      "gross prices, which sevDesk splits into net and tax itself, or a discount larger than " +
+      "the total): sevDesk computes it. Check it in the result before the template's next run.",
+    "Die Summe je Rechnung mit dem erhaltenen Rabatt wird hier nicht berechnet (ein fester " +
+      "Betrag bei Bruttopreisen, den sevDesk selbst auf netto und USt. aufteilt, oder ein " +
+      "Rabatt über der Summe): sevDesk berechnet sie. Prüfe sie im Ergebnis vor der nächsten " +
+      "Ausführung der Vorlage.",
   ),
   other: phrase(
-    "The template's discounts on the whole document (several, a surcharge or one stored as " +
-      "gross) are not computed here: sevDesk computes the total per invoice. Check it in the " +
-      "result before the template's next run.",
-    "Die Rabatte der Vorlage auf den Gesamtbetrag (mehrere, ein Aufschlag oder einer, der als " +
-      "brutto gespeichert ist) werden hier nicht berechnet: sevDesk berechnet die Summe je " +
-      "Rechnung. Prüfe sie im Ergebnis vor der nächsten Ausführung der Vorlage.",
+    "The template's discounts on the whole document (several, a surcharge or a percentage " +
+      "stored as gross) are not computed here: sevDesk computes the total per invoice. Check it " +
+      "in the result before the template's next run.",
+    "Die Rabatte der Vorlage auf den Gesamtbetrag (mehrere, ein Aufschlag oder ein Prozentsatz, " +
+      "der als brutto gespeichert ist) werden hier nicht berechnet: sevDesk berechnet die Summe " +
+      "je Rechnung. Prüfe sie im Ergebnis vor der nächsten Ausführung der Vorlage.",
   ),
 };
 

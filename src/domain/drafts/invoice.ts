@@ -58,6 +58,8 @@ import {
   discountText,
   discountUpdateInput,
   type DraftDiscount,
+  expectedOfCreate,
+  type ExpectedTotals,
   planDiscountChange,
   resolveDiscount,
   updateTotals,
@@ -65,6 +67,7 @@ import {
 import {
   assertChanges,
   ChangeLog,
+  createTotalFact,
   draftPreview,
   logContactPersonChange,
   logDiscountChange,
@@ -108,7 +111,6 @@ import {
   strictBody,
 } from "./payloads.js";
 import {
-  type Amounts,
   draftPositionInput,
   MAX_POSITIONS,
   type PositionInput,
@@ -125,7 +127,6 @@ import {
   moneyText,
   positionFacts,
   type PreviewFact,
-  totalsText,
 } from "./preview.js";
 import { readBack, readBackNotes } from "./read-back.js";
 import { addressInputShape } from "./recipient.js";
@@ -322,8 +323,11 @@ export interface InvoiceDraftState {
   readonly body: SaveInvoiceBody;
   /** Set for updates: the invoice the save must keep. */
   readonly invoiceId?: number | undefined;
-  /** Expected totals when the call set the positions or the discount. */
-  readonly expected?: Amounts | undefined;
+  /**
+   * Expected totals when the call set the positions or the discount (the gross total only when
+   * sevDesk splits net and tax, see `createTotals`); the read-back compares the gross total.
+   */
+  readonly expected?: ExpectedTotals | undefined;
   /** The discount the call sent (`null`: removed), checked in the read-back. */
   readonly discount?: DraftDiscount | null | undefined;
 }
@@ -351,8 +355,8 @@ export async function prepareInvoiceCreate(
   const basics = await resolveCreateBasics(client, args, INVOICE_TAX_OPTIONS, options);
   const { contact, contactPerson, address, currency, mode } = basics;
   // With the document discount, which `basics.expected` leaves out.
-  const expected = createTotals(basics.positions, mode, discount);
-  const duplicateQuery = { contactId: args.contactId, date, gross: expected.gross, currency };
+  const totals = createTotals(basics.positions, mode, discount);
+  const duplicateQuery = { contactId: args.contactId, date, gross: totals.gross, currency };
   const duplicates = await findDuplicates(client, { kind: "invoice" }, duplicateQuery, signal);
 
   // The texts as resolved, a text template's included.
@@ -397,8 +401,8 @@ export async function prepareInvoiceCreate(
     fact("Tax text", basics.tax.taxText),
     ...(centre === undefined ? [] : [fact("Cost centre (Kostenstelle)", costCentreLabel(centre))]),
     ...positionFacts(basics.positions, mode, currency),
-    ...(discount === undefined ? [] : [fact("Discount", discountText(discount, currency))]),
-    fact("Total (expected)", totalsText(expected, currency)),
+    ...(discount === undefined ? [] : [fact("Discount", discountText(discount, currency, mode))]),
+    createTotalFact(totals, currency),
   ];
   const taxHint = invoiceTaxRuleHint(
     basics.rule.id,
@@ -408,11 +412,16 @@ export async function prepareInvoiceCreate(
   );
   const preview = draftPreview(
     `Create a draft invoice (Rechnungsentwurf) for ${customerRef(args.contactId)} with ` +
-      `${positionCount(basics.positions.length)}, gross ${moneyText(expected.gross, currency)}.`,
+      `${positionCount(basics.positions.length)}, gross ${moneyText(totals.gross, currency)}.`,
     facts,
-    [duplicateWarning("invoice", duplicates, duplicateQuery), ...basics.warnings, taxHint?.en],
+    [
+      duplicateWarning("invoice", duplicates, duplicateQuery),
+      ...basics.warnings,
+      taxHint?.en,
+      totals.warning,
+    ],
   );
-  return { preview, state: { body, expected, discount } };
+  return { preview, state: { body, expected: expectedOfCreate(totals), discount } };
 }
 
 /** Prepares an update of a draft invoice. */

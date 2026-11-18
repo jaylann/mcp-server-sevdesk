@@ -45,6 +45,8 @@ import {
   discountText,
   discountUpdateInput,
   type DraftDiscount,
+  expectedOfCreate,
+  type ExpectedTotals,
   planDiscountChange,
   resolveDiscount,
   updateTotals,
@@ -52,6 +54,7 @@ import {
 import {
   assertChanges,
   ChangeLog,
+  createTotalFact,
   draftPreview,
   logContactPersonChange,
   logDiscountChange,
@@ -98,7 +101,6 @@ import {
   strictBody,
 } from "./payloads.js";
 import {
-  type Amounts,
   MAX_POSITIONS,
   orderPositionInput,
   type PositionInput,
@@ -113,7 +115,6 @@ import {
   moneyText,
   positionFacts,
   type PreviewFact,
-  totalsText,
 } from "./preview.js";
 import { readBack, readBackNotes } from "./read-back.js";
 import { addressInputShape } from "./recipient.js";
@@ -238,7 +239,8 @@ export interface OrderDraftState {
   /** The body to save; on create its `orderNumber` is the peeked one, replaced by the reserved. */
   readonly body: SaveOrderBody;
   readonly orderId?: number | undefined;
-  readonly expected?: Amounts | undefined;
+  /** Expected totals (the gross total only when sevDesk splits net and tax, see `createTotals`). */
+  readonly expected?: ExpectedTotals | undefined;
   /** The discount the call sent (`null`: removed), checked in the read-back. */
   readonly discount?: DraftDiscount | null | undefined;
   /** Create only: the number range to reserve from and the number the preview showed. */
@@ -272,8 +274,8 @@ export async function prepareOrderCreate(
     options,
   );
   const { contact, contactPerson, address, currency, mode } = basics;
-  const expected = createTotals(basics.positions, mode, discount);
-  const duplicateQuery = { contactId: args.contactId, date, gross: expected.gross, currency };
+  const totals = createTotals(basics.positions, mode, discount);
+  const duplicateQuery = { contactId: args.contactId, date, gross: totals.gross, currency };
   const duplicates = await findDuplicates(
     client,
     { kind: "order", orderType: args.type },
@@ -332,20 +334,24 @@ export async function prepareOrderCreate(
     fact("Tax", taxText(basics.rule, basics.tax)),
     fact("Tax text", basics.tax.taxText),
     ...positionFacts(basics.positions, mode, currency),
-    ...(discount === undefined ? [] : [fact("Discount", discountText(discount, currency))]),
-    fact("Total (expected)", totalsText(expected, currency)),
+    ...(discount === undefined ? [] : [fact("Discount", discountText(discount, currency, mode))]),
+    createTotalFact(totals, currency),
   ];
   const preview = draftPreview(
     `Create a draft ${typeName} (${code}) for ${customerRef(args.contactId)} with ` +
-      `${positionCount(basics.positions.length)}, gross ${moneyText(expected.gross, currency)}.`,
+      `${positionCount(basics.positions.length)}, gross ${moneyText(totals.gross, currency)}.`,
     facts,
     [
       duplicateWarning("order", duplicates, duplicateQuery),
       reservationWarning(args.type.replace("_", " ")),
       ...basics.warnings,
+      totals.warning,
     ],
   );
-  return { preview, state: { body, expected, numbering: { range, peeked }, discount } };
+  return {
+    preview,
+    state: { body, expected: expectedOfCreate(totals), numbering: { range, peeked }, discount },
+  };
 }
 
 /** Prepares an update of a draft order; its stored number is kept (never reserved anew). */

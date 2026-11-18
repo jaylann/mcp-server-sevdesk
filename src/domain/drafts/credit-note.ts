@@ -73,6 +73,8 @@ import {
   discountText,
   discountUpdateInput,
   type DraftDiscount,
+  expectedOfCreate,
+  type ExpectedTotals,
   planDiscountChange,
   resolveDiscount,
   updateTotals,
@@ -80,6 +82,7 @@ import {
 import {
   assertChanges,
   ChangeLog,
+  createTotalFact,
   draftPreview,
   logContactPersonChange,
   logDiscountChange,
@@ -135,7 +138,6 @@ import {
   strictBody,
 } from "./payloads.js";
 import {
-  type Amounts,
   draftPositionInput,
   MAX_POSITIONS,
   type PositionInput,
@@ -151,7 +153,6 @@ import {
   moneyText,
   positionFacts,
   type PreviewFact,
-  totalsText,
 } from "./preview.js";
 import { readBack, readBackNotes } from "./read-back.js";
 import { addressInputShape } from "./recipient.js";
@@ -322,8 +323,11 @@ export interface CreditNoteDraftState {
   readonly body: SaveCreditNoteBody;
   /** Set for updates: the credit note the save must keep (no number is reserved then). */
   readonly creditNoteId?: number | undefined;
-  /** Expected totals when the call set the positions or the discount. */
-  readonly expected?: Amounts | undefined;
+  /**
+   * Expected totals when the call set the positions or the discount (the gross total only when
+   * sevDesk splits net and tax, see `createTotals`); the read-back compares the gross total.
+   */
+  readonly expected?: ExpectedTotals | undefined;
   /** Create only: the number the preview showed. */
   readonly peekedNumber?: string | undefined;
   /** The discount the call sent (`null`: removed), checked in the read-back. */
@@ -378,8 +382,8 @@ export async function prepareCreditNoteCreate(
   );
   const { contact, contactPerson, address, currency, mode } = basics;
   if (source !== undefined) checkSourceCurrency(source, currency);
-  const expected = createTotals(basics.positions, mode, discount);
-  const duplicateQuery = { contactId: args.contactId, date, gross: expected.gross, currency };
+  const totals = createTotals(basics.positions, mode, discount);
+  const duplicateQuery = { contactId: args.contactId, date, gross: totals.gross, currency };
   const duplicates = await findDuplicates(client, { kind: "creditNote" }, duplicateQuery, signal);
   const peeked = await peekNextNumber(client, { kind: "creditNote" }, signal);
 
@@ -436,13 +440,13 @@ export async function prepareCreditNoteCreate(
     fact("Tax text", basics.tax.taxText),
     ...(centre === undefined ? [] : [fact("Cost centre (Kostenstelle)", costCentreLabel(centre))]),
     ...positionFacts(basics.positions, mode, currency),
-    ...(discount === undefined ? [] : [fact("Discount", discountText(discount, currency))]),
-    fact("Total (expected)", totalsText(expected, currency)),
+    ...(discount === undefined ? [] : [fact("Discount", discountText(discount, currency, mode))]),
+    createTotalFact(totals, currency),
   ];
   const preview = draftPreview(
     `Create a draft credit note (Gutschrift, ${category}) for ${customerRef(args.contactId)} ` +
       `with ${positionCount(basics.positions.length)}, gross ` +
-      `${moneyText(expected.gross, currency)}.`,
+      `${moneyText(totals.gross, currency)}.`,
     facts,
     [
       ...(sourceCheck?.warnings ?? []),
@@ -450,9 +454,13 @@ export async function prepareCreditNoteCreate(
       reservationWarning("credit note"),
       royaltyWarning(category),
       ...basics.warnings,
+      totals.warning,
     ],
   );
-  return { preview, state: { body, expected, peekedNumber: peeked, discount } };
+  return {
+    preview,
+    state: { body, expected: expectedOfCreate(totals), peekedNumber: peeked, discount },
+  };
 }
 
 /**

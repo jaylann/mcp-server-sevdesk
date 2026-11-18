@@ -718,16 +718,17 @@ describe("sevdesk_invoice_update_recurring", () => {
           expect.stringMatching(/^This document has 2 discounts on the whole document/),
           "This template has a discount on the whole document, which the change leaves alone: " +
             "sevDesk keeps it when every position is replaced, so it applies to the new positions.",
-          "The template's discounts on the whole document (several, a surcharge or one stored " +
-            "as gross) are not computed here: sevDesk computes the total per invoice. Check it in " +
-            "the result before the template's next run.",
+          "The template's discounts on the whole document (several, a surcharge or a percentage " +
+            "stored as gross) are not computed here: sevDesk computes the total per invoice. " +
+            "Check it in the result before the template's next run.",
         ]),
       );
       expect(plan.previewDe.warnings).toEqual(
         expect.arrayContaining([
-          "Die Rabatte der Vorlage auf den Gesamtbetrag (mehrere, ein Aufschlag oder einer, der " +
-            "als brutto gespeichert ist) werden hier nicht berechnet: sevDesk berechnet die Summe " +
-            "je Rechnung. Prüfe sie im Ergebnis vor der nächsten Ausführung der Vorlage.",
+          "Die Rabatte der Vorlage auf den Gesamtbetrag (mehrere, ein Aufschlag oder ein " +
+            "Prozentsatz, der als brutto gespeichert ist) werden hier nicht berechnet: sevDesk " +
+            "berechnet die Summe je Rechnung. Prüfe sie im Ergebnis vor der nächsten Ausführung " +
+            "der Vorlage.",
         ]),
       );
       expect(plan.previewDe.warnings).toHaveLength(plan.preview.warnings.length);

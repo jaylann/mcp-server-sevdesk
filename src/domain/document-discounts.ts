@@ -7,16 +7,16 @@
  * `sumDiscountGross`, negative for a deduction); its `discount` and `discountTime` are the cash
  * discount (Skonto), something else. The rows are read with
  * `GET /Invoice|CreditNote|Order/{id}/getDiscounts` (recorded 2026-11-16 on all three; only the
- * order one is in the spec): `discount` "1" (a discount; "0" is a surcharge per `Model_Discount`,
- * not recorded), `percentage` "1" (percent) or "0" (a fixed amount), `value`, `isNet` and
- * `object`, the document, all as strings. For a document without discounts the answer is
- * `{objects: [], total: null}`.
+ * order one is in the spec): `discount` "1" (a discount) or "0" (a surcharge, which adds: recorded
+ * 2026-11-18, probe `write-discount-mixed-tax-uneven`), `percentage` "1" (percent) or "0" (a fixed
+ * amount), `value`, `isNet` and `object`, the document, all as strings. For a document without
+ * discounts the answer is `{objects: [], total: null}`.
  *
- * `isNet` is stored as sent, "1" when the save leaves it out (recorded 2026-11-18, probe
- * `write-discount-net-gross`), but it does not decide what sevDesk deducts: on a document with
- * gross prices (`showNet` false) a fixed amount comes off the gross total with `isNet` "1" and
- * "0" alike, and on one with net prices a fixed amount with `isNet` "1" comes off the net total
- * (`isNet` "0" there is not recorded). A percentage takes the same share of net, tax and gross on
+ * `isNet` is stored as sent, "1" when the save leaves it out (recorded 2026-11-18, probes
+ * `write-discount-net-gross`, `write-discount-mixed-tax-uneven`), but it does not decide what
+ * sevDesk deducts: on a document with gross prices (`showNet` false) a fixed amount comes off the
+ * gross total with `isNet` "1" and "0" alike, and on one with net prices it comes off the net total
+ * with `isNet` "1" and "0" alike. A percentage takes the same share of net, tax and gross on
  * either. So the basis shown for a fixed amount follows the document's price mode
  * ({@link appliedDiscount}), and `isNet` only where that is not known.
  *
@@ -254,14 +254,16 @@ type PriceModeOfDocument = "net" | "gross" | undefined;
 
 /**
  * A stored discount with the basis sevDesk applies it on (see the module comment): a fixed amount
- * on a document with gross prices comes off the gross total whatever its `isNet`; otherwise the
- * stored `isNet` stands.
+ * comes off the total of the document's price mode whatever its `isNet` (gross on gross prices,
+ * net on net prices); a percentage, and a fixed amount on a document of unknown price mode, keep
+ * the stored `isNet`.
  */
 export function appliedDiscount<T extends DiscountAmount>(
   row: T,
   priceMode: PriceModeOfDocument,
 ): T {
-  return !row.percentage && priceMode === "gross" ? { ...row, isNet: false } : row;
+  if (row.percentage || priceMode === undefined) return row;
+  return { ...row, isNet: priceMode === "net" };
 }
 
 /** The {@link DiscountAmount} of a DTO item. */

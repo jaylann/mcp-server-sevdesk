@@ -106,14 +106,16 @@ Vorschau nennt die entfernte.
 > Gib der Musterfirma 3 % Rabatt auf die ganze Rechnung.
 
 Neben dem Rabatt je Position kann ein Entwurf einen Rabatt auf den Gesamtbetrag tragen: einen
-Prozentsatz vom Nettobetrag oder einen festen Nettobetrag in der Währung des Dokuments, mit dem
-Text, der daneben gedruckt wird („Rabatt“, wenn du keinen anderen nennst). Die Vorschau zeigt ihn
-und die Summe, die sich daraus ergibt; das Ergebnis zeigt, was sevDesk abgezogen hat. Angebote,
-Auftragsbestätigungen und Gutschriften nehmen denselben Rabatt, und eine E-Rechnung führt ihn als
-Abschlag auf die ganze Rechnung. Der Server setzt ihn nur bei Positionen mit einem einzigen
-Steuersatz und bei Bruttopreisen nur als Prozentsatz: sevDesk verteilt einen Rabatt auf mehrere
-Steuersätze und zieht einen festen Betrag vom Bruttobetrag ab, was der Server noch nicht
-berechnet; deshalb verweigern die Werkzeuge diese Fälle, statt die Summe zu raten. Ändert der
+Prozentsatz vom Nettobetrag oder einen festen Betrag in der Währung des Dokuments, mit dem Text,
+der daneben gedruckt wird („Rabatt“, wenn du keinen anderen nennst). Der feste Betrag ist bei
+Nettopreisen netto und bei Bruttopreisen brutto. Die Vorschau zeigt ihn und die Summe, die sich
+daraus ergibt; das Ergebnis zeigt, was sevDesk abgezogen hat. Angebote, Auftragsbestätigungen und
+Gutschriften nehmen denselben Rabatt, und eine E-Rechnung führt ihn als Abschlag auf die ganze
+Rechnung. Bei mehreren Steuersätzen verteilt sevDesk den Rabatt nach ihrem Anteil am Nettobetrag,
+und die Vorschau rechnet genauso. Einen festen Betrag bei Bruttopreisen zieht sevDesk genau vom
+Bruttobetrag ab; wie es ihn auf netto und USt. aufteilt, berechnet der Server nicht. Die Vorschau
+zeigt dann nur die Bruttosumme und sagt das. Ebenso bleibt die Summe sevDesk überlassen, wenn ein
+neuer Rabatt auf gespeicherte Positionen mit mehreren Steuersätzen kommt. Ändert der
 Assistent den Entwurf später, bleibt der Rabatt, solange du ihn nicht ersetzt oder entfernst. Ein
 Dokument mit mehreren Rabatten (sevDesk rechnet dann nur einen davon in die Summen ein) bleibt der
 Web-App von sevDesk überlassen; die Abfragewerkzeuge und die Freigabe weisen darauf hin.
@@ -502,8 +504,7 @@ Steuerregel nicht die übliche für den Kunden ist.
 - Ein **Rabatt auf den Gesamtbetrag** der Vorlage bleibt, wie er ist; die Änderung setzt nie
   einen. sevDesk behält ihn, wenn alle Positionen ersetzt werden; er gilt also für die neuen
   Positionen. Bei neuen Positionen rechnet die Summe je Rechnung ihn ein, wo der Server ihn
-  berechnet (ein Rabatt, ein Steuersatz, ein fester Betrag nur bei Nettopreisen), sonst berechnet
-  sevDesk die Summe.
+  berechnet (ein Rabatt, kein fester Betrag bei Bruttopreisen), sonst berechnet sevDesk die Summe.
 
 Nach dem Speichern liest der Assistent die Vorlage zurück und nennt alles, was sevDesk anders
 gespeichert hat, auch eine Position, deren Änderung sevDesk übergangen hat, einen Schalter, der
