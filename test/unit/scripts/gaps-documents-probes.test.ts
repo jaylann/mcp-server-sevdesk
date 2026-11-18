@@ -818,6 +818,7 @@ describe("gaps-documents probe catalog", () => {
       "write-reserved-number-ab-li",
       "write-recurring-template-due",
       "write-recurring-template-autogenerate",
+      "write-discount-rounding-edges",
       "write-einvoice-discount",
     ]);
     for (const probe of GAPS_DOCUMENTS_PROBES.filter((item) => item.optIn === true)) {
@@ -1051,6 +1052,7 @@ describe("gaps-documents probes on a simulated trial account", () => {
       "write-reserved-number-ab-li",
       "write-recurring-template-due",
       "write-recurring-template-autogenerate",
+      "write-discount-rounding-edges",
       "write-einvoice-discount",
     ]);
     expect(client.calls.some((call) => call.query["useNextNumber"] === "true")).toBe(false);
@@ -1619,6 +1621,66 @@ describe("gaps-documents probes for the open discount and template questions (#1
     // Seven refused saves (two plus five three-rate cases), each followed by one fallback.
     const saves = client.writes().filter((call) => call.path === "/Invoice/Factory/saveInvoice");
     expect(saves).toHaveLength(26);
+  });
+
+  it("reads the rounding edge cases at half cents, per position and on gross prices, deleting every draft (#158)", async () => {
+    const { client, docs } = gapsAccount({ discountsAsRecorded: true });
+    const { report, finding } = await run(client, { only: ["write-discount-rounding-edges"] });
+    expect(report.results[0]?.status).toBe("observed");
+    const text = finding("write-discount-rounding-edges");
+    expect(text).toMatch(/^18 of 18 cases saved\./);
+    expect(text).toMatch(
+      /\[one rate, tax of the rest a half cent \(GU vs GE, LU\)\] net 3 × 10\.00 at 19 % \+ 25\.00 at 19 %, 10 % \(invoice \d+, showNet stored true\): sumNet 49\.50, .*getDiscounts 1 row\(s\) \(id \d+: discount 1, percentage 1, value 10, isNet 1, object \d+\); positions: 19 %: .*; 19 %: /,
+    );
+    expect(text).toMatch(
+      /\[three positions at one rate \(G vs P, L\)\] net 10\.01 at 19 % \+ 10\.01 at 19 % \+ 10\.01 at 19 %, 10 % \(invoice \d+.*\): sumNet 27\.03/,
+    );
+    expect(text).toMatch(
+      /\[7 %, fixed, tax of the rest a half cent .*\] net 61\.00 at 7 %, fixed 9\.50/,
+    );
+    expect(text).toMatch(
+      /\[gross, two rates, fixed \(F1, F2, F3 apart\)\] gross 133\.52 at 19 % \+ 136\.29 at 7 %, fixed 10\.42 \(invoice \d+, showNet stored false\)/,
+    );
+    expect(text).toMatch(/Cleanup: Invoice \d+ deleted(; Invoice \d+ deleted){17}\.$/);
+    expect(left(docs, "Invoice")).toEqual([]);
+    const saves = client.writes().filter((call) => call.path === "/Invoice/Factory/saveInvoice");
+    expect(saves).toHaveLength(18);
+    for (const call of saves) expect(call.tier).toBe("write");
+    // The quantity goes out on the first case only; gross prices on the last six.
+    const first = (saves[0]?.body as Rec)["invoicePosSave"] as Rec[];
+    expect(first.map((row) => [row["quantity"], row["price"], row["taxRate"]])).toEqual([
+      [3, 10, 19],
+      [1, 25, 19],
+    ]);
+    const headers = saves.map((call) => (call.body as Rec)["invoice"] as Rec);
+    expect(headers.map((header) => header["showNet"])).toEqual([
+      ...Array<boolean>(12).fill(true),
+      ...Array<boolean>(6).fill(false),
+    ]);
+    const sent = saves.map((call) => ((call.body as Rec)["discountSave"] as Rec[])[0] ?? {});
+    expect(sent.filter((item) => "isNet" in item)).toEqual([]);
+    expect(sent[17]).toMatchObject({ discount: true, percentage: false, value: 5.61 });
+    expect(renderReport(report)).not.toContain(`${TAG} discount`);
+  });
+
+  it("deletes the rounding drafts it made when sevDesk refuses the gross ones", async () => {
+    const { client, docs } = gapsAccount({ discountsAsRecorded: true, refuseGrossDocuments: true });
+    const { report, finding } = await run(client, { only: ["write-discount-rounding-edges"] });
+    expect(report.results[0]?.status).toBe("observed");
+    const text = finding("write-discount-rounding-edges");
+    expect(text).toMatch(/^12 of 18 cases saved\./);
+    expect(text).toMatch(
+      /\[gross, percentage \(N vs G1 vs G2\/G3\)\] gross 99\.99 at 19 %, 3 %: refused \(422: Gross documents are not allowed\)/,
+    );
+    expect(text).toMatch(/Cleanup: Invoice \d+ deleted(; Invoice \d+ deleted){11}\.$/);
+    expect(left(docs, "Invoice")).toEqual([]);
+    const refused = gapsAccount({ discountsAsRecorded: true, discountAsObject: true });
+    const none = await run(refused.client, { only: ["write-discount-rounding-edges"] });
+    expect(none.report.results[0]?.status).toBe("inconclusive");
+    expect(none.finding("write-discount-rounding-edges")).toMatch(
+      /^No discounted draft was saved\. \[one rate, tax of the rest a half cent/,
+    );
+    expect(left(refused.docs, "Invoice")).toEqual([]);
   });
 
   it("is inconclusive and leaves nothing when sevDesk refuses every draft", async () => {

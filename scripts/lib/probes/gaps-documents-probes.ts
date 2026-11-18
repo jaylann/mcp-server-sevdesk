@@ -1527,10 +1527,14 @@ async function discountMixedTax(ctx: ProbeContext, own: OwnDocument[]): Promise<
   };
 }
 
-/** One position of `write-discount-mixed-tax-uneven`: its price (net or gross) and rate. */
+/**
+ * One position of `write-discount-mixed-tax-uneven` and `write-discount-rounding-edges`: its price
+ * (net or gross), rate and, when more than one, quantity.
+ */
 interface PricedPosition {
   readonly price: number;
   readonly taxRate: number;
+  readonly quantity?: number;
 }
 
 /** One case of `write-discount-mixed-tax-uneven` (#155). */
@@ -1595,9 +1599,14 @@ const UNEVEN_CASES: readonly UnevenCase[] = [
   { showNet: true, positions: [at(100, 19)], percentage: false, value: 10, surcharge: true },
 ];
 
-/** `70.00 at 19 % + 30.00 at 7 %`, in the order sent. */
+/** `70.00 at 19 % + 30.00 at 7 %` (`3 × 10.00 at 19 %` with a quantity), in the order sent. */
 function positionsLabel(positions: readonly PricedPosition[]): string {
-  return positions.map((item) => `${item.price.toFixed(2)} at ${item.taxRate} %`).join(" + ");
+  return positions
+    .map(
+      (item) =>
+        `${item.quantity === undefined ? "" : `${item.quantity} × `}${item.price.toFixed(2)} at ${item.taxRate} %`,
+    )
+    .join(" + ");
 }
 
 function unevenLabel(item: UnevenCase, positions: readonly PricedPosition[]): string {
@@ -1677,6 +1686,200 @@ async function discountMixedTaxUneven(
   return {
     verdict: "observed",
     finding: `${saved} of ${UNEVEN_CASES.length} cases saved. ${lines.join(". ")}.`,
+  };
+}
+
+/** One case of `write-discount-rounding-edges`, with the candidate rules it tells apart. */
+interface RoundingCase extends UnevenCase {
+  /** Trusted, short: what the case asks (shown before its sums in the finding). */
+  readonly asks: string;
+}
+
+/**
+ * The cases of `write-discount-rounding-edges` (#155 review, D-116): the roundings the 2026-11-18
+ * cases could not tell apart. Net cases name the candidate rules by these codes:
+ * - GU, GE: the recorded fit (#161): positions summed per rate, the deduction split by the rates'
+ *   nets, the leftover cent on the largest, tax per rate on the rest; rounding half-up (GU, what
+ *   the code assumes) or half-to-even (GE) at a tie, also of a percentage's deduction.
+ * - PU, PE: the same split per position instead of per rate, tax per position on its rest.
+ * - LU, LE: the earlier one-rate formula: the positions' taxes (each rounded) less the tax of
+ *   each rate's share.
+ * - Per position split, tax per rate on the summed rests gives the same sums as GU here (on one
+ *   rate always); no case separates it.
+ * Gross percentage cases (G…): N the net rule on the positions' nets (what 119 + 107 with 10 %
+ * recorded); G1 the gross total less the rounded percentage, net less net total × amount / gross
+ * total; G2 the same amount split by gross shares per rate, each rate's net from its discounted
+ * gross; G3 each rate's gross less the percentage, rounded, its net from that. Gross fixed cases
+ * (F…): the three rules that fit the recorded gross cases of #155 (`b2-155-gross.py`): F1 net
+ * less net total × amount / gross total; F2 a gross share per rate, each rate's net from its
+ * discounted gross; F3 the net of each gross share. Each comment lists sumNet / sumTax per rule
+ * (computed with exact fractions, half-up unless E).
+ */
+const ROUNDING_CASES: readonly RoundingCase[] = [
+  // One rate, the rest's tax on a half cent (49.50 × 19 % = 9.405): GU/PU/PE/LE 49.50 / 9.41;
+  // GE/LU 49.50 / 9.40.
+  {
+    asks: "one rate, tax of the rest a half cent (GU vs GE, LU)",
+    showNet: true,
+    positions: [{ price: 10, taxRate: 19, quantity: 3 }, at(25, 19)],
+    percentage: true,
+    value: 10,
+  },
+  // A fixed amount, the same tie (58.95 - 9.45 = 49.50): GU/PU 9.41; GE/PE/LU/LE 9.40.
+  {
+    asks: "one rate, fixed, tax of the rest a half cent (GU vs GE, L)",
+    showNet: true,
+    positions: [at(58.95, 19)],
+    percentage: false,
+    value: 9.45,
+  },
+  // 7 %, fixed (61.00 - 9.50 = 51.50, × 7 % = 3.605): GU/PU/LE 3.61; GE/PE/LU 3.60.
+  {
+    asks: "7 %, fixed, tax of the rest a half cent (GU vs GE, LU)",
+    showNet: true,
+    positions: [at(61, 7)],
+    percentage: false,
+    value: 9.5,
+  },
+  // Deduction and tax both on a half cent (10 % of 146.45 = 14.645): GU 131.80 / 25.04; GE
+  // 131.81 / 25.04; LU 131.80 / 25.05; LE 131.81 / 25.05.
+  {
+    asks: "one rate, deduction 14.645 (GU, GE, LU, LE apart)",
+    showNet: true,
+    positions: [at(146.45, 19)],
+    percentage: true,
+    value: 10,
+  },
+  // 7 % (10 % of 98.05 = 9.805): GU 88.24 / 6.18; GE 88.25 / 6.18; LU 88.24 / 6.17; LE 88.25 /
+  // 6.17.
+  {
+    asks: "7 %, deduction 9.805 (GU, GE, LU, LE apart)",
+    showNet: true,
+    positions: [at(98.05, 7)],
+    percentage: true,
+    value: 10,
+  },
+  // A percentage on a half cent (3 % of 51.50 = 1.545): GU 49.95 / 9.49; GE/LE 49.96 / 9.49; LU
+  // 49.95 / 9.50.
+  {
+    asks: "one rate, deduction 1.545 (GU vs GE vs LU)",
+    showNet: true,
+    positions: [at(51.5, 19)],
+    percentage: true,
+    value: 3,
+  },
+  // Several positions at one rate: GU/GE 27.03 / 5.14; PU/PE/L 27.03 / 5.13.
+  {
+    asks: "three positions at one rate (G vs P, L)",
+    showNet: true,
+    positions: [at(10.01, 19), at(10.01, 19), at(10.01, 19)],
+    percentage: true,
+    value: 10,
+  },
+  // G/P 90.01 / 17.10; L 90.01 / 17.09.
+  {
+    asks: "three positions at one rate, fixed (G, P vs L)",
+    showNet: true,
+    positions: [at(33.33, 19), at(33.33, 19), at(33.34, 19)],
+    percentage: false,
+    value: 9.99,
+  },
+  // GU 58.36 / 11.09; GE 58.37 / 11.09; PU 58.36 / 11.08; PE 58.37 / 11.08; LU 58.36 / 11.10;
+  // LE 58.37 / 11.10.
+  {
+    asks: "three positions at one rate (six rules apart)",
+    showNet: true,
+    positions: [at(43.24, 19), at(11.89, 19), at(9.72, 19)],
+    percentage: true,
+    value: 10,
+  },
+  // G 49.48 / 9.40; P 49.48 / 9.41; L 49.48 / 9.39.
+  {
+    asks: "three positions at one rate, fixed (G vs P vs L)",
+    showNet: true,
+    positions: [at(38.75, 19), at(7.34, 19), at(12.59, 19)],
+    percentage: false,
+    value: 9.2,
+  },
+  // Two positions at 19 % and one at 7 %: GU 96.88 / 15.29; GE 96.89 / 15.29; PU 96.88 / 15.30;
+  // PE 96.89 / 15.30; LU 96.88 / 15.31; LE 96.89 / 15.31.
+  {
+    asks: "two at 19 % and one at 7 % (six rules apart)",
+    showNet: true,
+    positions: [at(29.45, 19), at(49.4, 19), at(28.8, 7)],
+    percentage: true,
+    value: 10,
+  },
+  // G 95.56 / 14.55; P 95.56 / 14.54; LU 95.56 / 14.57; LE 95.56 / 14.56.
+  {
+    asks: "two at 19 % and one at 7 %, fixed (G vs P vs LU vs LE)",
+    showNet: true,
+    positions: [at(37.14, 19), at(37.5, 19), at(34.22, 7)],
+    percentage: false,
+    value: 13.3,
+  },
+  // A percentage on gross prices: N 81.51 / 15.49; G1 81.51 / 15.48; G2/G3 81.50 / 15.49.
+  {
+    asks: "gross, percentage (N vs G1 vs G2/G3)",
+    showNet: false,
+    positions: [at(99.99, 19)],
+    percentage: true,
+    value: 3,
+  },
+  // N 121.60 / 17.89; G1 121.60 / 17.88; G2/G3 121.59 / 17.89.
+  {
+    asks: "gross, two rates, percentage (N vs G1 vs G2/G3)",
+    showNet: false,
+    positions: [at(99.99, 19), at(49.99, 7)],
+    percentage: true,
+    value: 7,
+  },
+  // N 104.21 / 15.17; G1 104.21 / 15.16; G2 104.20 / 15.17; G3 104.19 / 15.17.
+  {
+    asks: "gross, two rates, percentage (N, G1, G2, G3 apart)",
+    showNet: false,
+    positions: [at(80.51, 19), at(42.55, 7)],
+    percentage: true,
+    value: 3,
+  },
+  // A fixed amount on gross prices: F1 230.32 / 29.07; F2 230.33 / 29.06; F3 230.31 / 29.08.
+  {
+    asks: "gross, two rates, fixed (F1, F2, F3 apart)",
+    showNet: false,
+    positions: [at(133.52, 19), at(136.29, 7)],
+    percentage: false,
+    value: 10.42,
+  },
+  // F1 80.57 / 12.13; F2 80.58 / 12.12; F3 80.56 / 12.14.
+  {
+    asks: "gross, two rates, fixed (F1, F2, F3 apart)",
+    showNet: false,
+    positions: [at(68.95, 19), at(30.38, 7)],
+    percentage: false,
+    value: 6.63,
+  },
+  // F1 217.17 / 21.02; F2 217.16 / 21.03; F3 217.18 / 21.01.
+  {
+    asks: "gross, two rates, fixed (F1, F2, F3 apart)",
+    showNet: false,
+    positions: [at(59.09, 19), at(184.71, 7)],
+    percentage: false,
+    value: 5.61,
+  },
+];
+
+async function discountRoundingEdges(ctx: ProbeContext, own: OwnDocument[]): Promise<ProbeOutcome> {
+  const lines: string[] = [];
+  let saved = 0;
+  for (const item of ROUNDING_CASES) {
+    const draft = await unevenDraft(ctx, own, item);
+    if (draft.id !== undefined) saved += 1;
+    lines.push(`[${item.asks}] ${draft.text}`);
+  }
+  if (saved === 0) return inconclusive(`No discounted draft was saved. ${lines.join(". ")}.`);
+  return {
+    verdict: "observed",
+    finding: `${saved} of ${ROUNDING_CASES.length} cases saved. ${lines.join(". ")}.`,
   };
 }
 
@@ -3737,6 +3940,28 @@ export const GAPS_DOCUMENTS_PROBES: readonly ProbeDefinition[] = [
       const own: OwnDocument[] = [];
       return withCleanup(
         () => discountMixedTaxUneven(ctx, own),
+        () => deleteOwnDocuments(ctx, own),
+      );
+    },
+  },
+  {
+    id: "write-discount-rounding-edges",
+    title: "Discount rounding at half cents, per position and on gross prices",
+    mode: "write",
+    optIn: true,
+    question:
+      `OPT-IN (${ROUNDING_CASES.length} invoice drafts, each deleted afterwards): how does sevDesk round a document discount where the 2026-11-18 cases could not ` +
+      "tell (#155 review, D-116)? Net cases whose rest's tax or percentage deduction lands on a half cent, at 19 % and 7 %, percentage and fixed (half-up or " +
+      "half-to-even; the rest's tax or the positions' taxes less the share's); several positions at one rate and two at 19 % with one at 7 % (split per rate or " +
+      "per position); percentages on gross prices that do not divide evenly; fixed amounts on gross prices with two rates where the three rules that fit #155 " +
+      "disagree. Each case names the rules it tells apart; the code comment lists their sums. For each: sumNet, sumTax, sumGross, sumDiscounts, " +
+      "sumDiscountNet, sumDiscountGross, every other sum field, the getDiscounts row and the sum fields of each position. Every draft is deleted at the end, " +
+      "also when a step fails.",
+    deviations: ["D-116"],
+    async run(ctx) {
+      const own: OwnDocument[] = [];
+      return withCleanup(
+        () => discountRoundingEdges(ctx, own),
         () => deleteOwnDocuments(ctx, own),
       );
     },
