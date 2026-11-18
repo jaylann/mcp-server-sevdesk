@@ -63,7 +63,9 @@ etwas sevDesk erreicht.
 [`sevdesk_vouchers_list`](../tools.md#sevdesk_vouchers_list) (`read`) filtert nach Lieferant,
 Belegnummer, Zeitraum und Status. Die Entwurfswerkzeuge prüfen selbst noch einmal: Ein Beleg mit
 demselben Lieferanten, derselben Nummer, demselben Datum und demselben Bruttobetrag wird abgelehnt,
-außer du sagst, dass es wirklich ein zweiter ist.
+außer du sagst, dass es wirklich ein zweiter ist. Diese Prüfung liest bis zu 100 Belege des
+Lieferanten und Datums; hat sevDesk mehr, sagen Vorschau und Ergebnis das, und eine Dublette
+darunter wird nicht erkannt.
 
 ## Buchungskonto und Steuerregel wählen
 

@@ -59,6 +59,7 @@ import {
   assertUpdate2,
   checkVoucherAccounts,
   duplicateCheck,
+  duplicateScanCutWarning,
   expectedVoucherTotals,
   findVoucherDuplicates,
   kindText,
@@ -136,6 +137,11 @@ export interface VoucherSaveState {
   readonly recheckDraft?: boolean | undefined;
   /** The stored voucher had a receipt attached and this save sends no new one: check it stays. */
   readonly keepsDocument?: boolean | undefined;
+  /**
+   * Set by a create whose duplicate check could not read every voucher sevDesk's filters left
+   * (`duplicateScanCutWarning`): repeated as a note of the result, which shows no preview.
+   */
+  readonly duplicateScanCut?: Phrase | undefined;
 }
 
 export interface VoucherSavePlan {
@@ -271,8 +277,10 @@ export async function prepareVoucherCreateSpec(
     gross: expected.gross,
     currency: currency.currency,
   };
-  const duplicateIds = await findVoucherDuplicates(client, duplicateQuery, signal);
+  const duplicateScan = await findVoucherDuplicates(client, duplicateQuery, signal);
+  const duplicateIds = duplicateScan.ids;
   duplicateCheck(duplicateIds, duplicateQuery, spec.allowDuplicate);
+  const scanCut = duplicateScanCutWarning(duplicateScan, spec.kind);
 
   const body = strictBody(
     saveVoucherBodySchema,
@@ -366,6 +374,7 @@ export async function prepareVoucherCreateSpec(
       facts,
       [
         duplicateCheck(duplicateIds, duplicateQuery, spec.allowDuplicate, lang),
+        scanCut?.[lang],
         ...(de
           ? resolveVoucherRule(spec.kind, spec.taxRuleId, regime, lang).warnings
           : ruleWarnings),
@@ -391,7 +400,16 @@ export async function prepareVoucherCreateSpec(
       ],
     );
   });
-  return { ...previews, state: { body, file, expected, expectStatus: VOUCHER_DRAFT_STATUS } };
+  return {
+    ...previews,
+    state: {
+      body,
+      file,
+      expected,
+      expectStatus: VOUCHER_DRAFT_STATUS,
+      ...(scanCut === undefined ? {} : { duplicateScanCut: scanCut }),
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1040,6 +1058,7 @@ function readBackNotes(
       ),
     );
   }
+  if (state.duplicateScanCut !== undefined) notes.push(state.duplicateScanCut[lang]);
   return notes;
 }
 

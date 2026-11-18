@@ -58,6 +58,8 @@ between, the call is refused before anything reaches sevDesk.
 [`sevdesk_vouchers_list`](../tools.md#sevdesk_vouchers_list) (`read`) filters by supplier,
 Belegnummer, date range and status. The draft tools check again on their own: a voucher with the
 same supplier, number, date and gross amount is refused unless you say it is really a second one.
+That check reads up to 100 vouchers of the supplier and date; when sevDesk has more, the preview
+and the result say so, and a duplicate among the others is not found.
 
 ## Pick the booking account and tax rule
 
