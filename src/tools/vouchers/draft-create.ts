@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { executeVoucherSave, prepareVoucherCreate } from "../../domain/drafts/voucher.js";
+import { prefetchReceipt } from "../../domain/drafts/voucher-checks.js";
 import { voucherCreateInputShape } from "../../domain/drafts/voucher-inputs.js";
 import { defineWriteTool } from "../define-tool.js";
 import { ACCOUNT_VOUCHER_DRAFTS } from "../types.js";
@@ -28,6 +29,8 @@ export const voucherCreateDraftTool = defineWriteTool({
   // The duplicate refusal reads the existing vouchers, then the draft is created: two identical
   // creations at once both passed it (review 2026-11, round 3).
   locks: () => [ACCOUNT_VOUCHER_DRAFTS],
+  // A receipt from a link is downloaded before the lock (see prefetchReceipt).
+  preload: (args, ctx) => prefetchReceipt(ctx, args.file),
   prepare: (args, ctx) =>
     prepareVoucherCreate(ctx.client, args, {
       signal: ctx.signal,

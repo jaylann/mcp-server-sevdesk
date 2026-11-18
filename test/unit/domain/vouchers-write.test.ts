@@ -12,6 +12,7 @@ import {
 } from "../../../src/domain/drafts/voucher.js";
 import {
   duplicateCheck,
+  duplicateScanCutWarning,
   exactRate,
   expectedVoucherTotals,
   findVoucherDuplicates,
@@ -178,12 +179,29 @@ describe("duplicates", () => {
       draftRow({ id: "2062", supplier: null, supplierName: "Tankstelle Nord", currency: "USD" }),
     ];
     const fake = new FakeSevdeskClient([voucherListRoute(rows)]);
-    expect(await findVoucherDuplicates(fake, query, undefined)).toEqual([2060]);
+    expect(await findVoucherDuplicates(fake, query, undefined)).toEqual({
+      ids: [2060],
+      complete: true,
+    });
     expect(fake.calls[0]?.query).toMatchObject({
       creditDebit: "C",
       supplierName: "Tankstelle Nord",
-      limit: 25,
+      limit: 100,
     });
+  });
+
+  it("reports a scan cut when sevDesk's total is larger than the page", async () => {
+    const row = draftRow({ id: "2060", supplier: null, supplierName: "Tankstelle Nord" });
+    const fake = new FakeSevdeskClient([
+      { path: "/Voucher", response: { body: { total: 101, objects: [row] } } },
+    ]);
+    const scan = await findVoucherDuplicates(fake, query, undefined);
+    expect(scan.complete).toBe(false);
+    expect(duplicateScanCutWarning(scan, "revenue")?.en).toContain(
+      "for this customer and date, and sevDesk has more",
+    );
+    expect(duplicateScanCutWarning(scan, "revenue")?.de).toContain("zu diesem Kunden und Datum");
+    expect(duplicateScanCutWarning({ ids: [], complete: true }, "expense")).toBeUndefined();
   });
 
   it("refuses several at once and words the warning without a Belegnummer", () => {

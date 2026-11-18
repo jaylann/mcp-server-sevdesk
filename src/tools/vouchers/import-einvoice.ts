@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { executeVoucherSave } from "../../domain/drafts/voucher.js";
+import { EINVOICE_FILE_KINDS, prefetchReceipt } from "../../domain/drafts/voucher-checks.js";
 import {
   prepareVoucherImport,
   type VoucherSuggestionPlanner,
@@ -38,6 +39,8 @@ export function voucherImportEInvoiceTool(planner: VoucherSuggestionPlanner) {
     output: voucherDraftOutput,
     // Shares the duplicate refusal of sevdesk_voucher_create_draft, so it shares its lock.
     locks: () => [ACCOUNT_VOUCHER_DRAFTS],
+    // An e-invoice from a link is downloaded before the lock (see prefetchReceipt).
+    preload: (args, ctx) => prefetchReceipt(ctx, args.file, EINVOICE_FILE_KINDS),
     prepare: (args, ctx) =>
       prepareVoucherImport(
         ctx.client,

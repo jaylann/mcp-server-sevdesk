@@ -881,6 +881,7 @@ const yearEndHandoff = definePrompt({
       .optional()
       .describe("Year to hand over, YYYY (2000–2099, e.g. 2025). Default: the previous year."),
   }),
+  completions: { year: "year" },
   requires: ["sevdesk_profit_and_loss"],
   resolve: (args, context) => ({
     year: args.year === undefined ? previousYear(context.today) : yearPeriod(Number(args.year)),

@@ -128,7 +128,12 @@ transaction, the contact, the part, the order or invoice a document is derived f
 account-wide key (all bookings; the credit note number range, whose counter sevDesk does not
 advance on `createFromInvoice`; customer numbers; part numbers; new voucher drafts, for their
 duplicate refusal). Calls of one account that share a key run one after the other, from `prepare`
-to the end of `execute` (`src/safety/record-locks.ts`).
+to the end of `execute` (`src/safety/record-locks.ts`). A receipt from an https link is downloaded
+before the lock (the tool's `preload`, `src/safety/link-prefetch.ts`): the download reads only the
+outside host, never sevDesk, and `prepare` checks exactly those bytes as before, so a slow host does
+not hold up the account's other calls. Only one such download per account waits for its lock at a
+time, because it is held in memory until then; a call beyond that downloads inside the lock as
+before.
 
 The locks live in one server process; several replicas would need a shared lock. The metadata lint
 fails for a write tool without `locks` unless it is on a short list with its reason: new invoice

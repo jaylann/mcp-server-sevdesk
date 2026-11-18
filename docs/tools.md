@@ -1709,6 +1709,6 @@ Check a month or quarter in sevDesk before the Umsatzsteuer-Voranmeldung (UStVA)
 
 Prepare a year in sevDesk for the Steuerberater: unbooked transactions and drafts, profit and loss (EÜR view), the audits, open invoices and vouchers, the DATEV export (CSV or XML; the DATEV settings only if they are missing or wrong) and the invoice and receipt archive in parts, each export with a dry run first. Findings are hints. Not tax advice.
 
-| Argument | Required | Description                                                                 | Suggestions |
-| -------- | -------- | --------------------------------------------------------------------------- | ----------- |
-| `year`   | no       | Year to hand over, YYYY (2000–2099, e.g. 2025). Default: the previous year. | —           |
+| Argument | Required | Description                                                                 | Suggestions  |
+| -------- | -------- | --------------------------------------------------------------------------- | ------------ |
+| `year`   | no       | Year to hand over, YYYY (2000–2099, e.g. 2025). Default: the previous year. | recent years |

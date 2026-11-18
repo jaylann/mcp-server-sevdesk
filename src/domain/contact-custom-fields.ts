@@ -124,7 +124,9 @@ function toCustomFieldDto(record: ValueRecord): CustomFieldDto | undefined {
 /** The account's settings: up to {@link SETTINGS_LIMIT}, `truncated` when sevDesk has more. */
 export interface CustomFieldSettings {
   readonly items: readonly CustomFieldSetting[];
+  /** sevDesk's `total` when it sent one, else the number of items read. */
   readonly total: number;
+  /** True when sevDesk's `total` is larger than what was read, or a full page came without one. */
   readonly truncated: boolean;
 }
 
@@ -148,8 +150,10 @@ export async function listCustomFieldSettings(
       description: cleanText(row.description, DESCRIPTION_MAX),
     });
   });
-  const total = page.total ?? items.length;
-  return { items, total, truncated: total > items.length };
+  // A full page without sevDesk's `total` may be cut as well (like the cost centres).
+  const truncated =
+    page.total === undefined ? items.length >= SETTINGS_LIMIT : page.total > items.length;
+  return { items, total: page.total ?? items.length, truncated };
 }
 
 /** A contact's custom field values, as read. */

@@ -50,6 +50,7 @@ import { ApprovalLimitError, type ApprovalTicket } from "../safety/approval-type
 import { type AuditApproval, type AuditEvent, auditPrincipal } from "../safety/audit.js";
 import { findHiddenCharacters } from "../safety/fence.js";
 import { argumentsHash, previewHash } from "../safety/hashing.js";
+import { prefetchLinks } from "../safety/link-prefetch.js";
 import {
   displayPreview,
   previewPairSchema,
@@ -161,7 +162,8 @@ export function writeOutputSchema(output: z.ZodObject): z.ZodObject {
 /**
  * Runs one call of a write tool. Throws like a handler; the registry maps errors. A tool that
  * declares `locks` runs while holding its records for this account, from `prepare` to the end of
- * `execute`, so a concurrent call on the same records prepares only after this one booked.
+ * `execute`, so a concurrent call on the same records prepares only after this one booked. Its
+ * `preload` (link downloads) runs before that, outside the locks.
  */
 export async function runWriteTool(
   tool: ErasedWriteTool,
@@ -174,7 +176,20 @@ export async function runWriteTool(
   const keys = records.map((record) =>
     JSON.stringify([accountScope, record.objectName, record.id]),
   );
-  return call.deps.safety.locks.run(keys, () => runUnlocked(tool, args, call));
+  if (tool.preload === undefined || hiddenCharacterProblems(args, []).length > 0) {
+    return call.deps.safety.locks.run(keys, () => runUnlocked(tool, args, call));
+  }
+  // Downloads before the locks (`WriteToolDefinition.preload`); `prepare` gets them through the
+  // call's file access (`src/safety/link-prefetch.ts`). Arguments with hidden characters download
+  // nothing: `runUnlocked` refuses them before anything else.
+  const prefetched = prefetchLinks(call.context.files, accountScope);
+  try {
+    await tool.preload(args, { signal: call.context.signal, files: prefetched.prefetcher });
+    const preloaded = { ...call, context: { ...call.context, files: prefetched.files } };
+    return await call.deps.safety.locks.run(keys, () => runUnlocked(tool, args, preloaded));
+  } finally {
+    prefetched.dispose();
+  }
 }
 
 async function runUnlocked(

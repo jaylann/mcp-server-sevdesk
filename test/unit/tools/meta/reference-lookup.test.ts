@@ -217,6 +217,43 @@ describe("sevdesk_reference_lookup", () => {
     expect(filtered.result.summary).toBe("2 of 4 contact custom fields matching the query.");
   });
 
+  it("reports total with truncated for custom contact fields, like the cost centres", async () => {
+    const rows = Array.from({ length: 1000 }, (_, index) => ({
+      id: String(index + 1),
+      objectName: "ContactCustomFieldSetting",
+      name: `Feld ${String(index + 1)}`,
+    }));
+    // `total: null`: one page without a usable count (see the fake client).
+    const noTotal = await lookup({ kind: "contact_custom_fields" }, [
+      { path: "/ContactCustomFieldSetting", response: { body: { total: null, objects: rows } } },
+    ]);
+    expect(noTotal.result.data).toMatchObject({
+      kind: "contact_custom_fields",
+      total: 1000,
+      returned: 1000,
+      truncated: true,
+    });
+    expect(noTotal.result.summary).toBe(
+      "1000 of 1000 contact custom fields (sevDesk has more than could be fetched).",
+    );
+
+    const counted = await lookup({ kind: "contact_custom_fields" }, [
+      {
+        path: "/ContactCustomFieldSetting",
+        response: { body: { total: 1200, objects: rows } },
+      },
+    ]);
+    expect(counted.result.data).toMatchObject({ total: 1200, returned: 1000, truncated: true });
+
+    const short = await lookup({ kind: "contact_custom_fields" }, [
+      {
+        path: "/ContactCustomFieldSetting",
+        response: { body: { total: null, objects: rows.slice(0, 999) } },
+      },
+    ]);
+    expect(short.result.data).toMatchObject({ total: 999, returned: 999, truncated: false });
+  });
+
   it("flags lists sevDesk could not return completely", async () => {
     const { result } = await lookup({ kind: "units" }, [
       {

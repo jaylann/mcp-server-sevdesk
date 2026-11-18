@@ -33,6 +33,7 @@ import {
 import type { ToolsetName } from "./toolsets.js";
 import type {
   AnyToolDefinition,
+  PreloadContext,
   SevdeskObjectRef,
   ToolAnnotationSet,
   ToolContext,
@@ -156,6 +157,7 @@ export interface ErasedWriteTool extends ErasedToolBase {
   readonly tier: WriteTier;
   readonly prepare: (args: unknown, ctx: ToolContext) => Promise<WritePlan<unknown>>;
   readonly locks?: ((args: unknown) => readonly SevdeskObjectRef[]) | undefined;
+  readonly preload?: ((args: unknown, ctx: PreloadContext) => Promise<void>) | undefined;
   readonly auditArgs?: ((args: unknown) => Readonly<Record<string, unknown>>) | undefined;
   readonly execute: (
     args: unknown,

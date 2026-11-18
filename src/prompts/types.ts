@@ -12,10 +12,10 @@ import type { z } from "zod";
 
 /**
  * @public What `completion/complete` suggests for a prompt argument (`completions.ts`): recent
- * months (`YYYY-MM`), recent months and quarters (`YYYY-Qn`), contact names, or payment account
- * names.
+ * months (`YYYY-MM`), recent months and quarters (`YYYY-Qn`), recent years (`YYYY`), contact
+ * names, or payment account names.
  */
-export type CompletionKind = "month" | "period" | "contact" | "checkAccount";
+export type CompletionKind = "month" | "period" | "year" | "contact" | "checkAccount";
 
 /**
  * @public Clock-derived values a prompt renders with; injectable through the `now` of the

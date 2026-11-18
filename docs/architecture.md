@@ -199,10 +199,10 @@ Handlers only render text and never call sevDesk; arguments are pattern-checked 
 protocol eras and checks that every tool a prompt names is in that configuration's `tools/list`.
 
 Arguments can be completed (`completion/complete`). The catalog only names a kind per argument
-(month, period, contact, payment account); `registerPrompts` attaches the completers of one server
-instance to a copy of the argument's schema, because the SDK's `completable` marks a schema for
-good and the catalog's schemas are shared by every account. Months and quarters come from the
-clock. Contact and account names (`completions.ts`) come from one list request per kind, plus a
+(month, period, year, contact, payment account); `registerPrompts` attaches the completers of one
+server instance to a copy of the argument's schema, because the SDK's `completable` marks a schema
+for good and the catalog's schemas are shared by every account. Months, quarters and years come
+from the clock. Contact and account names (`completions.ts`) come from one list request per kind, plus a
 name search (limit 100) per typed name when the account has more contacts than one read returns,
 always read-only and with an explicit limit. They are read only when `sevdesk_contacts_search` or
 `sevdesk_bank_accounts_list` is registered, and cached for a minute per account `Config` (over

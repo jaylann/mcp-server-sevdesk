@@ -690,6 +690,50 @@ describe("sevdesk_voucher_create_draft", () => {
     expect(preview.warnings.join(" ")).not.toContain("duplicate");
   });
 
+  it("says in the preview and the result when the duplicate check could not read every row", async () => {
+    // sevDesk's filters leave 140 vouchers; one page of 100 is read, none of them a duplicate.
+    const other = { ...draftRow(), id: "2054", description: "ER-2026-0999" };
+    const cut: FakeRoute = {
+      path: "/Voucher",
+      response: { body: { total: 140, objects: Array.from({ length: 100 }, () => other) } },
+    };
+    const fake = new FakeSevdeskClient([
+      cut,
+      ...CREATE_READ_ROUTES,
+      saveRoute(),
+      ...readBackRoutes(),
+    ]);
+    const { plan, output } = await executeWrite(tool, args, fake);
+    expect(fake.calls.find((call) => call.path === "/Voucher")?.query).toMatchObject({
+      limit: 100,
+    });
+    const warning =
+      "The duplicate check read the first 100 vouchers sevDesk lists for this supplier and " +
+      "date, and sevDesk has more: a duplicate among the others would not be found. Check " +
+      "with sevdesk_vouchers_list before finalizing.";
+    const warningDe =
+      "Die Dublettenprüfung hat die ersten 100 Belege gelesen, die sevDesk zu diesem " +
+      "Lieferanten und Datum listet, und sevDesk hat mehr: Eine Dublette darunter würde nicht " +
+      "erkannt. Prüfe vor dem Fertigstellen mit sevdesk_vouchers_list.";
+    expect(plan.preview.warnings[0]).toBe(warning);
+    expect(plan.previewDe?.warnings[0]).toBe(warningDe);
+    expect(output.data.notes).toEqual([warning]);
+    expect(output.data.notesDe).toEqual([warningDe]);
+  });
+
+  it("counts a full page without total as cut, and a short one as complete", async () => {
+    const other = { ...draftRow(), id: "2054", description: "ER-2026-0999" };
+    // `total: null`: a page without a usable count (see the fake client).
+    const page = (length: number): FakeRoute => ({
+      path: "/Voucher",
+      response: { body: { total: null, objects: Array.from({ length }, () => other) } },
+    });
+    const full = await prepareWrite(tool, args, client([page(100)]));
+    expect(full.preview.warnings.join(" ")).toContain("The duplicate check read the first 100");
+    const short = await prepareWrite(tool, args, client([page(99)]));
+    expect(short.preview.warnings.join(" ")).not.toContain("duplicate check");
+  });
+
   it("notes a gross total that differs from the preview", async () => {
     const fake = new FakeSevdeskClient([
       ...CREATE_READ_ROUTES,

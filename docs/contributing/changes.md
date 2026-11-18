@@ -83,7 +83,7 @@ names from the account, read-only.
 3. Arguments are optional strings with a pattern or length check. Show a raw argument only
    through `fenceInline`, never in the trusted text.
 4. To have an argument completed, name its `CompletionKind` in `completions` (month, period,
-   contact, checkAccount); the catalog holds only that name. A new kind needs a completer in
+   year, contact, checkAccount); the catalog holds only that name. A new kind needs a completer in
    `src/prompts/completions.ts`, an entry in `COMPLETION_HINTS` (the Suggestions column of
    `docs/tools.md`) and, if it reads sevDesk, one in `COMPLETION_TOOLS`: the read tool that must
    be registered before it reads anything. Such a read goes through `readOnlyClient` with an

@@ -144,7 +144,12 @@ Artikel, den Auftrag oder die Rechnung, aus der ein Dokument abgeleitet ist), od
 kontoweiten Schlüssel (alle Buchungen; den Nummernkreis der Gutschriften, dessen Zähler sevDesk
 bei `createFromInvoice` nicht weiterzählt; Kundennummern; Artikelnummern; neue Belegentwürfe, für
 ihre Ablehnung von Dubletten). Aufrufe eines Kontos mit gemeinsamem Schlüssel laufen
-nacheinander, von `prepare` bis zum Ende von `execute` (`src/safety/record-locks.ts`).
+nacheinander, von `prepare` bis zum Ende von `execute` (`src/safety/record-locks.ts`). Eine
+Belegdatei von einem https-Link wird vor der Sperre heruntergeladen (`preload` des Werkzeugs,
+`src/safety/link-prefetch.ts`): Der Download liest nur den fremden Host, nie sevDesk, und `prepare`
+prüft genau diese Bytes wie bisher. So hält ein langsamer Host die anderen Aufrufe des Kontos
+nicht auf. Je Konto wartet nur ein solcher Download auf seine Sperre, weil er bis dahin im
+Speicher liegt; ein weiterer Aufruf lädt wie bisher innerhalb der Sperre herunter.
 
 Die Sperren leben in einem Serverprozess; mehrere Replikate bräuchten eine gemeinsame Sperre. Der
 Metadaten-Lint scheitert für ein Schreibwerkzeug ohne `locks`, außer es steht mit seiner

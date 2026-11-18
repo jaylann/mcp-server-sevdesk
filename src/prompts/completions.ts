@@ -2,8 +2,8 @@
  * Suggestions for prompt arguments (MCP `completion/complete`).
  *
  * The catalog names a {@link CompletionKind} per argument (`PromptSpec.completions`);
- * `registerPrompts` attaches the completer of that kind for one server instance. Months and
- * periods come from the clock and never touch sevDesk. Contact and payment account names come from
+ * `registerPrompts` attaches the completer of that kind for one server instance. Months,
+ * periods and years come from the clock and never touch sevDesk. Contact and payment account names come from
  * the account:
  *
  * - only when the read tool behind them is registered for the configuration
@@ -53,7 +53,7 @@ export const COMPLETION_CACHE_TTL_MS = 60_000;
 /** How long a failed read is reused (suggesting nothing) before the next keystroke tries again. */
 export const COMPLETION_FAILURE_TTL_MS = 5_000;
 
-/** The read tool whose registration a kind needs; months and periods need none. */
+/** The read tool whose registration a kind needs; months, periods and years need none. */
 export const COMPLETION_TOOLS = {
   contact: "sevdesk_contacts_search",
   checkAccount: "sevdesk_bank_accounts_list",
@@ -63,6 +63,7 @@ export const COMPLETION_TOOLS = {
 export const COMPLETION_HINTS: Readonly<Record<CompletionKind, string>> = {
   month: "recent months",
   period: "recent months and quarters",
+  year: "recent years",
   contact: "contact names",
   checkAccount: "payment account names",
 };
@@ -71,6 +72,8 @@ export const COMPLETION_HINTS: Readonly<Record<CompletionKind, string>> = {
 const RECENT_MONTHS = 24;
 /** Quarters offered before the user narrows them down by typing a year. */
 const RECENT_QUARTERS = 8;
+/** Years offered, the current one included; an older one is offered once typed in full. */
+const RECENT_YEARS = 6;
 /** Contacts read in one request; sevDesk's maximum page size. */
 const CONTACT_LIMIT = 1000;
 /** Contacts read per typed name when the account has more than {@link CONTACT_LIMIT}. */
@@ -170,11 +173,29 @@ export function periodSuggestions(value: string, today: string): string[] {
   return matching(periods, value);
 }
 
-/** Completers for months and periods; `now` gives today in Europe/Berlin. */
+/**
+ * Years (`YYYY`) for what the user typed, newest first: the current year (in Europe/Berlin, from
+ * `today`) and the {@link RECENT_YEARS} − 1 before it, and a year of 2000 or later typed in full.
+ * Never a year after the current one. The previous year, the default of the year-end handoff, is
+ * the second suggestion.
+ */
+export function yearSuggestions(value: string, today: string): string[] {
+  const current = Number(today.slice(0, 4));
+  const recent = Array.from({ length: RECENT_YEARS }, (_, back) => current - back).filter(
+    (year) => year >= 2000,
+  );
+  const year = /^\d{4}$/.test(value) ? typedYear(value) : undefined;
+  const typed = year !== undefined && year <= current ? [year] : [];
+  const keys = [...recent, ...typed].map(String).filter((key) => key.startsWith(value));
+  return [...new Set(keys)];
+}
+
+/** Completers for months, periods and years; `now` gives today in Europe/Berlin. */
 export function periodCompleters(now: () => number): Completers {
   return {
     month: (value) => Promise.resolve(monthSuggestions(value, berlinDateOf(now()))),
     period: (value) => Promise.resolve(periodSuggestions(value, berlinDateOf(now()))),
+    year: (value) => Promise.resolve(yearSuggestions(value, berlinDateOf(now()))),
   };
 }
 
