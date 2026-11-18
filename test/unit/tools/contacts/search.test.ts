@@ -280,6 +280,46 @@ describe("sevdesk_contacts_search by custom field value (D-086)", () => {
     expect(exact.result.summary).not.toMatch(/cut/);
   });
 
+  it("says that a more specific value helps when the match set is over the answer cap", async () => {
+    // The client's error for an answer over MAX_JSON_RESPONSE_BYTES. Its generic advice (a
+    // smaller limit, a shorter date range) cannot help: sevDesk ignores limit here (D-086).
+    const cap = new SevdeskError({
+      kind: "unexpected_response",
+      message:
+        `sevDesk's answer to GET ${FIND} has at least 16777217 bytes, more than the 16 MiB this ` +
+        "server reads from one answer, so it was not read. Ask for less at once: fewer rows (a " +
+        "smaller limit), a shorter date range or a narrower filter.",
+      method: "GET",
+      path: FIND,
+      expectedLimit: true,
+    });
+    const error = await search({ customField: { settingId: 19498, value: "x" } }, [
+      settingsRoute,
+      findRoute({ error: cap }),
+    ]).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(SevdeskError);
+    expect(error).toMatchObject({
+      kind: "unexpected_response",
+      status: undefined,
+      expectedLimit: true,
+      path: FIND,
+      cause: cap,
+    });
+    const { message } = error as SevdeskError;
+    expect(message).toContain("give a more specific value");
+    expect(message).toContain("sevDesk ignores both");
+    expect(message).not.toContain("date range");
+
+    // Any other failure passes through unchanged.
+    const other = new SevdeskError({ kind: "unexpected_response", message: "x", status: 200 });
+    await expect(
+      search({ customField: { settingId: 19498, value: "x" } }, [
+        settingsRoute,
+        findRoute({ error: other }),
+      ]),
+    ).rejects.toBe(other);
+  });
+
   it("de-duplicates by raw id, keeps the lowest 1000 ids and builds only those", async () => {
     // Rows in descending order with each id twice. Only the ids of all matches are read; the
     // rows past the cut are never parsed in full, so one that would not parse costs nothing.
