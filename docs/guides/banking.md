@@ -138,8 +138,8 @@ rule: a text that a transaction's counterparty (Auftraggeber/Empfänger) or purp
 (`commit`) deletes one. Both are `commit` because a rule does on its own what
 [`sevdesk_transaction_mark_private`](../tools.md#sevdesk_transaction_mark_private) does by hand.
 
-**Where rules act, and what could not be tested.** sevDesk applies a rule when it imports
-transactions from the bank. A trial account imports nothing: there, two rules changed none of the
+**Where rules act, and what could not be tested.** sevDesk is expected to apply a rule when it
+imports transactions from the bank. A trial account imports nothing: there, two rules changed none of the
 existing open transactions, not even one entered by hand after the rules were created, and
 deleting the rules changed nothing either. So how sevDesk matches a rule (the whole text or a part
 of it, upper and lower case), and whether a CSV file import applies rules too, is not known.

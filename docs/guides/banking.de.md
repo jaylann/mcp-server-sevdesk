@@ -145,8 +145,8 @@ passt.
 (`commit`) löscht eine. Beide sind `commit`, weil eine Regel von selbst tut, was
 [`sevdesk_transaction_mark_private`](../tools.md#sevdesk_transaction_mark_private) von Hand tut.
 
-**Wo Regeln wirken, und was sich nicht testen ließ.** sevDesk wendet eine Regel an, wenn es Umsätze
-von der Bank importiert. Ein Testkonto importiert nichts: Dort änderten zwei Regeln keinen der
+**Wo Regeln wirken, und was sich nicht testen ließ.** sevDesk soll eine Regel anwenden, wenn es
+Umsätze von der Bank importiert. Ein Testkonto importiert nichts: Dort änderten zwei Regeln keinen der
 vorhandenen offenen Umsätze, auch keinen, der nach den Regeln von Hand erfasst wurde, und das
 Löschen der Regeln änderte ebenfalls nichts. Wie sevDesk eine Regel abgleicht (ganzer Text oder ein
 Teil davon, Groß- und Kleinschreibung) und ob auch ein CSV-Dateiimport Regeln anwendet, ist daher

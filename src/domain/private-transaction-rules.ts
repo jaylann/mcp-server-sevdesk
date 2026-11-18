@@ -21,12 +21,14 @@
  *
  * So this module sends one trimmed text per rule of at most {@link RULE_TEXT_MAX} characters,
  * refuses a duplicate itself (sevDesk would store it), and checks the stored text on the
- * read-back. Changing a rule is not recorded and not offered.
+ * read-back. Changing a rule is not recorded and not offered. Every search of the list (duplicate
+ * check, delete lookup, read-backs) reads up to {@link RULE_SEARCH_PAGES} pages and says when the
+ * list goes on beyond them.
  *
  * The open transactions a new rule "would touch" are an estimate made here: the rule's text found,
  * ignoring case, inside the counterparty or purpose of open (unbooked) transactions. Every text
- * that shows it says that it is an estimate and that sevDesk acts on bank imports; nothing here
- * says that a transaction will become private.
+ * that shows it says that it is an estimate and that sevDesk is expected to act on bank imports;
+ * nothing here says that a transaction will become private.
  *
  * Rule texts read from sevDesk are untrusted: they reach the output only cleaned
  * (`cleanText`), and never a message. Nothing here retries a write.
@@ -51,11 +53,12 @@ const OBJECT_NAME = "PrivateTransactionRule";
 /** sevDesk's maximum page size: one request reads every rule an account plausibly has. */
 const RULES_PAGE_SIZE = 1000;
 /**
- * Pages the read-back after a create reads at most while it looks for the new rule. In which order
- * sevDesk lists rules is not recorded, so on an account with more than {@link RULES_PAGE_SIZE}
- * rules the new one can be on any page; five pages (5000 rules) bound the requests.
+ * Pages every search of the rules reads at most: the duplicate check, the delete lookup and both
+ * read-backs. In which order sevDesk lists rules is not recorded, so on an account with more than
+ * {@link RULES_PAGE_SIZE} rules the one looked for can be on any page; five pages (5000 rules)
+ * bound the requests.
  */
-const READ_BACK_PAGES = 5;
+const RULE_SEARCH_PAGES = 5;
 
 /**
  * Fewest letters or digits a rule text needs. A rule marks every bank import it matches private,
@@ -163,14 +166,6 @@ interface RuleEntry {
   };
 }
 
-/** The rules of the first page; `complete` is false when more may exist. */
-function readAllRules(
-  client: SevdeskClient,
-  signal: AbortSignal | undefined,
-): Promise<{ readonly entries: readonly RuleEntry[]; readonly complete: boolean }> {
-  return readRulePage(client, 0, signal);
-}
-
 /** The rules of the page at `offset`; `complete` is false when more may follow it. */
 async function readRulePage(
   client: SevdeskClient,
@@ -198,6 +193,7 @@ async function readRulePage(
 
 /** What {@link findRule} found, and whether it read the whole list. */
 interface RuleSearch {
+  /** The first listed rule that matched, in sevDesk's order. */
   readonly entry: RuleEntry | undefined;
   /**
    * False when the pages ran out (or sevDesk sent an empty page) before the end of the list, so a
@@ -208,22 +204,32 @@ interface RuleSearch {
   readonly read: number;
 }
 
-/** Looks for rule `id` page by page, at most {@link READ_BACK_PAGES} pages. */
+/**
+ * Looks for the first rule that `matches`, page by page (explicit `limit` of
+ * {@link RULES_PAGE_SIZE}), at most {@link RULE_SEARCH_PAGES} pages. Stops at the first match, at
+ * the end of the list (by sevDesk's `total`, or a short page when it sends none) and at an empty
+ * page.
+ */
 async function findRule(
   client: SevdeskClient,
-  id: number,
+  matches: (entry: RuleEntry) => boolean,
   signal: AbortSignal | undefined,
 ): Promise<RuleSearch> {
   let read = 0;
-  for (let page = 0; page < READ_BACK_PAGES; page += 1) {
+  for (let page = 0; page < RULE_SEARCH_PAGES; page += 1) {
     const { entries, complete } = await readRulePage(client, read, signal);
     read += entries.length;
-    const entry = entries.find((candidate) => candidate.rule.id === id);
+    const entry = entries.find(matches);
     if (entry !== undefined) return { entry, searchedAll: true, read };
     if (complete) return { entry: undefined, searchedAll: true, read };
     if (entries.length === 0) break;
   }
   return { entry: undefined, searchedAll: false, read };
+}
+
+/** Matches the listed rule with this id. */
+function withId(id: number): (entry: RuleEntry) => boolean {
+  return (entry) => entry.rule.id === id;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -262,17 +268,22 @@ export interface PrivateRuleCreatePlan {
   readonly text: string;
   readonly payload: PrivateRuleCreatePayload;
   readonly estimate: RuleEstimate;
-  /** False when more rules may exist than the duplicate check read (one page of 1000). */
+  /**
+   * False when more rules may exist than the duplicate check read (up to
+   * {@link RULE_SEARCH_PAGES} pages of {@link RULES_PAGE_SIZE}).
+   */
   readonly rulesComplete: boolean;
+  /** Rules the duplicate check read. */
+  readonly rulesRead: number;
 }
 
 /**
  * Checks a new rule and builds its request and the estimate. Reads only: the rules (the duplicate
- * check) and up to {@link ESTIMATE_SCAN_LIMIT} open transactions. Refuses, with a trusted
- * `validation` error before anything is sent: no text, both texts (not recorded: whether sevDesk
- * then needs both or either), a text with fewer than {@link RULE_TEXT_MIN} letters or digits, and a
- * rule with the same text(s) as an existing one (compared without case and extra spaces; the
- * existing rule is named by id).
+ * check, up to {@link RULE_SEARCH_PAGES} pages) and up to {@link ESTIMATE_SCAN_LIMIT} open
+ * transactions. Refuses, with a trusted `validation` error before anything is sent: no text, both
+ * texts (not recorded: whether sevDesk then needs both or either), a text with fewer than
+ * {@link RULE_TEXT_MIN} letters or digits, and a rule with the same text(s) as an existing one
+ * (compared without case and extra spaces; the existing rule is named by id).
  */
 export async function planPrivateRuleCreate(
   client: SevdeskClient,
@@ -289,14 +300,19 @@ export async function planPrivateRuleCreate(
     );
   }
 
-  const { entries, complete } = await readAllRules(client, signal);
   const wanted = {
     counterparty: field === "counterparty" ? textKey(text) : "",
     purpose: field === "purpose" ? textKey(text) : "",
   };
-  const same = entries.find(
+  const {
+    entry: same,
+    searchedAll,
+    read,
+  } = await findRule(
+    client,
     (entry) =>
       entry.keys.counterparty === wanted.counterparty && entry.keys.purpose === wanted.purpose,
+    signal,
   );
   if (same !== undefined) {
     refuse(
@@ -316,7 +332,8 @@ export async function planPrivateRuleCreate(
     text: cleanText(text, RULE_TEXT_MAX) ?? "",
     payload,
     estimate: await estimateMatches(client, field, text, signal),
-    rulesComplete: complete,
+    rulesComplete: searchedAll,
+    rulesRead: read,
   };
 }
 
@@ -385,7 +402,7 @@ export interface PrivateRuleCreated {
 
 /**
  * Creates the rule (one POST, never retried), takes it from sevDesk's answer and confirms it by
- * reading the rules back, page by page up to {@link READ_BACK_PAGES} pages. An answer without an
+ * reading the rules back, page by page up to {@link RULE_SEARCH_PAGES} pages. An answer without an
  * id, a failed read-back and a rule missing from the whole list fail with a message that says the
  * rule was probably created, so the call is not repeated blindly. A list longer than the read-back
  * reads, without the rule in it, is not taken as a failure: the rule is returned as sevDesk
@@ -415,7 +432,7 @@ export async function executePrivateRuleCreate(
   const { id } = created;
   const changed = [ruleObject(id)];
   const { entry, searchedAll, read } = await afterWrite(changed, () =>
-    findRule(client, id, signal),
+    findRule(client, withId(id), signal),
   );
   if (entry === undefined && !searchedAll) {
     return {
@@ -476,8 +493,9 @@ function createdRule(answer: unknown): RuleRecord | undefined {
 // ---------------------------------------------------------------------------------------------
 
 /**
- * Finds the rule to delete in the list (sevDesk has no recorded read by id). Refuses an id that is
- * not listed, saying when the list may be incomplete.
+ * Finds the rule to delete in the list (sevDesk has no recorded read by id), page by page up to
+ * {@link RULE_SEARCH_PAGES} pages. Refuses an id that is not listed, saying when the list may go on
+ * beyond the rules read.
  */
 export async function planPrivateRuleDelete(
   client: SevdeskClient,
@@ -485,12 +503,11 @@ export async function planPrivateRuleDelete(
   signal?: AbortSignal,
 ): Promise<{ readonly rule: PrivateRuleDto }> {
   const id = toSevdeskId(ruleId);
-  const { entries, complete } = await readAllRules(client, signal);
-  const entry = entries.find((candidate) => candidate.rule.id === id);
+  const { entry, searchedAll, read } = await findRule(client, withId(id), signal);
   if (entry === undefined) {
     refuse(
       `There is no private-transaction rule ${String(id)}` +
-        (complete ? "" : ` among the first ${String(RULES_PAGE_SIZE)} rules sevDesk lists`) +
+        (searchedAll ? "" : ` among the first ${String(read)} rules sevDesk lists`) +
         "; find the rules with sevdesk_private_transaction_rules_list. Nothing was sent.",
     );
   }
@@ -498,9 +515,11 @@ export async function planPrivateRuleDelete(
 }
 
 /**
- * Deletes the rule (one DELETE, never retried) and confirms it by reading the rules back: success
- * is the rule missing from the list. A rule still listed, or a failed read, fails with the rule as
- * a completed write: sevDesk accepted the request, and the user must look before trying again.
+ * Deletes the rule (one DELETE, never retried) and confirms it by reading the rules back, page by
+ * page up to {@link RULE_SEARCH_PAGES} pages: success is the rule missing from the rules read (on a
+ * longer list it is not looked for further). A rule still listed, or a failed read, fails with the
+ * rule as a completed write: sevDesk accepted the request, and the user must look before trying
+ * again.
  */
 export async function executePrivateRuleDelete(
   client: SevdeskClient,
@@ -514,8 +533,8 @@ export async function executePrivateRuleDelete(
     ...(signal === undefined ? {} : { signal }),
   });
   const changed = [ruleObject(id)];
-  const { entries } = await afterWrite(changed, () => readAllRules(client, signal));
-  if (entries.some((entry) => entry.rule.id === id)) {
+  const { entry } = await afterWrite(changed, () => findRule(client, withId(id), signal));
+  if (entry !== undefined) {
     throw new SevdeskError({
       kind: "unexpected_response",
       message:

@@ -153,10 +153,10 @@ describe("sevdesk_private_transaction_rule_create", () => {
       { label: "Estimate: bank transaction 5103", value: "2026-11-03, -12.99 EUR, netflix.com" },
     ]);
     expect(plan.preview.warnings).toEqual([
-      "sevDesk applies a rule on its own when it imports bank transactions: a matching " +
-        "transaction is then marked private (Privatentnahme for money out, Privateinlage for " +
-        "money in) and counts as neither business expense nor income. This could not be tested: " +
-        "a trial account imports no bank transactions.",
+      "sevDesk is expected to apply a rule on its own when it imports bank transactions: a " +
+        "matching transaction is then marked private (Privatentnahme for money out, Privateinlage " +
+        "for money in) and counts as neither business expense nor income. This could not be " +
+        "tested: a trial account imports no bank transactions.",
       "The transactions listed are an estimate made here, not sevDesk's matching: open " +
         "(unbooked) transactions whose counterparty (Auftraggeber/Empfänger) contains the text, " +
         "ignoring case. How sevDesk matches a rule (whole text, part of it, case) is not known, " +
@@ -366,6 +366,49 @@ describe("sevdesk_private_transaction_rule_create", () => {
       ruleRow(10_000 + index, { counterpartName: `Regel ${String(index)}` }),
     );
 
+    it("refuses a duplicate found on page 2 of the rules", async () => {
+      const client = new StagedClient(createReads([...others, EXISTING], TRANSACTIONS), [POST]);
+      const error = await prepareWrite(
+        createTool,
+        { counterparty: "Vermieter Huber" },
+        client,
+      ).catch((e: unknown) => e);
+      expect(error).toMatchObject({ kind: "validation" });
+      expect((error as SevdeskError).message).toContain("rule 951 already");
+      expect(client.writes()).toEqual([]);
+    });
+
+    // A recorded single page with a larger total: each read answers the same 1000 rules, so the
+    // check reads five pages and then says that it stopped.
+    it("names the rules read when the list goes on beyond five pages", async () => {
+      const client = new StagedClient(
+        [
+          { path: "/PrivateTransactionRule", response: { body: { objects: others, total: 6000 } } },
+          accountsListRoute(),
+          listRoute("/CheckAccountTransaction", TRANSACTIONS),
+        ],
+        [],
+      );
+      const plan = await prepareWrite(createTool, { counterparty: "Netflix" }, client);
+      expect(plan.preview.warnings).toContain(
+        "sevDesk lists more than 5000 rules: the check for an equal rule read the first 5000 only.",
+      );
+      expect(plan.previewDe.warnings).toContain(
+        "sevDesk listet mehr als 5000 Regeln: Die Prüfung auf eine gleiche Regel las nur die " +
+          "ersten 5000.",
+      );
+      const offsets = client.before.calls
+        .filter((call) => call.path === "/PrivateTransactionRule")
+        .map((call) => call.query["offset"]);
+      expect(offsets).toEqual([0, 1000, 2000, 3000, 4000]);
+    });
+
+    it("says nothing about the rules read when the list ends", async () => {
+      const client = new StagedClient(createReads(others, TRANSACTIONS), []);
+      const plan = await prepareWrite(createTool, { counterparty: "Netflix" }, client);
+      expect(plan.preview.warnings.join(" ")).not.toContain("rules:");
+    });
+
     /** The offsets of the rule reads after the POST. */
     function readBackOffsets(client: StagedClient): unknown[] {
       return client.after.calls
@@ -549,8 +592,8 @@ describe("sevdesk_private_transaction_rule_delete", () => {
       { label: "Created", value: "2026-11-16" },
     ]);
     expect(plan.preview.warnings).toEqual([
-      "sevDesk no longer marks imported bank transactions private by this rule. Where rules " +
-        "act, on bank imports, could not be tested on a trial account.",
+      "sevDesk is no longer expected to mark imported bank transactions private by this rule. " +
+        "Where rules act, on bank imports, could not be tested on a trial account.",
       "Transactions already marked private stay private: when measured, deleting a rule changed " +
         "no transaction. sevdesk_transaction_reset sets one back to unbooked.",
       "Undo: create the rule again with sevdesk_private_transaction_rule_create; it gets a new id.",

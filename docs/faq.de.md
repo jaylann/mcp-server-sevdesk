@@ -192,8 +192,8 @@ Umsatz von Hand ein und kann ihn im selben Schritt einem Dokument zuordnen. Beid
 ### Kann es wiederkehrende private Zahlungen automatisch markieren?
 
 Über die Regeln für private Umsätze in sevDesk: Eine Regel nennt einen Text zum
-Auftraggeber/Empfänger oder zum Verwendungszweck, und sevDesk markiert passende Umsätze als privat,
-wenn es sie von der Bank importiert. Der Server listet Regeln, legt sie an und löscht sie; Anlegen
+Auftraggeber/Empfänger oder zum Verwendungszweck, und sevDesk soll passende Umsätze als privat
+markieren, wenn es sie von der Bank importiert. Der Server listet Regeln, legt sie an und löscht sie; Anlegen
 und Löschen sind `commit`-Werkzeuge, die du bestätigst. Wo Regeln wirken, ließ sich nicht testen,
 weil ein Testkonto keine Kontoumsätze importiert, und dort änderten sie keinen vorhandenen Umsatz.
 Die Liste offener Umsätze in der Vorschau, die die Regel vermutlich meint, ist eine Schätzung des
