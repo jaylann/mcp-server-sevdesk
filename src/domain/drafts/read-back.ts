@@ -41,8 +41,11 @@ export interface ReadBackExpectation {
    * finalize (credit notes: the finalize tool refuses them); defaults to "sevDesk assigns it".
    */
   readonly numberless?: string | undefined;
-  /** Expected totals when this call set the positions; `undefined` when they were kept. */
-  readonly expected?: Amounts | undefined;
+  /**
+   * Expected totals when this call set the positions (only the gross total is compared);
+   * `undefined` when they were kept.
+   */
+  readonly expected?: Amounts | Pick<Amounts, "gross"> | undefined;
 }
 
 /** Placeholders sevDesk number ranges use, e.g. `%YYYY%`. */

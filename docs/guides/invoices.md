@@ -97,14 +97,16 @@ refused before anything is saved. An update that does not name a cost centre kee
 > Give Musterfirma 3 % off the whole invoice.
 
 Besides a discount per position, a draft can carry one discount on the whole document (Rabatt auf
-den Gesamtbetrag): a percentage of the net total or a fixed net amount in the document's currency,
-with the text printed next to it ("Rabatt" unless you name another). The preview shows it and the
-total it leads to; the result shows what sevDesk deducted. Offers, order confirmations and credit
-notes take the same discount, and an e-invoice carries it as an allowance on the whole invoice.
-The server sets one only on positions with a single tax rate, and on gross prices only as a
-percentage: sevDesk spreads a discount over several tax rates and takes a fixed amount off the
-gross total, which the server does not compute yet, so the tools refuse those cases instead of
-guessing the total. Changing the draft later keeps the discount unless you replace it or remove
+den Gesamtbetrag): a percentage of the net total or a fixed amount in the document's currency, with
+the text printed next to it ("Rabatt" unless you name another). The fixed amount is net on net
+prices and gross on gross prices. The preview shows it and the total it leads to; the result shows
+what sevDesk deducted. Offers, order confirmations and credit notes take the same discount, and an
+e-invoice carries it as an allowance on the whole invoice. Over several tax rates sevDesk spreads
+the discount by their shares of the net total, and the preview computes it the same way. A fixed
+amount on gross prices comes off the gross total exactly; how sevDesk splits it into net and tax
+the server does not compute, so the preview shows the gross total only and says so. The total is
+also left to sevDesk when a new discount goes on stored positions with several tax rates.
+Changing the draft later keeps the discount unless you replace it or remove
 it. A document with several discounts (sevDesk's totals then count only one of them) is left to
 the sevDesk web app, and the get tools and the approval warn about it.
 
@@ -467,7 +469,7 @@ also warns if the tax rule is not the usual one for the customer.
 - A **discount on the whole document** (Rabatt) on the template stays as it is; the change never
   sets one. sevDesk keeps it when every position is replaced, so it applies to the new positions.
   With new positions the total per invoice counts it where the server computes it (one discount,
-  one tax rate, a fixed amount only on net prices), else sevDesk computes the total.
+  not a fixed amount on gross prices), else sevDesk computes the total.
 
 After saving, the assistant reads the template back and names every way sevDesk stored something
 else, including a position whose change sevDesk ignored, a switch that did not take and a discount

@@ -225,7 +225,8 @@ describe("sevdesk_invoice_get (community: recorded Invoice/InvoicePos shapes, fa
     expect(result.data.discount).toEqual({
       items: [
         { id: 9001, kind: "percent", value: "10", basis: "net", text: "Treuerabatt" },
-        { id: 9002, kind: "amount", value: "5.5", basis: "gross", surcharge: true },
+        // A fixed amount follows the price mode (net here), not isNet "0" (D-116, 2026-11-18).
+        { id: 9002, kind: "amount", value: "5.5", basis: "net", surcharge: true },
       ],
       net: { amount: "-14.90", currency: "EUR" },
       gross: { amount: "-17.73", currency: "EUR" },

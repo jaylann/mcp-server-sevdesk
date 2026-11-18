@@ -137,6 +137,8 @@ interface AccountSettings {
   readonly discountsAsRecorded?: boolean;
   /** Synthetic (not recorded): saving a gross document (showNet false) is refused. */
   readonly refuseGrossDocuments?: boolean;
+  /** Synthetic (not recorded): saving a document with a 0 % position is refused. */
+  readonly refuseZeroRate?: boolean;
   /** Synthetic (not recorded): createInvoiceFromOrder is refused. */
   readonly refuseInvoiceFromOrder?: boolean;
   /** Synthetic (not recorded): createContractNoteFromOrder and createPackingListFromOrder refuse. */
@@ -329,6 +331,10 @@ function gapsAccount(settings: AccountSettings = {}) {
     if (settings.refuseGrossDocuments === true && header["showNet"] === false) {
       refuse(422, "Gross documents are not allowed");
     }
+    const savedPositions = (body[`${key}PosSave`] as Rec[] | null | undefined) ?? [];
+    if (settings.refuseZeroRate === true && savedPositions.some((row) => row["taxRate"] === 0)) {
+      refuse(422, "Tax rate 0 is not allowed for this tax rule");
+    }
     let doc: Rec;
     if (header["id"] !== undefined) {
       const found = docs.get(`${kind}/${idOf(header["id"])}`);
@@ -381,7 +387,7 @@ function gapsAccount(settings: AccountSettings = {}) {
       const index = positions.findIndex((row) => row["id"] === String(item["id"]));
       if (index >= 0) positions.splice(index, 1);
     }
-    for (const position of (body[`${key}PosSave`] as Rec[] | null | undefined) ?? []) {
+    for (const position of savedPositions) {
       positions.push({ ...position, id: String(nextId++), [key]: ref(kind, doc["id"]) });
     }
     for (const item of (discountSave as Rec[] | null | undefined) ?? []) {
@@ -389,7 +395,7 @@ function gapsAccount(settings: AccountSettings = {}) {
         id: String(nextId++),
         objectName: "Discounts",
         object: ref(kind, doc["id"]),
-        discount: "1",
+        discount: item["discount"] === false ? "0" : "1",
         text: item["text"],
         percentage: item["percentage"] === true ? "1" : "0",
         value: String(item["value"]),
@@ -1443,6 +1449,91 @@ describe("gaps-documents probes for the open discount and template questions (#1
       .map((call) => (call.body as Rec | undefined)?.["invoice"] as Rec | undefined)
       .find((item) => item?.["currency"] === "CHF");
     expect(header).toBeDefined();
+    expect(left(docs, "Invoice")).toEqual([]);
+  });
+
+  it("reads uneven splits over several tax rates, gross splits, isNet false and surcharges, deleting every draft (#155)", async () => {
+    const { client, docs } = gapsAccount({ discountsAsRecorded: true });
+    const { report, finding } = await run(client, { only: ["write-discount-mixed-tax-uneven"] });
+    expect(report.results[0]?.status).toBe("observed");
+    const text = finding("write-discount-mixed-tax-uneven");
+    expect(text).toMatch(/^19 of 19 cases saved\./);
+    expect(text).toMatch(
+      /net 70\.00 at 19 % \+ 30\.00 at 7 %, 10 % \(invoice \d+, showNet stored true\): sumNet 90\.00, sumTax 13\.86, sumGross 103\.86, sumDiscounts -10\.00, sumDiscountNet -10\.00, sumDiscountGross -11\.54; other sums: none; getDiscounts 1 row\(s\) \(id \d+: discount 1, percentage 1, value 10, isNet 1, object \d+\); positions: 19 %: sumGross 83\.30, sumNet 70\.00, sumTax 13\.30; 7 %: sumGross 32\.10, sumNet 30\.00, sumTax 2\.10\./,
+    );
+    expect(text).toMatch(/net 70\.00 at 19 % \+ 30\.00 at 7 %, fixed 9\.99 \(invoice \d+/);
+    expect(text).toMatch(
+      /net 33\.33 at 19 % \+ 66\.67 at 7 % \+ 0\.01 at 0 %, fixed 10\.00 \(invoice \d+.*positions: 19 %: .*; 7 %: .*; 0 %: sumGross 0\.01/,
+    );
+    expect(text).toMatch(/net 33\.33 at 19 % \+ 66\.67 at 7 % \+ 0\.01 at 0 %, 3 % \(invoice \d+/);
+    expect(text).toMatch(
+      /gross 119\.00 at 19 % \+ 107\.00 at 7 %, fixed 10\.00 \(invoice \d+, showNet stored false\)/,
+    );
+    expect(text).toMatch(/gross 83\.30 at 19 % \+ 32\.10 at 7 %, fixed 9\.99 \(invoice \d+/);
+    expect(text).toMatch(
+      /net 100\.00 at 19 %, fixed 10\.00, isNet false sent \(invoice \d+.*getDiscounts 1 row\(s\) \(id \d+: discount 1, percentage 0, value 10, isNet 0/,
+    );
+    expect(text).toMatch(
+      /net 100\.00 at 19 %, surcharge 10 % \(invoice \d+.*getDiscounts 1 row\(s\) \(id \d+: discount 0, percentage 1/,
+    );
+    expect(text).toMatch(/net 100\.00 at 19 %, surcharge fixed 10\.00 \(invoice \d+/);
+    expect(text).toMatch(/Cleanup: Invoice \d+ deleted(; Invoice \d+ deleted){18}\.$/);
+    expect(left(docs, "Invoice")).toEqual([]);
+    // Positions go out in the order of each case, with their rates; isNet and discount false only
+    // where a case names them.
+    const saves = client.writes().filter((call) => call.path === "/Invoice/Factory/saveInvoice");
+    expect(saves).toHaveLength(19);
+    const sentPositions = (index: number) =>
+      ((saves[index]?.body as Rec)["invoicePosSave"] as Rec[]).map((row) => [
+        row["price"],
+        row["taxRate"],
+      ]);
+    expect(sentPositions(2)).toEqual([
+      [33.33, 19],
+      [66.67, 7],
+      [0.01, 0],
+    ]);
+    expect(sentPositions(4)).toEqual([
+      [26.92, 7],
+      [76.54, 19],
+    ]);
+    const sent = saves.map((call) => ((call.body as Rec)["discountSave"] as Rec[])[0] ?? {});
+    expect(sent.filter((item) => "isNet" in item)).toEqual([
+      expect.objectContaining({ isNet: false, percentage: false, value: 10 }),
+    ]);
+    expect(sent.filter((item) => item["discount"] === false)).toHaveLength(2);
+    expect(sent[1]).toMatchObject({ discount: true, percentage: false, value: 9.99 });
+    const headers = saves.map((call) => (call.body as Rec)["invoice"] as Rec);
+    expect(headers.filter((header) => header["showNet"] === false)).toHaveLength(3);
+    expect(renderReport(report)).not.toContain(`${TAG} discount`);
+  });
+
+  it("saves the three-rate cases without the 0 % position when sevDesk refuses it, and still cleans up", async () => {
+    const { client, docs } = gapsAccount({ discountsAsRecorded: true, refuseZeroRate: true });
+    const { report, finding } = await run(client, { only: ["write-discount-mixed-tax-uneven"] });
+    expect(report.results[0]?.status).toBe("observed");
+    const text = finding("write-discount-mixed-tax-uneven");
+    expect(text).toMatch(/^19 of 19 cases saved\./);
+    expect(text).toMatch(
+      /net 33\.33 at 19 % \+ 66\.67 at 7 % \+ 0\.01 at 0 %, fixed 10\.00: refused \(422: Tax rate 0 is not allowed for this tax rule\); instead net 33\.33 at 19 % \+ 66\.67 at 7 %, fixed 10\.00 \(invoice \d+/,
+    );
+    expect(text).toMatch(
+      /net 76\.24 at 0 % \+ 62\.21 at 7 % \+ 32\.45 at 19 %, fixed 9\.99: refused .*; instead net 62\.21 at 7 % \+ 32\.45 at 19 %, fixed 9\.99 \(invoice \d+/,
+    );
+    expect(text).toMatch(/Cleanup: Invoice \d+ deleted(; Invoice \d+ deleted){18}\.$/);
+    expect(left(docs, "Invoice")).toEqual([]);
+    // Seven refused saves (two plus five three-rate cases), each followed by one fallback.
+    const saves = client.writes().filter((call) => call.path === "/Invoice/Factory/saveInvoice");
+    expect(saves).toHaveLength(26);
+  });
+
+  it("is inconclusive and leaves nothing when sevDesk refuses every draft", async () => {
+    const { client, docs } = gapsAccount({ discountsAsRecorded: true, discountAsObject: true });
+    const { report, finding } = await run(client, { only: ["write-discount-mixed-tax-uneven"] });
+    expect(report.results[0]?.status).toBe("inconclusive");
+    expect(finding("write-discount-mixed-tax-uneven")).toMatch(
+      /^No discounted draft was saved\. net 70\.00 at 19 % \+ 30\.00 at 7 %, 10 %: refused \(400: discountSave expected an object\)/,
+    );
     expect(left(docs, "Invoice")).toEqual([]);
   });
 

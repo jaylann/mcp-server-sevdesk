@@ -20,24 +20,39 @@
  * newer one; that is why a draft with several discounts is never changed here.
  *
  * Recorded on 2026-11-18 (probes `write-discount-net-gross`, `write-discount-mixed-tax`,
- * `write-discount-foreign-currency`, `write-einvoice-discount`; D-116):
- * - on gross prices (100.00 net entered as 119.00) 10 % gives the same totals as on net prices,
- *   but a fixed 10.00 comes off the gross total (gross 109.00, net 91.60, tax 17.40), whatever
- *   `isNet` says;
- * - with 100.00 at 19 % and 100.00 at 7 %, sevDesk splits the discount over the rates by their
- *   share of the net total (10 %: tax 26.00 → 23.40; a fixed 10.00: tax → 24.70);
+ * `write-discount-mixed-tax-uneven`, `write-discount-foreign-currency`, `write-einvoice-discount`;
+ * D-116):
+ * - a percentage takes that share of the net total, on net and on gross prices alike;
+ * - a fixed amount is net on net prices and gross on gross prices, whatever `isNet` says; on gross
+ *   prices it comes off the gross total exactly (119.00 less 10.00: gross 109.00, net 91.60);
+ * - over several tax rates sevDesk splits the deduction by the rates' shares of the net total;
  * - a fixed 10.00 on a CHF document is 10.00 CHF;
- * - an e-invoice (CII, XRechnung 3.0) carries the discount as one document-level allowance.
+ * - an e-invoice (CII, XRechnung 3.0) carries the discount as one document-level allowance;
+ * - a surcharge (`discount` "0") adds instead of deducting (one rate, net prices).
  *
- * So a new discount is accepted on e-invoices, in other currencies than EUR and as a percentage on
- * gross prices, and refused with a trusted sentence only where this server does not compute the
- * totals: a fixed amount on gross prices, positions with several tax rates, and changing a draft
- * that has several discounts. A stored discount the call keeps is never refused; when the totals
- * cannot be computed with it, the preview says that sevDesk computes them.
+ * Totals (net or percentage, any number of tax rates). The net deduction D is the fixed amount, or
+ * the percentage of the net total N rounded half-up to cents. Each tax rate i (net N_i, rate r_i)
+ * gives up d_i = D × N_i / N rounded half-up to cents; the cent this can leave over (D − Σ d_i)
+ * goes to the rate with the largest net. Its tax is (N_i − d_i) × r_i rounded to cents. The
+ * document then has net N − D, tax Σ of the rates' taxes, gross their sum. Of the 48 roundings
+ * the probe set apart (share rounded or exact; tax rounded on the total, on the deduction or per
+ * rate; the leftover cent on the largest, first, last, highest-rate or lowest-rate position; a
+ * percentage off the total or off each rate), only this one gives all 15 recorded splits (two and
+ * three rates, 0 % included). On one rate it is N − D and (N − D) × r. No recorded share or tax
+ * lands on a half cent, so half-up at a tie (as for positions) is assumed: 49.50 × 19 % = 9.405
+ * gives 9.41 here.
  *
- * Totals (single rate r): the discount's net D is the percentage of the net total N (rounded to
- * cents) or the fixed amount, in the document's currency; its tax is D × r (rounded); net N − D,
- * tax T − D × r, gross their sum. For the recorded case: 100.00 − 10.00, 19.00 − 1.90, 107.10.
+ * Not computed here, with a trusted preview warning instead of a refusal:
+ * - how sevDesk splits a fixed amount on gross prices into net and tax: three rules fit the three
+ *   recorded cases and disagree in about a fifth of others. The gross total is exact (the total
+ *   less the amount), so the preview shows it and the read-back compares it;
+ * - a new or kept discount on stored positions with several rates, whose net per rate the stored
+ *   sums do not show;
+ * - surcharges, recorded on one rate only (the tools never send one; a kept one stays sevDesk's).
+ * Changing a draft that has several discounts is refused (`planDiscountChange`).
+ *
+ * The recorded cases have one position per tax rate. Several positions at one rate are summed into
+ * that rate first (assumed, not recorded; the read-back compares the gross total).
  */
 import { z } from "zod";
 
@@ -58,14 +73,17 @@ import {
   type Decimal,
   decimal,
   format,
+  isZero,
   multiply,
   round,
   subtract,
 } from "../money.js";
 import {
   type Amounts,
+  divideRounded,
   type DraftPosition,
   expectedTotals,
+  positionAmounts,
   type PriceMode,
   wireNumber,
 } from "./positions.js";
@@ -87,8 +105,8 @@ export const discountInput = z
     amount: amountInput({ places: 2, allowZero: false })
       .optional()
       .describe(
-        'Fixed Rabatt, net, in the document\'s currency, e.g. "50.00"; at most the net total. ' +
-          "Net prices only.",
+        'Fixed Rabatt in the document\'s currency, e.g. "50.00": net on net prices, gross on ' +
+          "gross prices (priceMode gross); at most that total.",
       ),
     text: z
       .string()
@@ -100,7 +118,7 @@ export const discountInput = z
   })
   .describe(
     "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. " +
-      "Positions with one tax rate only.",
+      "sevDesk splits it over the tax rates by their net shares.",
   );
 
 export type DiscountInput = z.output<typeof discountInput>;
@@ -114,9 +132,12 @@ export const discountUpdateInput = discountInput
       "the stored one; null removes it; leave out to keep it.",
   );
 
-/** A document discount as this server writes it: one deduction, net. */
+/** A document discount as this server writes it: one deduction. */
 export interface DraftDiscount {
-  /** A percentage of the net total; otherwise a fixed net amount in the document's currency. */
+  /**
+   * A percentage of the net total; otherwise a fixed amount in the document's currency, net on
+   * net prices and gross on gross prices.
+   */
   readonly percentage: boolean;
   /** Exact decimal, e.g. "3" or "50". */
   readonly value: string;
@@ -189,16 +210,21 @@ export function createDiscountBody(discount: DraftDiscount | undefined): Discoun
 /** The stored discount as far as this server computes with it. */
 export type DiscountState =
   | { readonly kind: "none" }
-  /** One net deduction: totals can include it. */
+  /** One deduction: totals can include it. */
   | { readonly kind: "one"; readonly discount: DraftDiscount }
-  /** Several rows, a surcharge or one stored as gross (`isNet` 0): sevDesk's totals only. */
+  /**
+   * Several rows, a surcharge, or a percentage stored with `isNet` 0 (not recorded): sevDesk's
+   * totals only. A fixed amount's `isNet` does not matter (recorded 2026-11-18, D-116).
+   */
   | { readonly kind: "other" };
 
 /** What the stored rows mean for totals (see {@link DiscountState}). */
 export function storedDiscountState(rows: readonly DiscountRow[]): DiscountState {
   const [row, ...rest] = rows;
   if (row === undefined) return { kind: "none" };
-  if (rest.length > 0 || row.surcharge || row.isNet === false) return { kind: "other" };
+  if (rest.length > 0 || row.surcharge || (row.percentage && row.isNet === false)) {
+    return { kind: "other" };
+  }
   return {
     kind: "one",
     discount: { percentage: row.percentage, value: row.value, text: row.text ?? "" },
@@ -271,13 +297,6 @@ export function planDiscountChange(
 // What is computed here, and totals
 // ---------------------------------------------------------------------------------------------
 
-/** Where a discount would apply: the document's price mode and tax rates. */
-interface DiscountContext {
-  readonly mode: PriceMode;
-  /** Tax rates of the positions in the total (optional order positions left out). */
-  readonly rates: readonly string[];
-}
-
 /** The distinct rates, compared as decimals ("19" and "19.00" are one rate). */
 function distinctRates(rates: readonly string[]): string[] {
   const distinct: string[] = [];
@@ -301,37 +320,39 @@ function storedRates(positions: readonly StoredPositionRate[]): string[] {
     .filter((rate): rate is string => rate !== undefined);
 }
 
-/** The tax rates of new positions that count toward the total. */
-function positionRates(positions: readonly DraftPosition[]): string[] {
-  return positions.filter((position) => position.optional !== true).map((p) => p.taxRate);
+/** One tax rate of a total: the rate and the undiscounted net and gross of its positions. */
+export interface RateTotal {
+  /** Percent, e.g. "19". */
+  readonly rate: string;
+  readonly net: Decimal;
+  readonly gross: Decimal;
 }
 
 /**
- * Why this server does not compute the totals of a discount on this document (trusted text), or
- * `undefined` when it does. What sevDesk does in these cases is recorded (see the module comment);
- * the totals are not computed here yet. E-invoices and other currencies need no exception: the
- * e-invoice carries the discount, and a fixed amount is in the document's currency.
+ * The rate totals of new positions (optional order positions left out), one per distinct rate in
+ * the order the rates first appear; each position's amounts as `positionAmounts` computes them.
  */
-function notComputed(discount: DraftDiscount, context: DiscountContext): string | undefined {
-  if (context.mode === "gross" && !discount.percentage) {
-    return (
-      "On gross prices sevDesk takes a fixed discount off the gross total, which this tool does " +
-      "not compute; give the discount in percent, or use net prices (priceMode net)."
-    );
+export function rateTotals(positions: readonly DraftPosition[], mode: PriceMode): RateTotal[] {
+  const totals: RateTotal[] = [];
+  for (const position of positions) {
+    if (position.optional === true) continue;
+    const amounts = positionAmounts(position, mode);
+    const index = totals.findIndex((item) => compare(item.rate, position.taxRate) === 0);
+    const known = totals[index];
+    totals[index === -1 ? totals.length : index] =
+      known === undefined
+        ? { rate: position.taxRate, net: decimal(amounts.net), gross: decimal(amounts.gross) }
+        : {
+            rate: known.rate,
+            net: add(known.net, amounts.net),
+            gross: add(known.gross, amounts.gross),
+          };
   }
-  if (distinctRates(context.rates).length > 1) {
-    return (
-      "sevDesk splits a discount on the whole document over several tax rates, which this tool " +
-      "does not compute; it sets one only on positions with one tax rate."
-    );
-  }
-  return undefined;
+  return totals;
 }
 
-/** Throws a `validation` error when this server does not compute a new discount's totals. */
-function checkNewDiscount(discount: DraftDiscount, context: DiscountContext): void {
-  const reason = notComputed(discount, context);
-  if (reason !== undefined) throw refusal(reason);
+function sumOf(values: readonly Decimal[]): Decimal {
+  return values.reduce<Decimal>((sum, value) => add(sum, value), decimal(0));
 }
 
 function cents(net: Decimal, tax: Decimal): Amounts {
@@ -342,6 +363,17 @@ function cents(net: Decimal, tax: Decimal): Amounts {
   };
 }
 
+/** `value × percent / 100`, exactly. */
+function multiplyPercent(value: Decimal, percent: string): Decimal {
+  const product = multiply(value, percent);
+  return decimal({ units: product.units, scale: product.scale + 2 });
+}
+
+/** A fixed amount on gross prices: a gross amount, split into net and tax by sevDesk. */
+function isGrossAmount(discount: DraftDiscount, mode: PriceMode): boolean {
+  return mode === "gross" && !discount.percentage;
+}
+
 /** The net the discount deducts from the net total `net`: a percentage rounded to cents. */
 function deductionOf(net: Decimal, discount: DraftDiscount): Decimal {
   return discount.percentage
@@ -350,54 +382,141 @@ function deductionOf(net: Decimal, discount: DraftDiscount): Decimal {
 }
 
 /**
- * Why the discount cannot be taken off `base` (trusted text): a net total that is not positive, or
- * a deduction above it. `undefined` when it can.
+ * Why the discount cannot be taken off a total of `net` and `gross` (trusted text): a total that
+ * is not positive, or a deduction above it; the gross total for a fixed amount on gross prices,
+ * the net total otherwise. `undefined` when it can.
  */
-function totalProblem(base: Amounts, discount: DraftDiscount): string | undefined {
-  const net = decimal(base.net);
-  if (compare(net, 0) <= 0) {
-    return `The net total is ${base.net}; a discount on the whole document needs a positive total.`;
+function totalProblem(
+  total: { readonly net: Decimal; readonly gross: Decimal },
+  mode: PriceMode,
+  discount: DraftDiscount,
+): string | undefined {
+  const gross = isGrossAmount(discount, mode);
+  const label = gross ? "gross" : "net";
+  const basis = gross ? total.gross : total.net;
+  const shown = format(basis, CENT_PLACES);
+  if (compare(basis, 0) <= 0) {
+    return `The ${label} total is ${shown}; a discount on the whole document needs a positive total.`;
   }
-  const deduction = deductionOf(net, discount);
-  if (compare(deduction, net) > 0) {
-    return `The discount of ${format(deduction, CENT_PLACES)} is more than the net total of ${base.net}.`;
+  const deduction = gross ? decimal(discount.value) : deductionOf(basis, discount);
+  if (compare(deduction, basis) > 0) {
+    return `The discount of ${format(deduction, CENT_PLACES)} is more than the ${label} total of ${shown}.`;
   }
   return undefined;
 }
 
+/** The net and gross of all rates together. */
+function totalOf(rates: readonly RateTotal[]): { readonly net: Decimal; readonly gross: Decimal } {
+  return {
+    net: sumOf(rates.map((item) => item.net)),
+    gross: sumOf(rates.map((item) => item.gross)),
+  };
+}
+
 /**
- * `base` (the undiscounted totals of positions that all carry `rate`) less the discount. Throws a
- * `validation` error when the net total is not positive or a fixed amount exceeds it.
+ * What each rate gives up of the net `deduction` (recorded 2026-11-18, see the module comment): its
+ * share by net, rounded half-up to cents, and the cent left over on the rate with the largest net
+ * (the first of equal ones).
  */
-export function discountedTotals(base: Amounts, rate: string, discount: DraftDiscount): Amounts {
-  const problem = totalProblem(base, discount);
-  if (problem !== undefined) throw refusal(problem);
-  const net = decimal(base.net);
-  const deduction = deductionOf(net, discount);
-  const deductionTax = round(multiplyPercent(deduction, rate), CENT_PLACES);
-  return cents(subtract(net, deduction), subtract(base.tax, deductionTax));
+function splitDeduction(
+  rates: readonly RateTotal[],
+  deduction: Decimal,
+): { readonly item: RateTotal; readonly share: Decimal }[] {
+  const net = totalOf(rates).net;
+  const split = rates.map((item) => ({
+    item,
+    share: divideRounded(multiply(deduction, item.net), net, CENT_PLACES),
+  }));
+  const rest = subtract(deduction, sumOf(split.map((part) => part.share)));
+  if (isZero(rest)) return split;
+  const largest = split.reduce(
+    (best, part, index) => (compare(part.item.net, split[best]?.item.net ?? 0) > 0 ? index : best),
+    0,
+  );
+  return split.map((part, index) =>
+    index === largest ? { item: part.item, share: add(part.share, rest) } : part,
+  );
 }
 
-/** `value × percent / 100`, exactly. */
-function multiplyPercent(value: Decimal, percent: string): Decimal {
-  const product = multiply(value, percent);
-  return decimal({ units: product.units, scale: product.scale + 2 });
+/** A total less the discount: all three amounts, or only the gross for a fixed gross amount. */
+export type DiscountedTotals =
+  | { readonly kind: "computed"; readonly amounts: Amounts }
+  /** A fixed amount on gross prices: the gross total is exact, net and tax are sevDesk's. */
+  | { readonly kind: "grossOnly"; readonly gross: string };
+
+/**
+ * `rates` (the undiscounted totals per tax rate) less the discount, by the recorded rule (see the
+ * module comment). Throws a `validation` error when the total is not positive or a fixed amount
+ * exceeds it.
+ */
+export function discountedTotals(
+  rates: readonly RateTotal[],
+  mode: PriceMode,
+  discount: DraftDiscount,
+): DiscountedTotals {
+  const total = totalOf(rates);
+  const problem = totalProblem(total, mode, discount);
+  if (problem !== undefined) throw refusal(problem);
+  if (isGrossAmount(discount, mode)) {
+    return { kind: "grossOnly", gross: format(subtract(total.gross, discount.value), CENT_PLACES) };
+  }
+  const deduction = deductionOf(total.net, discount);
+  const tax = sumOf(
+    splitDeduction(rates, deduction).map(({ item, share }) =>
+      round(multiplyPercent(subtract(item.net, share), item.rate), CENT_PLACES),
+    ),
+  );
+  return { kind: "computed", amounts: cents(subtract(total.net, deduction), tax) };
+}
+
+/** Why net and tax of a fixed amount on gross prices are left to sevDesk (trusted text). */
+function grossSplitText(gross: string): string {
+  return (
+    `On gross prices a fixed discount comes off the gross total (expected gross ${gross}); ` +
+    "sevDesk splits it into net and tax in a way this server does not compute."
+  );
+}
+
+/** The totals a create preview shows. */
+export interface CreateTotals {
+  /** Net, tax and gross, when this server computes all three. */
+  readonly expected: Amounts | undefined;
+  /** The gross total: always known (a fixed amount on gross prices comes off it exactly). */
+  readonly gross: string;
+  /** Trusted preview warning when net and tax are left to sevDesk. */
+  readonly warning: string | undefined;
+}
+
+/** What a draft's read-back compares: the gross total, with net and tax when computed here. */
+export type ExpectedTotals = Amounts | { readonly gross: string };
+
+/** The expectation a create keeps for its read-back. */
+export function expectedOfCreate(totals: CreateTotals): ExpectedTotals {
+  return totals.expected ?? { gross: totals.gross };
 }
 
 /**
- * The totals of a new draft: its positions, less the discount when there is one. Throws for a
- * discount outside what is recorded (see {@link checkNewDiscount}).
+ * The totals of a new draft: its positions, less the discount when there is one. Throws a
+ * `validation` error for a discount the total cannot take (see {@link discountedTotals}).
  */
 export function createTotals(
   positions: readonly DraftPosition[],
   mode: PriceMode,
   discount: DraftDiscount | undefined,
-): Amounts {
-  const base = expectedTotals(positions, mode);
-  if (discount === undefined) return base;
-  const rates = positionRates(positions);
-  checkNewDiscount(discount, { mode, rates });
-  return discountedTotals(base, distinctRates(rates)[0] ?? "0", discount);
+): CreateTotals {
+  if (discount === undefined) {
+    const base = expectedTotals(positions, mode);
+    return { expected: base, gross: base.gross, warning: undefined };
+  }
+  const result = discountedTotals(rateTotals(positions, mode), mode, discount);
+  if (result.kind === "computed") {
+    return { expected: result.amounts, gross: result.amounts.gross, warning: undefined };
+  }
+  return {
+    expected: undefined,
+    gross: result.gross,
+    warning: `${grossSplitText(result.gross)} Check net and tax in the result before finalizing.`,
+  };
 }
 
 /** The stored document a draft update starts from (sums as sevDesk sent them). */
@@ -430,10 +549,37 @@ export interface UpdateTotals {
 }
 
 /**
+ * The rate totals an update's discount is split over: those of the new positions, or for stored
+ * positions with one rate the undiscounted stored sums (`base`). Otherwise why they are not known
+ * (trusted text): the stored sums do not show the net per rate, and without a rate the tax of the
+ * rest is unknown (taking 0 % would show a total without tax).
+ */
+function updateRates(
+  positions: readonly DraftPosition[] | undefined,
+  storedPositions: readonly StoredPositionRate[],
+  base: Amounts,
+  mode: PriceMode,
+): RateTotal[] | string {
+  if (positions !== undefined) return rateTotals(positions, mode);
+  const [rate, ...others] = distinctRates(storedRates(storedPositions));
+  if (rate === undefined) {
+    return "sevDesk sent no tax rate for the stored positions, which the tax of the new total needs.";
+  }
+  if (others.length > 0) {
+    return (
+      "The stored positions have several tax rates, and the stored sums do not show the net of " +
+      "each, which the split of the discount needs."
+    );
+  }
+  return [{ rate, net: decimal(base.net), gross: decimal(base.gross) }];
+}
+
+/**
  * The totals of an update with its discount. Unchanged when the call sets neither positions nor
- * the discount. A new discount must be one this server computes (throws otherwise); a kept one
- * that is not, or that is not one discount on the stored price mode, leaves the computing to
- * sevDesk with a warning.
+ * the discount. A new discount the total cannot take is refused (`validation`); a kept one is
+ * never refused. Where this server does not compute the total (a fixed amount on gross prices,
+ * stored positions with several rates, discounts it does not know), sevDesk computes it and the
+ * preview says so.
  */
 export function updateTotals(input: {
   readonly change: DiscountChange;
@@ -445,11 +591,6 @@ export function updateTotals(input: {
   readonly stored: StoredSums;
 }): UpdateTotals {
   const { change, positions, mode } = input;
-  const rates =
-    positions === undefined ? storedRates(input.storedPositions) : positionRates(positions);
-  if (change.planned !== undefined && change.planned !== null) {
-    checkNewDiscount(change.planned, { mode, rates });
-  }
   if (positions === undefined && !change.changed) {
     return { expected: undefined, changes: false, warning: undefined };
   }
@@ -472,26 +613,31 @@ export function updateTotals(input: {
     case "none":
       return { expected: base, changes: true, warning: undefined };
     case "one": {
-      // A new discount passed `checkNewDiscount` above and is refused by `discountedTotals` when
-      // it does not fit the total. A kept one is never refused: the call does not touch it.
-      if (change.planned === undefined) {
-        const reason =
-          notComputed(after.discount, { mode, rates }) ?? totalProblem(base, after.discount);
-        if (reason !== undefined) {
-          return uncomputed(`The draft keeps its discount on the whole document. ${reason}`);
-        }
+      const kept = change.planned === undefined;
+      const prefix = kept ? "The draft keeps its discount on the whole document. " : "";
+      // A new discount that does not fit the total is refused; a kept one is not: the call does
+      // not touch it.
+      const problem = totalProblem(
+        { net: decimal(base.net), gross: decimal(base.gross) },
+        mode,
+        after.discount,
+      );
+      if (problem !== undefined) {
+        if (!kept) throw refusal(problem);
+        return uncomputed(`${prefix}${problem}`);
       }
-      return {
-        expected: discountedTotals(base, distinctRates(rates)[0] ?? "0", after.discount),
-        changes: true,
-        warning: undefined,
-      };
+      const rates = updateRates(positions, input.storedPositions, base, mode);
+      if (typeof rates === "string") return uncomputed(`${prefix}${rates}`);
+      const result = discountedTotals(rates, mode, after.discount);
+      if (result.kind === "grossOnly")
+        return uncomputed(`${prefix}${grossSplitText(result.gross)}`);
+      return { expected: result.amounts, changes: true, warning: undefined };
     }
     case "other":
       return uncomputed(
-        "The draft keeps its discounts on the whole document (several, a surcharge or one stored " +
-          "as gross), which this server does not compute; with several, sevDesk's totals may " +
-          "count only one of them.",
+        "The draft keeps its discounts on the whole document (several, a surcharge or a " +
+          "percentage stored as gross), which this server does not compute; with several, " +
+          "sevDesk's totals may count only one of them.",
       );
     default: {
       const unknown: never = after;
@@ -505,12 +651,14 @@ export function updateTotals(input: {
 // ---------------------------------------------------------------------------------------------
 
 /**
- * A new discount for a preview, written like a stored one (`discountRowText`), e.g.
- * `3 % of the net total ("Rabatt")`.
+ * A new discount for a preview, written like a stored one (`discountRowText`) with the basis
+ * sevDesk applies on `mode` (`appliedDiscount`: a fixed amount is gross on gross prices), e.g.
+ * `3 % of the net total ("Rabatt")` or `50.00 EUR gross ("Rabatt")`.
  */
-export function discountText(discount: DraftDiscount, currency: string): string {
+export function discountText(discount: DraftDiscount, currency: string, mode: PriceMode): string {
   const row = { surcharge: false, percentage: discount.percentage, value: discount.value };
-  return `${discountRowText({ ...row, isNet: true }, currency, "en")} ("${discount.text}")`;
+  const applied = appliedDiscount({ ...row, isNet: true }, mode);
+  return `${discountRowText(applied, currency, "en")} ("${discount.text}")`;
 }
 
 /**

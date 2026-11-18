@@ -4950,13 +4950,56 @@ pdf, sevClient, name, default, img}]}`, `GET /DocServer/getTemplatesWithThumb?ty
       10.00 gave `sumNet` 91.6, `sumTax` 17.4, `sumGross` 109 (`sumDiscountNet` -8.4,
       `sumDiscountGross` -10) with `isNet` `"1"`, and an invoice sent `isNet: false` (stored
       `"0"`) gave exactly the same: a fixed amount comes off the gross total there. With
-      `showNet` true and `isNet` `"1"` it comes off the net total (90, 17.1, 107.1). `isNet`
-      `"0"` with net prices was not tried.
+      `showNet` true it comes off the net total (90, 17.1, 107.1), with `isNet` `"1"` and, sent
+      `isNet: false` (stored `"0"`, probe `write-discount-mixed-tax-uneven`), alike.
     - 10 % on gross prices gave the same sums as on net prices (90, 17.1, 107.1).
     - 19 % and 7 % (100.00 each, net): sevDesk splits the discount by the rates' shares of the
       net total. 10 % gave 180, 23.4, 203.4 (`sumDiscountGross` -22.6); a fixed 10.00 gave 190,
       24.7, 214.7 (`sumDiscountGross` -11.3). The positions keep their undiscounted sums
-      (`sumDiscount` 0 on each).
+      (`sumDiscount` 0 on each), and no field shows the tax per rate (the `…Accounting` sums
+      equal the plain ones).
+    - Uneven splits (probe `write-discount-mixed-tax-uneven`, invoice drafts, one position per
+      rate, in this order; 0 % is accepted under tax rule 1). Net prices, `sumNet`/`sumTax`/
+      `sumGross`:
+
+      | Positions (net)                            | Discount | Sums                  |
+      | ------------------------------------------ | -------- | --------------------- |
+      | 70.00 at 19 %, 30.00 at 7 %                | 10 %     | 90, 13.86, 103.86     |
+      | 70.00 at 19 %, 30.00 at 7 %                | 9.99     | 90.01, 13.86, 103.87  |
+      | 33.33 at 19 %, 66.67 at 7 %, 0.01 at 0 %   | 10.00    | 90.01, 9.9, 99.91     |
+      | 33.33 at 19 %, 66.67 at 7 %, 0.01 at 0 %   | 3 %      | 97.01, 10.67, 107.68  |
+      | 26.92 at 7 %, 76.54 at 19 %                | 3 %      | 100.36, 15.94, 116.3  |
+      | 60.42 at 19 %, 142.47 at 7 %               | 9.99     | 192.9, 20.4, 213.3    |
+      | 119.46 at 7 %, 27.78 at 19 %               | 9.99     | 137.25, 12.71, 149.96 |
+      | 69.15 at 19 %, 107.01 at 7 %               | 7 %      | 163.83, 19.19, 183.02 |
+      | 101.75 at 7 %, 39.05 at 19 %, 80.66 at 0 % | 10.00    | 211.46, 13.89, 225.35 |
+      | 76.24 at 0 %, 62.21 at 7 %, 32.45 at 19 %  | 9.99     | 160.91, 9.9, 170.81   |
+      | 25.79 at 7 %, 40.18 at 19 %, 28.80 at 0 %  | 9.99     | 84.78, 8.44, 93.22    |
+      | 95.72 at 19 %, 35.78 at 7 %, 34.47 at 0 %  | 9.99     | 155.98, 19.44, 175.42 |
+      | 32.47 at 0 %, 89.92 at 7 %, 102.48 at 19 % | 9.99     | 214.88, 24.62, 239.5  |
+
+      `sumDiscountNet` is the fixed amount, or the percentage of the net total rounded to cents
+      (3 % of 103.46: -3.1). One rule gives all of these and the two even splits above: each rate
+      gives up its share of the net deduction by net, rounded half-up to cents, with the cent left
+      over on the rate with the largest net; its tax is the rest of its net times the rate,
+      rounded to cents; the document's tax is the sum. Of the 48 roundings the cases were chosen
+      to tell apart (share rounded or exact; tax rounded on the total, on the deduction, per rate
+      on the deduction or per rate on the rest; the leftover cent on the largest, first, last,
+      highest-rate or lowest-rate position; a percentage off the total or off each rate), no other
+      fits all 15. Four of them (26.92/76.54 with 3 % and three of the three-rate ones) rule out
+      the earlier one-rate formula, a rate's position tax less the tax of its share. No recorded
+      share or tax lands on a half cent, so half-up at a tie is assumed, not recorded.
+
+    - Gross prices, two rates: 119.00 at 19 % + 107.00 at 7 % with 10 % gave 180, 23.4, 203.4
+      (`sumDiscountNet` -20), as on net prices; with a fixed 10.00 it gave 191.15, 24.85, 216
+      (`sumDiscountNet` -8.85, `sumDiscountGross` -10); 83.30 at 19 % + 32.10 at 7 % with a fixed
+      9.99 gave 91.34, 14.07, 105.41 (-8.66, -9.99). A fixed amount on gross prices is a gross
+      amount and comes off the gross total exactly. How it is split into net and tax is not
+      settled: three rules give the three gross cases (net less the net total × amount / gross
+      total; or a gross share per rate, rounded, then each rate's net from its discounted gross;
+      or the net of each gross share) and disagree in about a fifth of other cases.
+    - Surcharges (`discount: false`), 100.00 net at 19 %: 10 % and a fixed 10.00 each gave 110,
+      20.9, 130.9 (`sumDiscounts` +10, `sumDiscountGross` +11.9); the row reads `discount` `"0"`.
     - A fixed 10.00 on a CHF invoice is 10.00 CHF: the `…ForeignCurrency` sums were 90, 17.1,
       107.1 (`sumDiscountsForeignCurrency` -10); the plain sums are the EUR conversion (D-043).
     - From a sent offer with 10 % (150.00 net), the order confirmation and the delivery note got
@@ -4979,16 +5022,19 @@ pdf, sevClient, name, default, img}]}`, `GET /DocServer/getTemplatesWithThumb?ty
   rows, invoice from an offer; tagged test drafts, removed afterwards; no fixture); recorded
   2026-11-18, trial account, Update 2.0 (probes `write-discount-net-gross`,
   `write-discount-mixed-tax`, `write-discount-foreign-currency`, `write-discount-order-derived`,
-  `write-recurring-template-discount`, and the opt-in `write-einvoice-discount`).
+  `write-recurring-template-discount`, the opt-in `write-einvoice-discount`, and
+  `write-discount-mixed-tax-uneven`, run tag `MCP-E2E 20261118-1541-hdxr`, 19 drafts all
+  deleted).
 - **Impact:** A document discount goes out as `discountSave: [{…}]` on all three factories and is
   read back with `/<kind>/{id}/getDiscounts`; updates that change it delete the stored rows in
   `discountDelete` (a list) and save the new one in the same request. `sumDiscounts` is negative and
   must be shown as a deduction. With several rows sevDesk's totals do not reflect all of them, so a
   document carries one discount at most. Whatever discount a draft carries is part of the finalize
   approval. (#94) Built so (`src/domain/drafts/discount.ts`, `src/domain/document-discounts.ts`):
-  the draft tools' `discount` argument (percent or a fixed net amount, one per document; `null`
-  removes it) reads the stored rows before every update; the get and draft tools return them with
-  sevDesk's `sumDiscountNet`/`sumDiscountGross`; finalize, send and enshrine, the order
+  the draft tools' `discount` argument (percent or a fixed amount, net on net prices and gross on
+  gross prices, one per document; `null` removes it) reads the stored rows before every update;
+  the get and draft tools return them with sevDesk's `sumDiscountNet`/`sumDiscountGross`;
+  finalize, send and enshrine, the order
   confirmation and the offer status (`sevdesk_order_create_confirmation`,
   `sevdesk_order_set_offer_status`) bind the rows and list them in both languages, and the
   delivery note preview lists them (D-107); `sevdesk_invoice_create_from_order` shows the order's
@@ -5000,13 +5046,20 @@ pdf, sevClient, name, default, img}]}`, `GET /DocServer/getTemplatesWithThumb?ty
   replaced or removed by the draft tools (the refusal says that sevDesk's totals do not count all
   of them), and the get tools, the from-order tool and all of these approvals warn about it. A
   kept discount is never refused: when the totals cannot be computed with it, the draft update
-  preview says that sevDesk computes them. With the 2026-11-18 answers (#134), a new discount is
-  accepted on e-invoices, in other currencies than EUR (a fixed amount in the document's
-  currency, shown with that currency) and as a percentage on gross prices; it is refused with a
-  reason only where this server does not compute the totals yet: a fixed amount on gross prices
-  and positions with several tax rates (#155). The basis a preview and the DTO show for a fixed
+  preview says that sevDesk computes them. With the 2026-11-18 answers (#134, #155), a new
+  discount is accepted everywhere the argument allows: on e-invoices, in other currencies than
+  EUR (a fixed amount in the document's currency, shown with that currency), on gross prices and
+  over several tax rates. The preview's totals follow the rule above (`discountedTotals`, every
+  recorded case a unit test), with the positions of one rate summed first (one position per rate
+  is recorded; several are an assumption the read-back checks through the gross total). Not
+  computed, with a preview warning instead: a fixed amount on gross prices (the preview shows the
+  exact gross total, the read-back compares it, and net and tax are sevDesk's), a new or kept
+  discount on stored positions with several rates (the stored sums do not show the net per
+  rate), and kept surcharges or percentages stored with `isNet` "0" (not recorded beyond one
+  rate; the tools never send either). A new amount above the total (the gross total for a fixed
+  amount on gross prices) is still refused. The basis a preview and the DTO show for a fixed
   amount follows the document's price mode, not `isNet` (`appliedDiscount`): gross on gross
-  prices. A kept row stored with `isNet` "0" is still left to sevDesk's totals. The from-order
+  prices, net on net prices. The from-order
   tool says that a partial or advance invoice gets no discount row. The replacement was checked
   on an invoice; orders and credit notes send the same discount keys. The read-back still says
   when sevDesk stored something other than what was sent. `sevdesk_invoice_update_recurring`
@@ -5015,8 +5068,9 @@ pdf, sevClient, name, default, img}]}`, `GET /DocServer/getTemplatesWithThumb?ty
   totals of new positions count a kept single discount as the invoice draft update does
   (`updateTotals`), and otherwise the preview says that sevDesk computes them; the read-back
   still compares the discounts with the ones before. Not recorded: whether the invoices a
-  template generates carry its discount (`read-recurring-generated-discounts`, pending), and a
-  surcharge (`discount` "0") anywhere.
+  template generates carry its discount (`read-recurring-generated-discounts`, pending), a
+  surcharge on several rates or on gross prices, how sevDesk splits a fixed gross amount into net
+  and tax, and several positions at one rate.
 - **Test:** `test/contract/recorded-gaps-documents.test.ts` ("answers an empty list with total
   null for an order without discounts", "reads through the document discount reader: no rows,
   nothing shown or bound"), `test/unit/domain/drafts/discount.test.ts` ("gives the recorded sums
@@ -5034,15 +5088,25 @@ pdf, sevClient, name, default, img}]}`, `GET /DocServer/getTemplatesWithThumb?ty
   and binds the offer's document discounts in both languages (review of #112, L5)"),
   `test/unit/tools/invoices/recurring-update.test.ts` ("a discount on the whole template (D-116;
   review of #124, M2)"); the 2026-11-18 answers: `test/unit/domain/drafts/discount.test.ts`
-  ("gives the sums recorded on 2026-11-18 for 10 % on gross prices and 10.00 in CHF", "refuses a
-  new discount on … (recorded, not computed here)", "shows a stored fixed amount on gross prices
-  as gross, whatever isNet says (D-116)"). Live: probes `write-document-discount`,
+  ("gives the sums recorded on 2026-11-18 for 10 % on gross prices and 10.00 in CHF", "shows a
+  stored fixed amount on gross prices as gross, whatever isNet says (D-116)"); #155:
+  `test/unit/domain/drafts/discount.test.ts` ("gives the recorded sums for …", one per recorded
+  split; "gives the recorded sums for a percentage on gross prices with two rates", "takes a fixed
+  amount on gross prices off the gross total and leaves net and tax to sevDesk: …", "computes
+  with a fixed amount whatever its isNet (recorded 2026-11-18)", "treats a surcharge as something
+  it does not compute"), `test/unit/domain/document-discounts.test.ts` ("takes a fixed amount on
+  net prices off the net total, whatever isNet says"),
+  `test/unit/tools/drafts/document-discount.test.ts` ("splits a discount over several tax rates
+  (recorded 2026-11-18, D-116)", "takes a fixed amount on gross prices as gross and leaves net and
+  tax to sevDesk"). Live: probes `write-document-discount`,
   `read-order-get-discounts`, and (#136, #134; `test/unit/scripts/gaps-documents-probes.test.ts`;
   all observed 2026-11-18 but the last but one) `write-discount-net-gross`,
   `write-discount-mixed-tax`, `write-discount-foreign-currency`, `write-discount-order-derived`,
   `write-recurring-template-discount`, `read-recurring-generated-discounts` (invoices generated
   from the discounted template of `write-recurring-template-due`, the day after; pending) and
-  `write-einvoice-discount` (opt-in: the allowance in the e-invoice XML).
+  `write-einvoice-discount` (opt-in: the allowance in the e-invoice XML); (#155, observed
+  2026-11-18) `write-discount-mixed-tax-uneven` (rounding of uneven splits over two and three
+  rates, two rates on gross prices, a fixed amount with `isNet` false on net prices, surcharges).
 
 ### D-119: The account factories refuse an `accountingNumber` in use or not allowed (422)
 

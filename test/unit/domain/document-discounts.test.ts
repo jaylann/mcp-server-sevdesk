@@ -180,11 +180,21 @@ describe("the basis sevDesk applies a discount on (D-116, recorded 2026-11-18)",
     expect(discountRowText(appliedDiscount(fixed, "gross"), "EUR", "en")).toBe("10.00 EUR gross");
   });
 
-  it("keeps the stored isNet on net prices, for a percentage and without a price mode", () => {
-    expect(appliedDiscount(fixed, "net")).toBe(fixed);
-    expect(appliedDiscount({ ...fixed, isNet: false }, "net").isNet).toBe(false);
+  it("takes a fixed amount on net prices off the net total, whatever isNet says", () => {
+    // Recorded 2026-11-18 (probe write-discount-mixed-tax-uneven): a fixed 10.00 sent with isNet
+    // false (stored "0") on 100.00 net gave 90, 17.1, 107.1, as with isNet "1".
+    expect(appliedDiscount(fixed, "net")).toEqual(fixed);
+    expect(appliedDiscount({ ...fixed, isNet: false }, "net").isNet).toBe(true);
+  });
+
+  it("keeps the stored isNet for a percentage and without a price mode", () => {
     expect(appliedDiscount(percent, "gross")).toBe(percent);
+    expect(appliedDiscount({ ...percent, isNet: false }, "net")).toEqual({
+      ...percent,
+      isNet: false,
+    });
     expect(appliedDiscount(fixed, undefined)).toBe(fixed);
+    expect(appliedDiscount({ ...fixed, isNet: false }, undefined).isNet).toBe(false);
   });
 
   it("gives the DTO the applied basis", () => {
