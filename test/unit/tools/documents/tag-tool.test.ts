@@ -615,4 +615,48 @@ describe("sevdesk_document_tag: remove", () => {
     );
     expect(ambiguous.writes()).toEqual([]);
   });
+
+  // ß/ss fold to one name (D-088, recorded 2026-11-18): a remove by name must never take the
+  // relation of the other spelling's tag when both exist.
+  it("removes only the exactly spelled tag of an ß/ss pair, and refuses a name matching both", async () => {
+    const tags = tagsRoute([tagRow(7003, "Straße"), tagRow(7001, "Strasse")]);
+    const exact = client([
+      INVOICE,
+      tags,
+      carries,
+      tagUsesRoute(7001, [
+        relationRow(8101, 7001, "Invoice", 1001),
+        relationRow(8102, 7001, "Order", 3002),
+      ]),
+      DELETE,
+    ]);
+    const { plan, output } = await executeWrite(tool, { ...remove, tag: "Strasse" }, exact);
+    expect(plan.preview.action).toBe("Remove tag 7001 from invoice 1001.");
+    expect(output.data.tag).toEqual({ id: 7001, name: "Strasse" });
+    expect(exact.writes().map((call) => [call.method, call.path])).toEqual([
+      ["DELETE", "/TagRelation/8101"],
+    ]);
+
+    const ambiguous = client([INVOICE, tags]);
+    await expect(prepareWrite(tool, { ...remove, tag: "STRASSE" }, ambiguous)).rejects.toThrow(
+      "Several tags have this name (compared ignoring case, accents and ß/ss).",
+    );
+    expect(ambiguous.writes()).toEqual([]);
+  });
+
+  it("finds the one tag of an ß spelling by its ss spelling (Grosskunde → Großkunde)", async () => {
+    const fake = client([
+      INVOICE,
+      tagsRoute([tagRow(7001, "Großkunde"), tagRow(7002, "Filiale München")]),
+      carries,
+      tagUsesRoute(7001, [
+        relationRow(8101, 7001, "Invoice", 1001),
+        relationRow(8102, 7001, "Order", 3002),
+      ]),
+      DELETE,
+    ]);
+    const { plan, output } = await executeWrite(tool, { ...remove, tag: "Grosskunde" }, fake);
+    expect(plan.preview.facts).toContainEqual({ label: "Tag", value: "Großkunde (id 7001)" });
+    expect(output.data.tag).toEqual({ id: 7001, name: "Großkunde" });
+  });
 });
