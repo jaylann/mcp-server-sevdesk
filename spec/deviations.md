@@ -3855,7 +3855,9 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   local matching as an estimate. Handling (#88): `sevdesk_private_transaction_rules_list` (read,
   explicit `limit`, texts cleaned), `sevdesk_private_transaction_rule_create` and
   `sevdesk_private_transaction_rule_delete` (both `commit`: a rule makes sevDesk mark imports
-  private as `sevdesk_transaction_mark_private` does by hand). Create sends one trimmed text per
+  private as `sevdesk_transaction_mark_private` does by hand); the client requires `commit` for
+  `POST /PrivateTransactionRule` and `DELETE /PrivateTransactionRule/{id}` as well
+  (`minimumWriteTier`, #131), so no `write` request reaches them. Create sends one trimmed text per
   rule (sevDesk would store a rule with both texts, but whether it then needs both or either is
   not known, so both are refused), at most 100 characters (sevDesk cuts a text over 255 without
   notice, D-130), refuses texts with fewer than four letters or digits and a rule whose text
@@ -3876,8 +3878,9 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   or cut short noted);
   `test/regressions/private-transaction-rules.test.ts` (no rule without a confirmation, no match
   stated as fact); `test/regressions/concurrent-check-then-write.test.ts` (two equal creations at
-  once give one rule). The recorded list was empty, so no fixture was kept; the
-  tests build rows with the recorded keys.
+  once give one rule); `test/unit/sevdesk/paths.test.ts` ("minimumWriteTier for
+  private-transaction rules": both requests need `commit`, the list stays a read). The recorded
+  list was empty, so no fixture was kept; the tests build rows with the recorded keys.
 
 ### D-100: A receipt's `contentHash` is the SHA-256 of the file; rendered PDFs have none
 
