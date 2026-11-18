@@ -4133,7 +4133,8 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   to 31 days after it (`GET /Voucher?embed=document`, D-100; drafts included, both directions,
   one request of up to 1,000 rows) and refuses a match before anything is sent unless
   `allowDuplicate` (a waste guard, not a safety gate); the refusal names up to three vouchers with
-  id, fenced Belegnummer, date, gross total and status, and the result lists allowed matches in
+  id, fenced Belegnummer, date, gross total and status (fewer when three would pass the
+  500-character error cap and cut its closing instruction), and the result lists allowed matches in
   `sameFileCheck.vouchers`. A failed read does not block the upload (the result says it ran
   unchecked), a cut one is reported as partial, and receipts without a checksum are counted as
   not compared. After the recognition it looks for other vouchers of the same direction with the
@@ -4160,7 +4161,8 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   duplicates, a partial scan, a page without a count and a skipped scan; an unreadable answer; a
   refused upload; a cancelled wait and a failed read naming the draft; recognised text kept out
   of summary and notes; the checksum check before the upload: its query, the refusal in a dry
-  run and a real call, at most three vouchers named with the number fenced, `allowDuplicate`, a
+  run and a real call, at most three vouchers named with the number fenced, fewer when the error
+  cap would cut the instruction, `allowDuplicate`, a
   receipt with `contentHash` null not found, partial, failed and cancelled reads);
   `test/regressions/recognition-same-file.test.ts` (the same file refused before the upload,
   sent with `allowDuplicate`, and not found when the earlier copy came from the recognition). The

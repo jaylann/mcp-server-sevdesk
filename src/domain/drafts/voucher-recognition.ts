@@ -306,7 +306,10 @@ export const SAME_FILE_DAYS_AHEAD = 31;
  */
 export const SAME_FILE_SCAN_LIMIT = 1_000;
 
-/** Vouchers named in the refusal (which goes through a 500-character cap); the rest are counted. */
+/**
+ * Most vouchers named in the refusal (fewer when they would not fit its
+ * {@link SAME_FILE_REFUSAL_MAX} cap); the rest are counted.
+ */
 const SAME_FILE_NAMED = 3;
 
 /** Longest Belegnummer shown in the refusal (fenced: it is sevDesk text). */
@@ -431,30 +434,60 @@ function shortNumber(number: string): string {
 }
 
 /**
+ * Code points of an error message the tool error shows: `describeSevdeskError` cuts the rest
+ * (`sanitizeUntrusted(…, 500)`), which would take the refusal's closing instruction with it.
+ */
+const SAME_FILE_REFUSAL_MAX = 500;
+
+/** "2101 (`ER-2026-0815`, 2026-11-02, 119.00 EUR, draft)": a matching voucher in the refusal. */
+function sameFileDetails(voucher: SameFileVoucher): string {
+  const parts = [
+    voucher.number === undefined ? undefined : fenceInline(shortNumber(voucher.number)),
+    voucher.date,
+    voucher.gross === undefined ? undefined : `${voucher.gross.amount} ${voucher.gross.currency}`,
+    statusWords(voucher.statusCode),
+  ].filter((part): part is string => part !== undefined);
+  return `${String(voucher.id)} (${parts.join(", ")})`;
+}
+
+/** The refusal text naming `named` (the first matches, described) and counting the rest. */
+function sameFileRefusalText(
+  matches: readonly SameFileVoucher[],
+  named: readonly string[],
+): string {
+  const more = matches.length - named.length;
+  const one = matches.length === 1;
+  return (
+    `This receipt file is already attached to ${one ? "voucher" : "vouchers"} ` +
+    `${named.join("; ")}${more > 0 ? ` and ${String(more)} more` : ""} (same SHA-256). ` +
+    "Recognising it again makes another draft of the same receipt. Check it with " +
+    "sevdesk_voucher_get; to send the file anyway, call again with allowDuplicate: true."
+  );
+}
+
+/**
  * The refusal of a file that is already attached to a voucher: names up to
  * {@link SAME_FILE_NAMED} of them with id, Belegnummer (fenced), date, gross total and status.
  * Nothing was sent; the caller can check the voucher or pass `allowDuplicate`.
+ *
+ * Fits {@link SAME_FILE_REFUSAL_MAX} by construction, so the instruction at its end is never cut:
+ * it names fewer vouchers (three, then two, then one) until the text fits. One always fits, as
+ * the row schemas bound its parts (the number is cut, the amount and currency are validated); the
+ * ids-only text keeps the guarantee should that ever change.
  */
 function sameFileRefusal(matches: readonly SameFileVoucher[]): SevdeskError {
-  const named = matches.slice(0, SAME_FILE_NAMED).map((voucher) => {
-    const parts = [
-      voucher.number === undefined ? undefined : fenceInline(shortNumber(voucher.number)),
-      voucher.date,
-      voucher.gross === undefined ? undefined : `${voucher.gross.amount} ${voucher.gross.currency}`,
-      statusWords(voucher.statusCode),
-    ].filter((part): part is string => part !== undefined);
-    return `${String(voucher.id)} (${parts.join(", ")})`;
-  });
-  const more = matches.length - named.length;
-  const one = matches.length === 1;
-  return new SevdeskError({
-    kind: "validation",
-    message:
-      `This receipt file is already attached to ${one ? "voucher" : "vouchers"} ` +
-      `${named.join("; ")}${more > 0 ? ` and ${String(more)} more` : ""} (same SHA-256). ` +
-      "Recognising it again makes another draft of the same receipt. Check it with " +
-      "sevdesk_voucher_get; to send the file anyway, call again with allowDuplicate: true.",
-  });
+  const most = Math.min(SAME_FILE_NAMED, matches.length);
+  const fits = (text: string): boolean => Array.from(text).length <= SAME_FILE_REFUSAL_MAX;
+  const described = Array.from({ length: most }, (_, fewer) =>
+    sameFileRefusalText(matches, matches.slice(0, most - fewer).map(sameFileDetails)),
+  );
+  const message =
+    described.find(fits) ??
+    sameFileRefusalText(
+      matches,
+      matches.slice(0, most).map((voucher) => String(voucher.id)),
+    );
+  return new SevdeskError({ kind: "validation", message });
 }
 
 /** "voucher 2299" / "vouchers 2299, 2300". */
