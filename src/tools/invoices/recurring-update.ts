@@ -29,7 +29,7 @@ const output = z.object({
   positions: z.array(positionDtoSchema).describe("Positionen of every later invoice, as stored."),
   positionsComplete: z
     .boolean()
-    .describe("False when sevDesk had more position rows than could be read back."),
+    .describe("False when not every position could be read back for certain."),
   schedule: storedScheduleSchema.describe("The schedule as sevDesk stores it now."),
   discount: documentDiscountSchema
     .optional()

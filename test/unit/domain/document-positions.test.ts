@@ -319,12 +319,13 @@ describe("positions", () => {
     expect(result.rows.map((r) => r.id)).toEqual([8, 9]);
   });
 
-  it("re-reads page by page when sevDesk reports more rows than one page", async () => {
+  it("re-reads page by page when sevDesk reports more rows than one page, and says rows may be missing", async () => {
     const objects = Array.from({ length: 1500 }, (_, index) => row(index + 1, 7));
     const client = new FakeSevdeskClient([route(objects)]);
     const result = await listDocumentPositions(client, source, 7);
     expect(result.rows).toHaveLength(1500);
-    expect(result.complete).toBe(true);
+    // Two pages: sevDesk's order between pages is not stable (D-146), so not known complete.
+    expect(result.complete).toBe(false);
   });
 
   it("reports a capped read as incomplete", async () => {

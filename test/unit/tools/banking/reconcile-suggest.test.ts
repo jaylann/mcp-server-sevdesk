@@ -150,7 +150,7 @@ describe("sevdesk_reconcile_suggest", () => {
     expect(result.summary).toBe("No unassigned transactions found.");
   });
 
-  it("marks capped open items in the summary", async () => {
+  it("marks capped or paged open items in the summary", async () => {
     const base = invoiceRow({ sumGross: "1" });
     const many = Array.from({ length: 3001 }, (_, i) => ({ ...base, id: String(100_000 + i) }));
     const { result } = await run({ transactionId: 5101 }, [
@@ -159,7 +159,7 @@ describe("sevdesk_reconcile_suggest", () => {
       logRoute(5101, []),
       ...openItemRoutes(many),
     ]);
-    expect(result.summary).toBe("1 transaction, 1 with suggestions; open items were capped.");
+    expect(result.summary).toBe("1 transaction, 1 with suggestions; open items may be incomplete.");
   });
 
   it("refuses a transaction id together with list filters", async () => {

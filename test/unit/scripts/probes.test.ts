@@ -627,6 +627,23 @@ describe("core helpers", () => {
       customerNumber: "K-0001",
       name: "Musterfirma 1 GmbH",
     });
+    // Order parameters are the probe's own constants too (#162): shown as sent, not as fakes.
+    expect(
+      evidenceQuery(
+        {
+          "orderBy[0][field]": "id",
+          "orderBy[0][arrangement]": "asc",
+          orderByVoucherNumber: "ASC",
+          orderByCustomerNumber: "DESC",
+        },
+        createScrubber({ secrets: [TOKEN] }),
+      ),
+    ).toEqual({
+      "orderBy[0][field]": "id",
+      "orderBy[0][arrangement]": "asc",
+      orderByVoucherNumber: "ASC",
+      orderByCustomerNumber: "DESC",
+    });
     expect(evidenceQuery(undefined, createScrubber({ secrets: [] }))).toBeUndefined();
     expect(createdId({ invoice: { id: "12" } }, "invoice")).toBe(12);
     expect(createdId([{ id: "3" }])).toBe(3);

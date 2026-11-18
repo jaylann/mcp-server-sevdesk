@@ -11,9 +11,7 @@ const output = z.object({
   positions: z.array(positionDtoSchema).describe("Positionen, in position-number order."),
   positionsComplete: z
     .boolean()
-    .describe(
-      "False when sevDesk had more position rows than could be read: positions is partial.",
-    ),
+    .describe("False when not every position could be read for certain: positions may be partial."),
   discount: documentDiscountSchema
     .optional()
     .describe("Discount on the whole invoice (Rabatt); left out when there is none."),

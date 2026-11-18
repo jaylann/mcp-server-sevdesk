@@ -206,7 +206,10 @@ export interface FreeNumber {
   readonly number: string;
   /** Reserved numbers that existing credit notes carried already (skipped, in order). */
   readonly skipped: readonly string[];
-  /** True when not every credit note could be checked (more than the scan reads). */
+  /**
+   * True when not every credit note could be checked: more than the scan reads, or more than one
+   * page, which can skip a credit note (D-146).
+   */
   readonly truncated: boolean;
 }
 
@@ -313,7 +316,8 @@ async function scanCreditNoteNumbers(
     const { id, creditNoteNumber } = parseUpstream(numberRowSchema, raw, "credit notes");
     if (creditNoteNumber !== undefined) rows.push({ id, number: normalize(creditNoteNumber) });
   }
-  return { rows, truncated: list.truncated };
+  // Read past one page, the list may have skipped a credit note (D-146): not all numbers known.
+  return { rows, truncated: list.truncated || list.paged };
 }
 
 function normalize(number: string): string {

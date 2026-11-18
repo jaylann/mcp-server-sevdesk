@@ -373,6 +373,15 @@ describe("suggestVoucherFields", () => {
     });
     expect(byIban.supplierId).toBe(4);
     expect(byIban.warnings.join(" ")).toContain("Only the first 2 contacts were compared");
+    // Every contact read, but in two pages (D-146): the warning names that, not a cap.
+    const paged = suggest(base, {
+      contacts: { rows: rows.slice(0, 2), scanned: 2, complete: false, paged: true },
+    });
+    const pagedWarnings = paged.warnings.join(" ");
+    expect(pagedWarnings).toContain(
+      "The 2 contacts were read page by page, and sevDesk can skip a contact between pages",
+    );
+    expect(pagedWarnings).not.toContain("Only the first");
 
     const byName = suggest(base, {
       contacts: { rows: rows.slice(0, 1), scanned: 1, complete: true },

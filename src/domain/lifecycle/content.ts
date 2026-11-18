@@ -722,15 +722,17 @@ function listedPositions<T>(
   const total = String(rows.length);
   const listed = String(facts.length);
   if (!complete) {
-    // The read stopped at its cap (`listChildRows`): how many positions there are is unknown.
+    // `listChildRows` stopped at its cap, or read the positions in more than one page, which can
+    // skip one (D-146): whether there are more is not known.
     facts.push({
       label: t.more,
       value:
         lang === "de"
-          ? `sevDesk hat nicht alle Positionen geliefert: ${total} wurden gelesen, ${listed} ` +
-            "sind hier aufgeführt, und es gibt weitere. Prüfe sie vor der Freigabe in sevDesk."
-          : `sevDesk did not return every position: ${total} were read, ${listed} are listed ` +
-            "here, and there are more. Check them in sevDesk before you approve.",
+          ? `sevDesk hat womöglich nicht alle Positionen geliefert: ${total} wurden gelesen, ` +
+            `${listed} sind hier aufgeführt, und es kann weitere geben. Prüfe sie vor der ` +
+            "Freigabe in sevDesk."
+          : `sevDesk may not have returned every position: ${total} were read, ${listed} are ` +
+            "listed here, and there may be more. Check them in sevDesk before you approve.",
     });
   } else if (rest > 0) {
     facts.push({

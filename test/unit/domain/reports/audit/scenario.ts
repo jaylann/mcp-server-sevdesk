@@ -121,7 +121,7 @@ const ADDRESS_TEMPLATE = (() => {
 let addressId = 7000;
 
 /** A `GET /ContactAddress` row. */
-function addressRow(contactId: number, countryId: number): Raw {
+export function addressRow(contactId: number, countryId: number): Raw {
   addressId += 1;
   return {
     ...structuredClone(ADDRESS_TEMPLATE),

@@ -442,7 +442,7 @@ export function planCustomFieldRemovals(
     if (field === undefined) {
       const partial = current.complete
         ? ""
-        : " that could be read (sevDesk had more than could be read)";
+        : " that could be read (sevDesk may hold more than could be read for certain)";
       throw validation(
         `Custom field value ${String(id)} is not one of contact ${String(contactId)}'s custom ` +
           `field values${partial}; nothing was changed. sevdesk_contact_get lists them with ` +

@@ -15,7 +15,7 @@ const output = z.object({
   positions: z.array(positionDtoSchema).describe("Its positions (Positionen)."),
   positionsComplete: z
     .boolean()
-    .describe("False when sevDesk had more position rows than could be read."),
+    .describe("False when not every position could be read for certain."),
   invoiceId: z.number().int().describe("The invoice the credit note was created from."),
   notes: z
     .array(z.string())

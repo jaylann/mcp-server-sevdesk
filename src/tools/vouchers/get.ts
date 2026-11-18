@@ -13,7 +13,7 @@ const output = z.object({
   positions: z.array(voucherPositionDtoSchema).describe("Belegpositionen."),
   positionsComplete: z
     .boolean()
-    .describe("False when sevDesk had more rows than could be read: positions is partial."),
+    .describe("False when not every position could be read for certain: positions may be partial."),
   costCentre: costCentreOutput,
 });
 

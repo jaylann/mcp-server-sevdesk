@@ -144,7 +144,10 @@ const CHILD_MAX_ROWS = 10_000;
 /** The rows of one parent; see {@link listChildRows}. */
 export interface ChildRows<T> {
   readonly rows: readonly T[];
-  /** False when the cap stopped reading before the end; `rows` is then partial. */
+  /**
+   * False when the cap stopped reading before the end, or when the rows came from more than one
+   * page (sevDesk can skip a row between pages, D-146); `rows` may then be partial.
+   */
   readonly complete: boolean;
 }
 
@@ -156,7 +159,8 @@ export interface ChildRows<T> {
  * parents' rows. One page of {@link CHILD_PAGE_SIZE} rows suffices when every row belongs to the
  * parent and sevDesk's total shows nothing is left (or the page is empty). Otherwise the
  * collection is read page by page up to {@link CHILD_MAX_ROWS} rows and filtered here; hitting
- * that cap gives `complete: false` instead of a silently short list.
+ * that cap, or reading rows from more than one page, gives `complete: false` instead of a
+ * silently short list.
  */
 export async function listChildRows<T>(
   client: SevdeskClient,
@@ -179,5 +183,10 @@ export async function listChildRows<T>(
     pageSize: CHILD_PAGE_SIZE,
     ...withSignal,
   });
-  return { rows: all.items.map(rows.parse).filter(rows.belongs), complete: !all.truncated };
+  // Read in pages, a row can be skipped (D-146: `GET /OrderPos` lost one of 49 in pages of 5):
+  // then the rows are not known to be complete, though each is kept once.
+  return {
+    rows: all.items.map(rows.parse).filter(rows.belongs),
+    complete: !all.truncated && !all.paged,
+  };
 }

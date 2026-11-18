@@ -171,8 +171,11 @@ export function planRemovals(details: ContactDetails, remove: readonly RemoveInp
   };
 }
 
-/** Added to "not one of the contact's …" when sevDesk had more rows than could be read. */
-const PARTIAL_NOTE = " that could be read (sevDesk had more than could be read)";
+/**
+ * Added to "not one of the contact's …" when not every row could be read for certain (a cap, or
+ * a read in several pages, D-146).
+ */
+const PARTIAL_NOTE = " that could be read (sevDesk may hold more than could be read for certain)";
 
 function planAddressRemoval(details: ContactDetails, id: number): PlannedRemoval {
   const address = details.addresses.find((row) => row.id === id);

@@ -648,7 +648,7 @@ export interface PositionGroup {
 export interface ScannedDocument {
   readonly header: DocumentHeader;
   readonly groups: readonly PositionGroup[];
-  /** False when sevDesk had more position rows than could be read. */
+  /** False when not every position could be read for certain (a cap, or several pages). */
   readonly positionsComplete: boolean;
   /** True when the document's EUR totals were split over the groups in proportion. */
   readonly adjusted: boolean;

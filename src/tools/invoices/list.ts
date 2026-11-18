@@ -63,7 +63,8 @@ export const invoicesListTool = defineTool({
     "1,000 rows scanned per call; total left out, filteredLocally set). A cancelled " +
     "invoice keeps status paid; its SR invoice has cancelsInvoiceId. Rows of recurring " +
     "templates (type recurring) carry their schedule (next run, end). Page with offset = " +
-    "nextOffset while hasMore. Use detail=summary to browse/find. Use sevdesk_invoice_get for positions, tax and payment terms.",
+    "nextOffset while hasMore; pages can skip or repeat a row, so for a complete list narrow the " +
+    "date range until one page holds it. Use detail=summary to browse/find. Use sevdesk_invoice_get for positions, tax and payment terms.",
   toolset: "invoices",
   tier: "read",
   annotations: {

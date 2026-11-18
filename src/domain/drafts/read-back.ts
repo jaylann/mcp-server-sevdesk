@@ -27,7 +27,7 @@ export interface ReadBackFacts {
   /** The gross total as read back, if sevDesk sent one. */
   readonly gross?: string | undefined;
   readonly currency: string;
-  /** False when sevDesk had more position rows than could be read back. */
+  /** False when not every position could be read back for certain. */
   readonly positionsComplete: boolean;
 }
 

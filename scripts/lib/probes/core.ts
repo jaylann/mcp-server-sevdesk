@@ -174,11 +174,13 @@ export function requestLine(method: string, path: string, query: Query | undefin
 }
 
 /**
- * Query parameters that only steer a request (paging, embedding, the model a reference names):
- * the probe's own constants, never account data, so the evidence shows them as sent.
+ * Query parameters that only steer a request (paging, embedding, order, the model a reference
+ * names): the probe's own constants, never account data, so the evidence shows them as sent. The
+ * order keys are the documented `orderByVoucherNumber`-style switches and the generic
+ * `orderBy[0][field]`/`orderBy[0][arrangement]` (#162).
  */
 const STRUCTURAL_QUERY_KEY =
-  /^(?:limit|offset|countAll|emptyState|embed|.+\[(?:objectName|modelName|limit)\])$/;
+  /^(?:limit|offset|countAll|emptyState|embed|orderBy(?:\w+|(?:\[\w+\])+)|.+\[(?:objectName|modelName|limit)\])$/;
 /** Switch values a probe writes out as text. */
 const SWITCH_VALUE = /^(?:true|false|all)$/;
 

@@ -344,12 +344,13 @@ describe("the content facts of an invoice", () => {
     const content = await readDocumentContent(client, doc);
 
     expect(valueOf(content.printed("en"), "More positions")).toBe(
-      `sevDesk did not return every position: 10000 were read, ${String(MAX_LISTED_POSITIONS)} ` +
-        "are listed here, and there are more. Check them in sevDesk before you approve.",
+      `sevDesk may not have returned every position: 10000 were read, ` +
+        `${String(MAX_LISTED_POSITIONS)} are listed here, and there may be more. Check them in ` +
+        "sevDesk before you approve.",
     );
     expect(valueOf(content.printed("de"), "Weitere Positionen")).toBe(
-      `sevDesk hat nicht alle Positionen geliefert: 10000 wurden gelesen, ` +
-        `${String(MAX_LISTED_POSITIONS)} sind hier aufgeführt, und es gibt weitere. Prüfe ` +
+      `sevDesk hat womöglich nicht alle Positionen geliefert: 10000 wurden gelesen, ` +
+        `${String(MAX_LISTED_POSITIONS)} sind hier aufgeführt, und es kann weitere geben. Prüfe ` +
         "sie vor der Freigabe in sevDesk.",
     );
   });

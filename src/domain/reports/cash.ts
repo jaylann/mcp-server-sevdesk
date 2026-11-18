@@ -152,6 +152,7 @@ export async function cashPosition(
   let outlook: CashPosition["outlook"];
   let scanned = 0;
   let truncated = false;
+  let pagedRead = false;
   const notes: string[] = [];
   if (params.outlookDays !== undefined) {
     const max = params.maxRecords ?? REPORT_SCAN_MAX;
@@ -162,7 +163,12 @@ export async function cashPosition(
       alreadyScanned: receivables.scanned,
     });
     scanned = receivables.scanned + payables.scanned;
-    truncated = receivables.truncated || payables.truncated;
+    const capped = receivables.truncated || payables.truncated;
+    const pagedNotes = [receivables.pagedNote, payables.pagedNote].filter(
+      (note): note is string => note !== undefined,
+    );
+    truncated = capped || pagedNotes.length > 0;
+    pagedRead = !capped && pagedNotes.length > 0;
     const until = shiftDays(asOf, params.outlookDays);
     outlook = {
       label: EXPECTED_LABEL,
@@ -171,11 +177,12 @@ export async function cashPosition(
       until,
       lines: outlookLines(receivables.items, payables.items, today, until, balances),
     };
-    if (truncated) {
+    if (capped) {
       notes.push(
         `Reading open items stopped at the cap of ${max} rows: the outlook is incomplete.`,
       );
     }
+    notes.push(...pagedNotes);
     notes.push(
       "The outlook uses today's open items in sevDesk; due date = invoice date + payment term " +
         "for invoices and the payment deadline for expense vouchers.",
@@ -232,6 +239,7 @@ export async function cashPosition(
     source: REPORT_SOURCE,
     recordsScanned: scanned,
     truncated,
+    ...(pagedRead ? { pagedRead: true } : {}),
     notes,
   };
 }
@@ -243,7 +251,11 @@ export function cashPositionSentence(report: CashPosition): string {
       ? ""
       : ` Outlook ${report.outlook.days} days (expected, not booked) from ` +
         `${report.recordsScanned} open-item rows.`;
-  const truncated = report.truncated ? " Stopped at the row cap: the outlook is incomplete." : "";
+  const truncated = !report.truncated
+    ? ""
+    : report.pagedRead === true
+      ? " Open items were read page by page: some may be missing (see notes)."
+      : " Stopped at the row cap: the outlook is incomplete.";
   return (
     `Cash position as of ${report.asOf}: ${plural(report.accounts.length, "account")} in ` +
     `${plural(report.balances.length, "currency", "currencies")}.${outlook}${truncated}`

@@ -14,6 +14,7 @@ import {
 } from "../builders.js";
 import {
   accountDatevRoute,
+  addressRow,
   CONTACTS,
   type ContactSpec,
   COUNTRY,
@@ -489,6 +490,28 @@ describe("check vat: incomplete reads", () => {
     expect(idsOf(result, "german_vat_to_eu_business")).toEqual([]);
     expect(idsOf(result, "intra_eu_supply_without_eu_vat_id")).toEqual([3203]);
     expect(idsOf(result, "eu_service_without_eu_vat_id")).toEqual([3204]);
+  });
+
+  it("still judges every party when the address list is read in two pages (D-146)", async () => {
+    // More than 1,000 addresses: the list is read in two pages. Its paging is not measured
+    // (#158), and every address counts for every party, so only its cap makes findings unjudged.
+    const routes = quarterRoutes();
+    const filler = Array.from({ length: 1100 }, () => addressRow(9_999_999, COUNTRY.DE));
+    const padded = routes.map((route) => {
+      if (route.path !== "/ContactAddress" || !("body" in route.response)) return route;
+      const listed = (route.response.body as { objects: unknown[] }).objects;
+      return { ...route, response: { body: { objects: [...listed, ...filler] } } };
+    });
+    const { client, result } = await audit([regularAccount, ...padded]);
+
+    expect(client.callsTo("/ContactAddress").map((call) => call.query["offset"])).toEqual([
+      0, 1000,
+    ]);
+    for (const code of VAT_FINDING_CODES) {
+      expect(idsOf(result, code), code).toEqual(expectedIds(code));
+    }
+    expect(result.coverage.contacts?.truncated).toBe(false);
+    expect(result.notes.join(" ")).not.toContain("The address list");
   });
 
   it("makes no finding an address beyond the cap of the address list could overturn", async () => {

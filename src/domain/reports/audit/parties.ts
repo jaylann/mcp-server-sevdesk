@@ -172,11 +172,17 @@ export interface PartyDirectory {
   readonly coverage: {
     readonly read: number;
     readonly addressesRead: number;
-    /** A cap stopped one of the two lists (see the two below). */
+    /** One of the two lists may be incomplete (see the two below). */
     readonly truncated: boolean;
-    /** The contact list stopped at its cap: contacts beyond it are not in `parties`. */
+    /**
+     * The contact list stopped at its cap, or was read in more than one page and may have missed
+     * rows (D-146): contacts may be missing from `parties`.
+     */
     readonly contactsTruncated: boolean;
-    /** The address list stopped at its cap: any contact in `parties` may lack addresses. */
+    /**
+     * The address list stopped at its cap: any contact in `parties` may lack addresses. A read in
+     * several pages does not set it (see `loadPartyDirectory`).
+     */
     readonly addressesTruncated: boolean;
   };
   /** True when addresses or documents had countries but the country table could not be read. */
@@ -255,8 +261,13 @@ export async function loadPartyDirectory(
     coverage: {
       read: contacts.scanned,
       addressesRead: addresses.scanned,
-      truncated: contacts.truncated || addresses.truncated,
-      contactsTruncated: contacts.truncated,
+      truncated: contacts.truncated || addresses.truncated || contacts.paged,
+      // A contact list read in more than one page may have missed a contact (D-146): as good as
+      // capped, but it only leaves the contacts it did not read unjudged. The address list is
+      // not flagged when it pages: every address counts for every party, so a flag would leave
+      // every finding unjudged on any account with more than 1,000 addresses, and its paging is
+      // not measured (D-146, #158). Its rows are still kept once; only its cap counts.
+      contactsTruncated: contacts.truncated || contacts.paged,
       addressesTruncated: addresses.truncated,
     },
     countriesUnread: withCountry && countryCodes.size === 0,

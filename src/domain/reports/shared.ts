@@ -80,6 +80,13 @@ export interface ScanResult<T> {
   readonly total: number | undefined;
   /** True when the cap stopped the scan while sevDesk reported (or could not rule out) more. */
   readonly truncated: boolean;
+  /**
+   * True when rows came from more than one page. sevDesk breaks ties of a list's sort key
+   * differently per page (D-146), so such a scan may have missed rows; see {@link pagedReadNote}.
+   */
+  readonly paged: boolean;
+  /** Items dropped because their id came before (only with `idOf`). */
+  readonly repeated: number;
 }
 
 export interface ScanOptions extends ReportRunOptions {
@@ -96,32 +103,73 @@ export interface ScanOptions extends ReportRunOptions {
  * read. Requests ask for at most `max − read` rows, so the cap is exact for lists that return what
  * they are asked for; a list that filters while it reads (transactions) can overshoot by one page.
  * Checks `signal` before every page and reports progress after each.
+ *
+ * A list longer than one page ({@link REPORT_PAGE_SIZE} rows) is read in several pages, and
+ * sevDesk can then skip a row and list another twice (D-146): with `idOf`, an item whose id came
+ * before is dropped, and `paged` tells the caller that rows may be missing. A list with a date
+ * filter is better read with `scanDateWindows`, which keeps every read to one page.
  */
 export async function scanPages<T>(
   fetchPage: (offset: number, limit: number) => Promise<ScanPage<T>>,
   options: ScanOptions,
+  idOf?: (item: T) => number | undefined,
 ): Promise<ScanResult<T>> {
   const items: T[] = [];
+  const seen = new Set<number>();
   const base = options.alreadyScanned ?? 0;
   let offset = 0;
   let scanned = 0;
+  let pages = 0;
+  let repeated = 0;
   let total: number | undefined;
+  const result = (truncated: boolean): ScanResult<T> => ({
+    items,
+    scanned,
+    total,
+    truncated,
+    paged: pages > 1,
+    repeated,
+  });
   for (;;) {
     throwIfAborted(options.signal);
     const remaining = options.max - scanned;
-    if (remaining <= 0) return { items, scanned, total, truncated: true };
+    if (remaining <= 0) return result(true);
     const page = await fetchPage(offset, Math.min(REPORT_PAGE_SIZE, remaining));
     total = page.total ?? total;
     scanned += page.received;
-    items.push(...page.items);
+    if (page.received > 0) pages += 1;
+    for (const item of page.items) {
+      const id = idOf?.(item);
+      if (id !== undefined) {
+        if (seen.has(id)) {
+          repeated += 1;
+          continue;
+        }
+        seen.add(id);
+      }
+      items.push(item);
+    }
     offset = page.nextOffset;
     await options.onProgress?.(
       base + scanned,
       total === undefined ? undefined : base + total,
       `Read ${base + scanned} ${options.noun}.`,
     );
-    if (!page.hasMore || page.received === 0) return { items, scanned, total, truncated: false };
+    if (!page.hasMore || page.received === 0) return result(false);
   }
+}
+
+/**
+ * The trusted note for a scan that read `noun` (a trusted plural, e.g. "open invoices") in more
+ * than one page ({@link ScanResult.paged}). Reports add it to their notes and count the read as
+ * incomplete.
+ */
+export function pagedReadNote(noun: string): string {
+  return (
+    `sevDesk lists more than ${REPORT_PAGE_SIZE.toLocaleString("en-US")} ${noun}, so they were ` +
+    "read page by page; sevDesk's order is not stable between pages, so some may be missing " +
+    "here (each one read is counted once)."
+  );
 }
 
 /** Throws sevDesk's `aborted` error when the call was cancelled. */
@@ -177,7 +225,15 @@ export const coverageOutputShape = {
   truncated: z
     .boolean()
     .describe(
-      `True when the cap of ${REPORT_SCAN_MAX} rows stopped reading: totals are then incomplete.`,
+      `True when the totals may be incomplete: the cap of ${REPORT_SCAN_MAX} rows stopped ` +
+        "reading, or a list had to be read page by page and may have missed rows (see notes).",
+    ),
+  pagedRead: z
+    .boolean()
+    .optional()
+    .describe(
+      "True when a list held more rows than one page and was read page by page: sevDesk may " +
+        "have skipped rows between pages, so totals may be incomplete (see notes).",
     ),
   notes: z
     .array(z.string())
@@ -214,6 +270,8 @@ interface TaxReportCompleteness {
   readonly truncated: boolean;
   readonly timeBudgetReached?: boolean | undefined;
   readonly positionsIncomplete: number;
+  /** A document list had to be read page by page, so documents may be missing (D-100, D-146). */
+  readonly pagedRead?: boolean | undefined;
 }
 
 /** The trusted "Incomplete: …" ending of a tax report's summary sentence ("" when complete). */
@@ -224,6 +282,9 @@ export function incompleteSuffix(coverage: TaxReportCompleteness): string {
   }
   if (coverage.positionsIncomplete > 0) {
     return " Incomplete: not every position could be read (see the notes).";
+  }
+  if (coverage.pagedRead === true) {
+    return " Incomplete: a day's documents had to be read page by page, so some may be missing (see the notes).";
   }
   return " Incomplete: a cap stopped reading.";
 }

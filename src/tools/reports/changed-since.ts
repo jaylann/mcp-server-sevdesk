@@ -19,7 +19,8 @@ export const changedSinceTool = defineTool({
     "(Belege) and bank transactions (Umsätze) last updated at or after since, as compact rows " +
     "(id, type, number/name, status, update time, link) with per-subject counts. Use it to " +
     "sync or review recent changes instead of paging every list; details via the get tools. Up " +
-    "to limit rows per subject; to page on, pass one subject with offset = nextOffset. Credit " +
+    "to limit rows per subject; to page on, pass one subject with offset = nextOffset (pages can " +
+    "skip or repeat a row: a later since keeps it to one page). Credit " +
     "notes and transactions have no sevDesk change filter and are checked here (up to " +
     `${CHANGE_SCAN_MAX_ROWS.toLocaleString("en-US")} rows per call). Deleted records do not ` +
     "appear.",

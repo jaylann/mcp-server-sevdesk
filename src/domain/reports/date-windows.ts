@@ -1,8 +1,9 @@
 /**
- * Reading a dated sevDesk list without paging across page boundaries (#154).
+ * Reading a dated sevDesk list without paging across page boundaries (#154, #162).
  *
- * sevDesk sorts its document lists by document date and leaves documents of the same date in an
- * order that depends on the page size. On the trial account (2026-11-18, probe
+ * sevDesk sorts its lists by one field (vouchers by voucher date; invoices, credit notes and
+ * orders by creation time) and leaves rows that tie on it in an order that depends on the page
+ * size (spec/deviations.md D-146). On the trial account (2026-11-18, probe
  * `read-voucher-paging-order`, spec/deviations.md D-100), 56 vouchers read as one page of 1,000
  * and in pages of 5 came back in different orders, and the pages of 5 missed 12 vouchers and gave
  * 12 others twice, with and without `embed=document`. The documented `orderByVoucherNumber` still
@@ -37,6 +38,8 @@ export interface WindowedScan<T> {
   readonly items: T[];
   /** sevDesk rows of the kept reads (count requests and a split page are not included). */
   readonly scanned: number;
+  /** Rows dropped because their id came before (counted in `scanned`). */
+  readonly repeated: number;
   /** sevDesk's count for the whole range, from the first request. */
   readonly total: number | undefined;
   /** True when the row cap (`max`) stopped reading while rows may have been left. */
@@ -82,15 +85,21 @@ function rangeLabel(range: DateRange): string {
 export async function scanDateWindows<T>(
   fetchPage: DateWindowFetch<T>,
   range: DateRange,
-  idOf: (item: T) => number,
+  idOf: (item: T) => number | undefined,
   options: ScanOptions,
 ): Promise<WindowedScan<T>> {
   const base = options.alreadyScanned ?? 0;
   const items: T[] = [];
   const seen = new Set<number>();
   const pagedRanges: string[] = [];
-  const state: { scanned: number; truncated: boolean; total: number | undefined } = {
+  const state: {
+    scanned: number;
+    repeated: number;
+    truncated: boolean;
+    total: number | undefined;
+  } = {
     scanned: 0,
+    repeated: 0,
     truncated: false,
     total: undefined,
   };
@@ -104,8 +113,13 @@ export async function scanDateWindows<T>(
     state.scanned += page.received;
     for (const item of page.items) {
       const id = idOf(item);
-      if (seen.has(id)) continue;
-      seen.add(id);
+      if (id !== undefined) {
+        if (seen.has(id)) {
+          state.repeated += 1;
+          continue;
+        }
+        seen.add(id);
+      }
       items.push(item);
     }
     await options.onProgress?.(
@@ -121,7 +135,8 @@ export async function scanDateWindows<T>(
 
   /**
    * The rest of a window that has to be read in pages (from `offset` on). The window counts as
-   * paged once a second page is actually read; a cap that stops before it is only `truncated`.
+   * paged once a second page actually brings rows; a cap that stops before it is only
+   * `truncated`, and an empty second page (the rows ended at the page size) is neither.
    */
   async function pageOn(window: DateRange, offset: number): Promise<void> {
     let next = offset;
@@ -132,7 +147,8 @@ export async function scanDateWindows<T>(
         return;
       }
       const page = await fetch(window, next, limit);
-      if (next === offset) pagedRanges.push(rangeLabel(window));
+      // Only a second page that brought rows makes the window paged: an empty one ends it.
+      if (next === offset && page.received > 0) pagedRanges.push(rangeLabel(window));
       await keep(page);
       next = page.nextOffset;
       if (!moreAfter(page, limit)) return;
@@ -190,6 +206,7 @@ export async function scanDateWindows<T>(
   return {
     items,
     scanned: state.scanned,
+    repeated: state.repeated,
     total: state.total,
     truncated: state.truncated,
     pagedRanges,

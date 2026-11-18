@@ -200,4 +200,38 @@ describe("scanDateWindows", () => {
     ).rejects.toBeInstanceOf(SevdeskError);
     expect(list.requests).toEqual([]);
   });
+
+  it("does not call a range paged when its second page comes back empty (#162)", async () => {
+    // Without a count, a full first page needs a second request; exactly 1,000 rows end there.
+    const list = datedList(spread("2026-01-01", 1000, 10), { withTotal: false });
+    const scan = await scanDateWindows(list.fetch, YEAR, (row) => row.id, options());
+    expect(list.requests.map((request) => request.offset)).toEqual([0, 1000]);
+    expect(scan).toMatchObject({ scanned: 1000, pagedRanges: [], truncated: false });
+  });
+
+  it("splits by sevDesk's count when rows are re-checked and dropped per page (#162)", async () => {
+    // A re-check drops every odd id from the page; received and total still count sevDesk's rows.
+    const list = datedList(spread("2026-01-01", 2500, 10));
+    const rechecked: DateWindowFetch<Row> = async (range, offset, limit) => {
+      const page = await list.fetch(range, offset, limit);
+      return { ...page, items: page.items.filter((row) => row.id % 2 === 0) };
+    };
+    const scan = await scanDateWindows(rechecked, YEAR, (row) => row.id, options());
+    expect(scan.items).toHaveLength(1250);
+    expect(idsOnce(scan.items)).toBe(true);
+    expect(scan.pagedRanges).toEqual([]);
+    expect(scan.repeated).toBe(0);
+    // Every kept read is the first page of its window.
+    expect(list.requests.every((request) => request.offset === 0)).toBe(true);
+  });
+
+  it("counts the rows a paged day gave twice (#162)", async () => {
+    // One day with more rows than a page cannot be split: it is paged, and ties repeat rows.
+    const list = datedList(spread("2026-05-05", 1500, 1500));
+    const scan = await scanDateWindows(list.fetch, YEAR, (row) => row.id, options());
+    expect(scan.pagedRanges).toEqual(["2026-05-05"]);
+    expect(idsOnce(scan.items)).toBe(true);
+    expect(scan.repeated).toBeGreaterThan(0);
+    expect(scan.items.length + scan.repeated).toBe(scan.scanned);
+  });
 });

@@ -926,7 +926,7 @@ describe("sevdesk_contact_update", () => {
         prepareWrite(tool, { id: 1001, remove: [{ kind: "address", id: 9999 }] }, client),
       ).rejects.toMatchObject({
         message: expect.stringContaining(
-          "that could be read (sevDesk had more than could be read)",
+          "that could be read (sevDesk may hold more than could be read for certain)",
         ) as string,
       });
     });
