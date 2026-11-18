@@ -114,8 +114,8 @@ describe("sevdesk_invoice_create_draft (community: sevdesk-rs request shape + re
   it("previews customer, address, dates, tax, positions and totals", async () => {
     const { plan } = await prepare(args);
     expect(plan.preview.action).toBe(
-      "Create a draft invoice (Rechnungsentwurf) for Musterfirma GmbH (contact 1001) with 2 " +
-        "positions, gross 65.45 EUR.",
+      "Create a draft invoice (Rechnungsentwurf) for contact 1001 with 2 positions, gross " +
+        "65.45 EUR.",
     );
     expect(plan.preview.irreversible).toBe(false);
     expect(plan.preview.warnings).toEqual([]);

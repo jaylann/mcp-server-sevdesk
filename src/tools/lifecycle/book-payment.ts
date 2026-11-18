@@ -415,14 +415,17 @@ export function bookPaymentTool(kind: PaymentKind) {
         plan: { amount: plan.amount, bookingType: plan.bookingType },
         date,
       };
+      // The check account by id: its name is text a user typed in the web app, so it appears
+      // only as a fact value (#147).
       const action = phrase(
         `Book a ${incoming ? "payment received" : "payout"} of ${formatMoney(booked.amount)} ` +
           `on ${documentTitle(doc)} (${BOOKING_TYPE_TEXT[booked.bookingType].en}) via check ` +
-          `account ${account.name}` +
+          `account ${String(account.id)}` +
           (linked === undefined ? "." : `, linked to bank transaction ${String(linked.id)}.`),
         `${incoming ? "Zahlungseingang" : "Auszahlung"} von ` +
           `${formatMoney(booked.amount, "de")} auf ${documentTitle(doc, "de")} buchen ` +
-          `(${BOOKING_TYPE_TEXT[booked.bookingType].de}), über das Zahlungskonto ${account.name}` +
+          `(${BOOKING_TYPE_TEXT[booked.bookingType].de}), über das Zahlungskonto ` +
+          String(account.id) +
           (linked === undefined ? "." : `, verknüpft mit dem Kontoumsatz ${String(linked.id)}.`),
       );
       return {

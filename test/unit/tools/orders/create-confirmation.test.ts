@@ -173,9 +173,11 @@ describe("sevdesk_order_create_confirmation (D-107)", () => {
     });
     expect(output.data.sourceOrderId).toBe(3001);
     expect(output.data.sourceOrderStatus).toMatchObject({ code: 500 });
+    // The notes point at the number in the output instead of quoting it (#147).
     expect(output.data.notes).toEqual([
       "sevDesk does not move its AB number counter for this request, so the next order " +
-        "confirmation may get AB-1003 again; check the number before sending either.",
+        "confirmation may get the same number (order.number) again; check the number before " +
+        "sending either.",
     ]);
     expect(output.affected).toEqual([
       { objectName: "Order", id: "3101" },
@@ -263,9 +265,9 @@ describe("sevdesk_order_create_confirmation (D-107)", () => {
     const client = staged({ sameNumber: [derivedRow("2990", "AB", "AB-1003", "2900")] });
     const { output } = await executeWrite(tool, { orderId: 3001 }, client);
     expect(output.data.notes?.[0]).toBe(
-      "The new order confirmation has the same number (AB-1003) as order 2990: sevDesk hands " +
-        "out the next number of the range without moving its counter. Give one of them another " +
-        "number in the sevDesk web app before sending it.",
+      "The new order confirmation has the same number (order.number) as order 2990: sevDesk " +
+        "hands out the next number of the range without moving its counter. Give one of them " +
+        "another number in the sevDesk web app before sending it.",
     );
   });
 
@@ -353,7 +355,8 @@ describe("sevdesk_order_create_confirmation (D-107)", () => {
   describe("notes and warnings of the checks around the request (review of #112, L4)", () => {
     const counter =
       "sevDesk does not move its AB number counter for this request, so the next order " +
-      "confirmation may get AB-1003 again; check the number before sending either.";
+      "confirmation may get the same number (order.number) again; check the number before " +
+      "sending either.";
 
     it("notes a number check that failed, without failing the call", async () => {
       const client = staged({
@@ -364,8 +367,8 @@ describe("sevdesk_order_create_confirmation (D-107)", () => {
       const { output } = await executeWrite(tool, { orderId: 3001 }, client);
       expect(output.data.notes).toEqual([
         counter,
-        "Whether another order confirmation carries AB-1003 already could not be checked; look " +
-          "it up with sevdesk_orders_list.",
+        "Whether another order confirmation carries the same number (order.number) already " +
+          "could not be checked; look it up with sevdesk_orders_list.",
       ]);
     });
 

@@ -456,7 +456,8 @@ export async function planPartUpdate(
   }
   return {
     preview: {
-      action: `Update part ${display(part.name)} (id ${id}): ${changed.join(", ")}.`,
+      // By id: the stored name is text a user typed in the web app; the "Part" fact shows it (#147).
+      action: `Update part ${id}: ${changed.join(", ")}.`,
       facts,
       warnings,
       irreversible: false,

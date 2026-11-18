@@ -96,7 +96,7 @@ describe("sevdesk_invoice_book_payment (spec bookInvoice; community record shape
     ]);
     expect(plan.preview.action).toBe(
       "Book a payment received of 177.33 EUR on invoice 1001 (full payment (FULL_PAYMENT)) " +
-        "via check account Geschäftskonto Musterbank, linked to bank transaction 5101.",
+        "via check account 4002, linked to bank transaction 5101.",
     );
     expect(plan.preview.irreversible).toBe(false);
     expect(plan.preview.warnings).toEqual([]);

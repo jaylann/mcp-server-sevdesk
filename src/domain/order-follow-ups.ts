@@ -40,7 +40,6 @@ import {
   typeProblem,
   verifyDraft,
 } from "./derived-documents.js";
-import { quotableNumber } from "./drafts/numbering.js";
 import { type LifecycleDocument, readLifecycleDocument, STATUS } from "./lifecycle/documents.js";
 import { getOrder, type OrderDetails } from "./orders.js";
 
@@ -281,6 +280,9 @@ export async function createOrderFromOrder(
  * counter, so other orders of the type may carry it already, and the next one may get it again.
  * A failed or cut lookup becomes a note too; it never fails the call (the order exists). Only a
  * cancel (or an unexpected error) ends the call here, and then with `affected` as completed writes.
+ *
+ * The notes point at the number (`order.number` of the output) instead of quoting it: the number
+ * range's format is set in the web app, so the number is text this server did not write (#147).
  */
 async function sameNumberNotes(
   client: SevdeskClient,
@@ -293,7 +295,7 @@ async function sameNumberNotes(
   if (number === undefined) {
     return [`sevDesk gave the new ${info.noun} no number; set one before sending it.`];
   }
-  const label = quotableNumber(number) ?? "the new number";
+  const label = "the same number (order.number)";
   const counter =
     `sevDesk does not move its ${info.type} number counter for this request, so the next ` +
     `${info.noun} may get ${label} again; check the number before sending either.`;
@@ -328,7 +330,7 @@ async function sameNumberNotes(
   const sameIds = idsOf(others.rows);
   if (sameIds.length > 0) {
     return [
-      `The new ${info.noun} has the same number (${label}) as ${idList("order", sameIds)}: ` +
+      `The new ${info.noun} has ${label} as ${idList("order", sameIds)}: ` +
         "sevDesk hands out the next number of the range without moving its counter. Give one of " +
         "them another number in the sevDesk web app before sending it.",
       counter,

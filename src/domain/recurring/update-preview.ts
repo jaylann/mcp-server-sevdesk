@@ -217,9 +217,14 @@ function customerName(input: TemplateUpdatePreviewInput, lang: PreviewLanguage):
   );
 }
 
+/** "contact 1001" / "Kontakt 1001": how the action names the customer. */
+function customerRef(input: TemplateUpdatePreviewInput, lang: PreviewLanguage): string {
+  return `${LABELS[lang].contact} ${String(input.basics.contact.contact.id)}`;
+}
+
+/** The customer as a fact value: name and id. The action names the contact by id only (#147). */
 function customerText(input: TemplateUpdatePreviewInput, lang: PreviewLanguage): string {
-  const t = LABELS[lang];
-  return `${customerName(input, lang)} (${t.contact} ${String(input.basics.contact.contact.id)})`;
+  return `${customerName(input, lang)} (${customerRef(input, lang)})`;
 }
 
 function actionText(
@@ -229,9 +234,9 @@ function actionText(
 ): string {
   const list = changed.map((name) => CHANGE_NAMES[name][lang]).join(", ");
   return lang === "de"
-    ? `Abo-Rechnung ${String(input.id)} für ${customerText(input, lang)} ändern: ${list}.`
+    ? `Abo-Rechnung ${String(input.id)} für ${customerRef(input, lang)} ändern: ${list}.`
     : `Change recurring invoice template ${String(input.id)} (Abo-Rechnung) for ` +
-        `${customerText(input, lang)}: ${list}.`;
+        `${customerRef(input, lang)}: ${list}.`;
 }
 
 function arrow(before: string | undefined, after: string | undefined, none: string): string {

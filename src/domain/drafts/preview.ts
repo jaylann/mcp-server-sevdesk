@@ -83,7 +83,16 @@ export function addressText(address: DocumentAddress): string {
   return addressPreview(address);
 }
 
-/** The customer, e.g. "Musterfirma GmbH (contact 1001)". */
+/** The customer as a fact value, e.g. "Musterfirma GmbH (contact 1001)". */
 export function customerText(name: string, contactId: number): string {
   return `${cleanText(name, VALUE_MAX) ?? "(unnamed)"} (contact ${contactId})`;
+}
+
+/**
+ * The customer as an action sentence names it: by id only, "contact 1001". The contact's name is
+ * text a user typed in the web app, and the action is the sentence a human approves and the model
+ * reads, so the name appears only in the "Customer" fact ({@link customerText}, #147).
+ */
+export function customerRef(contactId: number): string {
+  return `contact ${contactId}`;
 }

@@ -118,6 +118,7 @@ import {
 } from "./positions.js";
 import {
   addressText,
+  customerRef,
   customerText,
   type DraftPreview,
   fact,
@@ -406,8 +407,7 @@ export async function prepareInvoiceCreate(
     address.countryCode,
   );
   const preview = draftPreview(
-    `Create a draft invoice (Rechnungsentwurf) for ` +
-      `${customerText(contact.contact.displayName, args.contactId)} with ` +
+    `Create a draft invoice (Rechnungsentwurf) for ${customerRef(args.contactId)} with ` +
       `${positionCount(basics.positions.length)}, gross ${moneyText(expected.gross, currency)}.`,
     facts,
     [duplicateWarning("invoice", duplicates, duplicateQuery), ...basics.warnings, taxHint?.en],
@@ -565,7 +565,8 @@ export async function prepareInvoiceUpdate(
     updateTotalFact(totals, doc, basics.currency),
   ];
   const preview = draftPreview(
-    `Update draft invoice ${doc.id} for ${customer}: change ${log.changed.join(", ") || "nothing visible"}.`,
+    `Update draft invoice ${doc.id} for ${customerRef(basics.contact.contact.id)}: change ` +
+      `${log.changed.join(", ") || "nothing visible"}.`,
     facts,
     [...basics.warnings, taxHint?.en, totals.warning],
   );

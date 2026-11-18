@@ -789,7 +789,9 @@ export async function planContactUpdate(
   }
   return {
     preview: {
-      action: `Update contact ${name} (id ${id}): ${changed.join(", ")}.`,
+      // By id: the stored name is text a user typed in the web app; the "Contact" fact shows it
+      // (#147).
+      action: `Update contact ${id}: ${changed.join(", ")}.`,
       facts,
       warnings,
       irreversible: false,

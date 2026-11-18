@@ -91,7 +91,8 @@ describe("sevdesk_document_tag: add", () => {
   it("previews a new tag as created by sevDesk and creates it with the factory", async () => {
     const fake = client([INVOICE, tagsRoute([tagRow(7002, "Filiale München")]), CREATE]);
     const { plan, output } = await executeWrite(tool, add, fake);
-    expect(plan.preview.action).toBe("Tag invoice 1001 with the tag Projekt Y.");
+    // A new tag has no id yet; its name is a fact value only (#147).
+    expect(plan.preview.action).toBe("Tag invoice 1001 with a new tag.");
     expect(plan.preview.facts).toContainEqual({ label: "Tag", value: "Projekt Y" });
     expect(plan.preview.facts).toContainEqual({
       label: "Tag status",
@@ -132,7 +133,8 @@ describe("sevdesk_document_tag: add", () => {
       CREATE,
     ]);
     const { plan, output } = await executeWrite(tool, { ...add, tag: "PROJEKT y" }, fake);
-    expect(plan.preview.action).toBe("Tag invoice 1001 with the tag Projekt Y.");
+    expect(plan.preview.action).toBe("Tag invoice 1001 with tag 7001.");
+    expect(plan.preview.facts).toContainEqual({ label: "Tag", value: "Projekt Y" });
     expect(plan.preview.facts).toContainEqual({
       label: "Tag status",
       value: "exists (id 7001), added to this document",
@@ -157,7 +159,8 @@ describe("sevdesk_document_tag: add", () => {
       CREATE,
     ]);
     const { plan } = await executeWrite(tool, { ...add, tag: "CAFE" }, fake);
-    expect(plan.preview.action).toBe("Tag invoice 1001 with the tag Café.");
+    expect(plan.preview.action).toBe("Tag invoice 1001 with tag 7001.");
+    expect(plan.preview.facts).toContainEqual({ label: "Tag", value: "Café" });
     expect(plan.preview.facts).toContainEqual({
       label: "Tag status",
       value: "exists (id 7001), added to this document",
@@ -213,7 +216,7 @@ describe("sevdesk_document_tag: add", () => {
       CREATE,
     ]);
     const { plan } = await executeWrite(tool, { ...add, document: "voucher", id: 2001 }, fake);
-    expect(plan.preview.action).toBe("Tag voucher 2001 with the tag Projekt Y.");
+    expect(plan.preview.action).toBe("Tag voucher 2001 with tag 7001.");
     expect(fake.writes()[0]?.body).toEqual({
       name: "Projekt Y",
       object: { id: 2001, objectName: "Voucher" },
@@ -261,7 +264,8 @@ describe("sevdesk_document_tag: which tag an add uses (stored names, similar spe
     ]);
     const { plan, output } = await executeWrite(tool, { ...add, tag: "projekt​y" }, fake);
     // Shown cleaned, matched and sent as stored: the cleaned "ProjektY" would be a new tag.
-    expect(plan.preview.action).toBe("Tag invoice 1001 with the tag ProjektY.");
+    expect(plan.preview.action).toBe("Tag invoice 1001 with tag 7001.");
+    expect(plan.preview.facts).toContainEqual({ label: "Tag", value: "ProjektY" });
     expect(plan.preview.facts).toContainEqual({
       label: "Tag status",
       value: "exists (id 7001), added to this document",
@@ -397,7 +401,8 @@ describe("sevdesk_document_tag: remove", () => {
       DELETE,
     ]);
     const { plan, output } = await executeWrite(tool, remove, fake);
-    expect(plan.preview.action).toBe("Remove the tag Projekt Y from invoice 1001.");
+    expect(plan.preview.action).toBe("Remove tag 7001 from invoice 1001.");
+    expect(plan.preview.facts).toContainEqual({ label: "Tag", value: "Projekt Y (id 7001)" });
     expect(plan.preview.facts).toContainEqual({ label: "Tag uses", value: "2 documents" });
     expect(plan.preview.warnings).toEqual([]);
     expect(fake.writes().map((call) => [call.method, call.path, call.tier])).toEqual([
@@ -537,7 +542,8 @@ describe("sevdesk_document_tag: remove", () => {
       DELETE,
     ]);
     const { plan, output } = await executeWrite(tool, { ...remove, tag: "cafe" }, fake);
-    expect(plan.preview.action).toBe("Remove the tag Café from invoice 1001.");
+    expect(plan.preview.action).toBe("Remove tag 7001 from invoice 1001.");
+    expect(plan.preview.facts).toContainEqual({ label: "Tag", value: "Café (id 7001)" });
     expect(output.data.tag).toEqual({ id: 7001, name: "Café" });
   });
 

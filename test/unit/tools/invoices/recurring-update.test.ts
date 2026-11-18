@@ -102,8 +102,7 @@ describe("sevdesk_invoice_update_recurring", () => {
         endDate: undefined,
       });
       expect(plan.preview.action).toBe(
-        "Change recurring invoice template 2301 (Abo-Rechnung) for Musterfirma GmbH (contact " +
-          "1001): interval.",
+        "Change recurring invoice template 2301 (Abo-Rechnung) for contact 1001: interval.",
       );
       expect(plan.preview.facts).toEqual([
         { label: "Template", value: "2301 (recurring invoice template, active)" },
@@ -132,7 +131,7 @@ describe("sevdesk_invoice_update_recurring", () => {
     it("says the same in German, in the same order", async () => {
       const plan = await prepare({ interval: "quarterly", endDate: "2027-06-01" });
       expect(plan.previewDe.action).toBe(
-        "Abo-Rechnung 2301 für Musterfirma GmbH (Kontakt 1001) ändern: Intervall, Enddatum.",
+        "Abo-Rechnung 2301 für Kontakt 1001 ändern: Intervall, Enddatum.",
       );
       expect(plan.previewDe.facts.map((f) => f.label)).toEqual([
         "Vorlage",

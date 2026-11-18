@@ -38,7 +38,9 @@ export interface ConfirmationPreview {
   /**
    * One trusted sentence in the imperative, e.g. "Finalize invoice 1042: draft → open, marked as
    * sent by post." A document is named by kind and id (`documentTitle`), never by its stored
-   * number: anyone can type any number on a draft, so it goes into a fact value (#129).
+   * number: anyone can type any number on a draft, so it goes into a fact value (#129). Contacts,
+   * check accounts, tags and parts are named by kind and id too ("contact 1001", "check account
+   * 4002"), never by the names users give them in the web app (#147).
    * Identifiers from sevDesk only through `cleanText`.
    */
   readonly action: string;

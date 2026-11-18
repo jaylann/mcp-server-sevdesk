@@ -194,7 +194,12 @@ async function planAdd(
   }
   return {
     preview: {
-      action: `Tag ${documentTitle(doc)} with the tag ${shownName}.`,
+      // The tag by id, a new one without its name: a stored name is text a user typed in the web
+      // app, and a new one may be copied from it; the "Tag" fact shows the name (#147).
+      action:
+        existing === undefined
+          ? `Tag ${documentTitle(doc)} with a new tag.`
+          : `Tag ${documentTitle(doc)} with tag ${String(existing.id)}.`,
       facts,
       warnings,
       irreversible: false,
@@ -262,7 +267,8 @@ async function planRemove(
   const counted = `${String(uses.count)} document${uses.count === 1 ? "" : "s"}`;
   return {
     preview: {
-      action: `Remove the tag ${tag.name} from ${documentTitle(doc)}.`,
+      // By id: the tag's name is text a user typed in the web app; the "Tag" fact shows it (#147).
+      action: `Remove tag ${String(tag.id)} from ${documentTitle(doc)}.`,
       facts: [
         ...documentFacts(doc),
         { label: "Tag", value: `${tag.name} (id ${String(tag.id)})` },
