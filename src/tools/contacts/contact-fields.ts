@@ -89,7 +89,7 @@ export const customFieldRefShape = {
     .describe("Or the field's name; refused when no field or more than one has it."),
 };
 
-/** The `customFields` argument of create and update: values by field (Zusatzfelder). */
+/** The `customFields` argument of create and update: values by field (Kontaktfelder). */
 export const customFieldsInput = z
   .array(
     z.strictObject({
@@ -102,7 +102,7 @@ export const customFieldsInput = z
   .min(1)
   .max(20)
   .describe(
-    "Custom field values (Zusatzfelder), each {settingId or name, value}. Fields are defined in " +
+    "Custom field values (Kontaktfelder), each {settingId or name, value}. Fields are defined in " +
       "the sevDesk web app; sevdesk_reference_lookup kind=contact_custom_fields lists them.",
   );
 
@@ -160,7 +160,7 @@ export const contactWriteOutput = z.object({
   customFields: z
     .array(customFieldDtoSchema)
     .optional()
-    .describe("Custom field values (Zusatzfelder) read back; only when this call changed some."),
+    .describe("Custom field values (Kontaktfelder) read back; only when this call changed some."),
   customFieldsComplete: z
     .boolean()
     .optional()

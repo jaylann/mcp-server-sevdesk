@@ -472,14 +472,14 @@ exports[`German previews > delete an organisation with its addresses, communicat
 "Kontakt 1001 (Organisation) und seinen Ansprechpartner aus sevDesk löschen.
 ! Der Kontakt, seine 2 Adressen und seine 3 Kommunikationswege werden aus sevDesk gelöscht; das lässt sich nicht rückgängig machen.
 ! sevDesk löscht den Ansprechpartner der Organisation mit; das lässt sich ebenfalls nicht rückgängig machen.
-! Auch die Werte von Zusatzfeldern des Kontakts und seines Ansprechpartners werden mitgelöscht.
+! Auch die Werte von Kontaktfeldern des Kontakts und seines Ansprechpartners werden mitgelöscht.
 (nicht umkehrbar)
 Kontakt: Musterfirma GmbH (ID 1001)
 Kundennummer: K-1001
 Kategorie: Kunde
 Adressen (werden mitgelöscht): 2
 Kommunikationswege (werden mitgelöscht): 3
-Werte von Zusatzfeldern (werden mitgelöscht): 2
+Werte von Kontaktfeldern (werden mitgelöscht): 2
 Ansprechpartner (werden mitgelöscht): 1
 Ansprechpartner (wird mitgelöscht): Dr. Max Mustermann (Kontakt 1002)"
 `;

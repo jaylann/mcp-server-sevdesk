@@ -65,7 +65,7 @@ const input = z.strictObject({
     })
     .optional()
     .describe(
-      "Contacts whose custom field (Zusatzfeld) has this value: {settingId or name, value}. " +
+      "Contacts whose custom field (Kontaktfeld) has this value: {settingId or name, value}. " +
         "Not combined with query, customerNumber or category.",
     ),
   ...pagingInputShape({ limit: 25, max: 100 }),

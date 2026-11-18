@@ -1,5 +1,5 @@
 /**
- * Custom field values (Zusatzfelder) through `sevdesk_contact_create` and
+ * Custom field values (Kontaktfelder) through `sevdesk_contact_create` and
  * `sevdesk_contact_update`, against the behaviour recorded on 2026-11-16 (spec/deviations.md
  * D-086): a value is `POST /ContactCustomField` with the contact and the setting as references,
  * a change is `PUT` with only `objectName` and `value`, a removal is a `DELETE` answering

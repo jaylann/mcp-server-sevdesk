@@ -283,15 +283,16 @@ Ja. `sevdesk_part_get` meldet den aktuellen Bestand, wenn die Bestandsführung a
 `sevdesk_part_create` und `sevdesk_part_update` setzen sie. Die sevDesk-API hat keine weiteren
 Endpunkte für den Lagerbestand.
 
-### Kann es mit Zusatzfeldern von Kontakten umgehen?
+### Kann es mit Kontaktfeldern umgehen?
 
-Ja, mit ihren Werten. `sevdesk_contact_get` zeigt die Zusatzfelder eines Kontakts mit ihren
+Ja, mit ihren Werten. `sevdesk_contact_get` zeigt die Kontaktfelder eines Kontakts mit ihren
 Namen, `sevdesk_contact_create` und `sevdesk_contact_update` setzen sie (`customFields`, über die
 ID oder den Namen des Felds), `sevdesk_contact_update` entfernt einen Wert (`remove` mit kind
 `customField`), und `sevdesk_contacts_search` findet Kontakte über einen Wert (`customField`; der
 ganze Wert, Groß- und Kleinschreibung egal). `sevdesk_reference_lookup` mit kind
 `contact_custom_fields` listet die Felder deines Kontos. Die Felder selbst legst du in der
-sevDesk-Weboberfläche an: Wer dort ein Feld löscht, löscht seinen Wert bei jedem Kontakt, darum
+sevDesk-Weboberfläche an (Einstellungen → System → Kontaktfelder; am Kontakt stehen ihre Werte
+unter „Eigene Felder“): Wer dort ein Feld löscht, löscht seinen Wert bei jedem Kontakt, darum
 legt der Server nie ein Feld an, benennt keins um und löscht keins.
 
 ### Kann es Dokumente nach Projekt oder Kunde gruppieren (Tags)?

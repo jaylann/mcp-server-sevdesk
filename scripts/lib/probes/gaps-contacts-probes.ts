@@ -354,9 +354,9 @@ async function customFieldLimits(ctx: ProbeContext, own: OwnRecord[]): Promise<P
   if (setting.id === undefined) return recordedOutcome(checks, "");
   const settingId = setting.id;
 
-  const org = await organisation(ctx, "Zusatzfeld Limit");
+  const org = await organisation(ctx, "Kontaktfeld Limit");
   if (org.id !== undefined) own.push({ objectName: "Contact", id: org.id });
-  const per = await person(ctx, "Zusatzfeld Limit");
+  const per = await person(ctx, "Kontaktfeld Limit");
   if (per.id !== undefined) own.push({ objectName: "Contact", id: per.id });
   if (org.id === undefined || per.id === undefined) {
     const partial = recordedOutcome(checks, "", [
@@ -1135,7 +1135,7 @@ export const GAPS_CONTACTS_PROBES: readonly ProbeDefinition[] = [
         settingId,
         "custom field setting (delete it in the web app)",
       );
-      const contact = await organisation(ctx, "Zusatzfeld");
+      const contact = await organisation(ctx, "Kontaktfeld");
       if (contact.id === undefined) {
         return inconclusive(`Could not create the contact: ${outcomeOf(contact.result)}.`);
       }

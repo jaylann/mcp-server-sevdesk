@@ -93,10 +93,16 @@ one-line meaning and where each matters. The server's own terms are at the end.
 | Kunde, Lieferant        | customer, supplier | The contact's category; also partner and prospect (Interessent).                                                  | `category` of the contact tools                                                           |
 | Kundennummer            | customer number    | The contact's number; by default the next free one sevDesk assigns.                                               | [`sevdesk_contacts_next_customer_number`](tools.md#sevdesk_contacts_next_customer_number) |
 | USt-IdNr., Steuernummer | VAT ID, tax number | The contact's tax identifiers; the VAT ID matters for EU and reverse-charge sales.                                | [`sevdesk_contact_create`](tools.md#sevdesk_contact_create)                               |
-| Zusatzfeld              | custom field       | A contact field the account defines in the sevDesk web app; a contact has one value of it.                        | `customFields` of the contact tools                                                       |
+| Kontaktfeld             | custom field       | A field the account defines in the sevDesk web app; a contact has one value of it, under "Eigene Felder".         | `customFields` of the contact tools                                                       |
 | Artikel (API: Part)     | part               | A product or service with number, price, tax rate and optional stock.                                             | `sevdesk_part_*`, [`sevdesk_parts_list`](tools.md#sevdesk_parts_list)                     |
 | Artikelnummer           | part number        | The part's unique number.                                                                                         | [`sevdesk_part_create`](tools.md#sevdesk_part_create)                                     |
 | Lagerbestand            | stock              | The quantity in stock, when stock tracking is on.                                                                 | [`sevdesk_part_get`](tools.md#sevdesk_part_get)                                           |
+
+Kontaktfelder and "Eigene Felder" are the names sevDesk's help centre uses: the fields are set up
+under Einstellungen → System → Kontaktfelder
+([Kontaktfelder anlegen](https://hilfe.sevdesk.de/de/articles/9382263-kontaktfelder-anlegen)), and
+a contact's values are filled in under "Eigene Felder"
+([Kontakte anlegen](https://hilfe.sevdesk.de/de/articles/9064553-kontakte-anlegen-v1)).
 
 ## Server terms
 

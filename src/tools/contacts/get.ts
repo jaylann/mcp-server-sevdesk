@@ -26,7 +26,7 @@ const output = z.object({
     .describe("False when sevDesk had more rows than could be read: communicationWays is partial."),
   customFields: z
     .array(customFieldDtoSchema)
-    .describe("Custom field values (Zusatzfelder), with the field's id and name."),
+    .describe("Custom field values (Kontaktfelder), with the field's id and name."),
   customFieldsComplete: z
     .boolean()
     .describe(
@@ -42,7 +42,7 @@ export const contactGetTool = defineTool({
   description:
     "Get one contact (Kontakt) by its sevDesk id, with its postal addresses (Adressen, e.g. " +
     "Rechnungsanschrift), communication ways (email, phone, website) and custom field values " +
-    "(Zusatzfelder). Use it after sevdesk_contacts_search to check a customer's (Kunde) or " +
+    "(Kontaktfelder). Use it after sevdesk_contacts_search to check a customer's (Kunde) or " +
     "supplier's (Lieferant) details, e.g. the billing address or invoice email, before working " +
     "with their documents. ISO country codes are included when the country table resolves the ids.",
   toolset: "contacts",
