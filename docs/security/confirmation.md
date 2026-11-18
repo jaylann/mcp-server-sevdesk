@@ -12,6 +12,9 @@ read, not from what the model says: the action in one sentence, then the warning
 be undone." for irreversible actions, then the key facts (record, customer, amounts, dates,
 recipients, texts).
 
+- The action sentence names a document by its kind and id ("invoice 1001"), never by its number:
+  anyone can type any number on a draft in the sevDesk web app, so the number appears only as a
+  fact value, like every other text read from sevDesk.
 - Values are stripped of invisible, bidi and control characters, so stored text cannot hide
   anything from the human.
 - Fact values are shown in full with their line breaks (an email text, for example), each line

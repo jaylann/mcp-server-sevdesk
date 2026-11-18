@@ -53,11 +53,11 @@ describe("sevdesk_invoice_reset (spec resetToOpen/resetToDraft; behaviour per se
     ]);
     expect(staged.writes()[0]).not.toHaveProperty("body");
     expect(plan.preview.action).toBe(
-      "Reset invoice RE-1001 to open (Paid → open 200) and unlink all its payments.",
+      "Reset invoice 1001 to open (Paid → open 200) and unlink all its payments.",
     );
     expect(plan.preview.facts).toContainEqual({ label: "Paid so far", value: "177.33 EUR" });
     expect(plan.previewDe.action).toBe(
-      "Rechnung RE-1001 auf offen zurücksetzen (Bezahlt → offen 200) und alle Zahlungen davon lösen.",
+      "Rechnung 1001 auf offen zurücksetzen (Bezahlt → offen 200) und alle Zahlungen davon lösen.",
     );
     expect(plan.previewDe.facts).toContainEqual({ label: "Bisher bezahlt", value: "177,33 EUR" });
     expect(plan.previewDe.warnings[0]).toContain(
@@ -161,10 +161,10 @@ describe("sevdesk_invoice_reset (spec resetToOpen/resetToDraft; behaviour per se
     const { plan, output } = await executeWrite(tool, { id: 1001, to: "draft" }, staged);
 
     expect(staged.writes()[0]?.path).toBe("/Invoice/1001/resetToDraft");
-    expect(plan.preview.action).toBe("Reset invoice RE-1001 to draft (open 200 → draft 100).");
+    expect(plan.preview.action).toBe("Reset invoice 1001 to draft (open 200 → draft 100).");
     expect(plan.preview.warnings[1]).toContain("cancel it (sevdesk_invoice_cancel)");
     expect(plan.previewDe.action).toBe(
-      "Rechnung RE-1001 auf Entwurf zurücksetzen (offen 200 → Entwurf 100).",
+      "Rechnung 1001 auf Entwurf zurücksetzen (offen 200 → Entwurf 100).",
     );
     expect(plan.previewDe.warnings[0]).toContain("Die Rechnung ist dann nicht mehr bindend");
     expect(plan.previewDe.warnings[1]).toContain(

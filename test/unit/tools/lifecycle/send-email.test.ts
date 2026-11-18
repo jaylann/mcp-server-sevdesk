@@ -113,7 +113,7 @@ describe("sevdesk_invoice_send_email (spec request body; community record shapes
     expect(client.writes()).toEqual([]);
     expect(plan.preview.irreversible).toBe(true);
     expect(plan.preview.action).toBe(
-      "Email invoice 1001 (no number yet) through sevDesk to kunde@example.com and 2 more " +
+      "Email invoice 1001 through sevDesk to kunde@example.com and 2 more " +
         "recipients (cc/bcc).",
     );
     // The email block follows the identifying facts; the document's stored texts and positions
@@ -141,7 +141,7 @@ describe("sevdesk_invoice_send_email (spec request body; community record shapes
       { label: "Text", value: "Guten Tag,\nanbei Ihre Rechnung." },
     ]);
     expect(plan.previewDe.action).toBe(
-      "Rechnung 1001 (noch ohne Nummer) über sevDesk per E-Mail senden an kunde@example.com und 2 " +
+      "Rechnung 1001 über sevDesk per E-Mail senden an kunde@example.com und 2 " +
         "weitere Empfänger (Cc/Bcc).",
     );
     expect(plan.previewDe.facts.slice(to, to + 7)).toEqual([
@@ -184,9 +184,9 @@ describe("sevdesk_invoice_send_email (spec request body; community record shapes
 
     const { plan, output } = await executeWrite(tool, { id: 1001, ...message }, client);
 
-    expect(plan.preview.action).toBe("Email invoice RE-1001 through sevDesk to kunde@example.com.");
+    expect(plan.preview.action).toBe("Email invoice 1001 through sevDesk to kunde@example.com.");
     expect(plan.previewDe.action).toBe(
-      "Rechnung RE-1001 über sevDesk per E-Mail senden an kunde@example.com.",
+      "Rechnung 1001 über sevDesk per E-Mail senden an kunde@example.com.",
     );
     // No draft warning: only that it cannot be recalled, and what the facts do not show.
     expect(plan.preview.warnings).toHaveLength(2);

@@ -1,4 +1,4 @@
-<!-- translated-from: docs/security/confirmation.md sha256:b55946b8284f -->
+<!-- translated-from: docs/security/confirmation.md sha256:79e6a0798725 -->
 
 # Bestätigung durch einen Menschen
 
@@ -14,6 +14,9 @@ aus dem gerade Gelesenen erstellt, nicht aus dem, was das Modell sagt: die Aktio
 dann die Warnungen und „This cannot be undone.“ bei unumkehrbaren Aktionen, dann die wichtigsten
 Angaben (Datensatz, Kunde, Beträge, Daten, Empfänger, Texte).
 
+- Der Satz der Aktion nennt ein Dokument mit seiner Art und ID („Rechnung 1001“), nie mit seiner
+  Nummer: Auf einem Entwurf kann jeder in der sevDesk-Web-App eine beliebige Nummer eintragen, also
+  steht die Nummer nur als Wert bei den Angaben, wie jeder andere aus sevDesk gelesene Text.
 - Aus den Werten werden unsichtbare, Bidi- und Steuerzeichen entfernt, damit gespeicherter Text dem
   Menschen nichts verbergen kann.
 - Werte werden vollständig mit ihren Zeilenumbrüchen gezeigt (etwa ein E-Mail-Text), jede Zeile

@@ -12,6 +12,7 @@ import { DEFAULT_CURRENCY, type Money, money } from "../money.js";
 import { dateText, numberText, type PreviewLanguage } from "../preview-text.js";
 import { statusByCode } from "../reference-data.js";
 import {
+  documentRef,
   KINDS,
   type LifecycleDocument,
   type LifecycleKind,
@@ -81,18 +82,16 @@ export function kindNoun(kind: LifecycleKind, lang: PreviewLanguage = "en"): str
 }
 
 /**
- * The document as an action sentence names it: "invoice RE-1001" or, without a number yet,
- * "invoice 1001 (no number yet)"; in German "Rechnung RE-1001". The number is cleaned upstream
- * text (from the DTO), assigned by sevDesk's number range. A voucher is always named by its id
- * ("voucher 2001"): its Belegnummer is free text from the supplier's receipt (BT-1 on an
- * e-invoice import), so it appears only as a fact value ({@link documentFacts}), never in the
- * action.
+ * The document as an action sentence names it: by kind and id only, "invoice 1001", in German
+ * "Rechnung 1001" (the same words as the trusted fact labels of `documentFactParts`). The action
+ * is the sentence a human approves and the model reads, so it holds no text this server did not
+ * write: a sales document's number usually comes from sevDesk's number range, but anyone can
+ * type any number on a draft in the web app, and a voucher's Belegnummer is free text from the
+ * supplier's receipt (BT-1 on an e-invoice import). The number (or "no number yet") appears only
+ * as a fact value ({@link documentFacts}), the place for upstream text (#129).
  */
 export function documentTitle(doc: LifecycleDocument, lang: PreviewLanguage = "en"): string {
-  const noun = kindNoun(doc.kind, lang);
-  if (doc.kind === "voucher") return `${noun} ${String(doc.id)}`;
-  if (doc.number !== undefined) return `${noun} ${doc.number}`;
-  return `${noun} ${String(doc.id)} (${lang === "de" ? "noch ohne Nummer" : "no number yet"})`;
+  return documentRef(doc, false, lang);
 }
 
 /**

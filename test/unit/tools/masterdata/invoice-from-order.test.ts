@@ -100,7 +100,7 @@ describe("sevdesk_invoice_create_from_order", () => {
     const client = new FakeSevdeskClient(routes());
     const plan = await prepareWrite(tool, { orderId: 3002 }, client);
     expect(plan.preview).toEqual({
-      action: "Create a draft invoice for the whole order (Rechnung) from Order AB-1002 (id 3002).",
+      action: "Create a draft invoice for the whole order (Rechnung) from order 3002.",
       facts: [
         { label: "Order", value: "Order AB-1002 (id 3002) (Auftragsbestätigung)" },
         { label: "Customer", value: "Musterfirma GmbH (contact 1001)" },
@@ -179,7 +179,7 @@ describe("sevdesk_invoice_create_from_order", () => {
     });
     expect(run.plan.preview.facts).toContainEqual({ label: "Amount", value: "100.00 EUR net" });
     expect(run.plan.preview.action).toBe(
-      "Create a draft advance invoice (Abschlagsrechnung) from Order AB-1002 (id 3002).",
+      "Create a draft advance invoice (Abschlagsrechnung) from order 3002.",
     );
   });
 

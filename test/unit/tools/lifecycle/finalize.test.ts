@@ -165,8 +165,7 @@ describe("sevdesk_invoice_finalize details", () => {
     const plan = await prepareWrite(tool, { id: 1001 }, staged(kind));
 
     expect(plan.preview.action).toBe(
-      "Finalize invoice 1001 (no number yet): draft → open, marked as sent as a downloaded " +
-        "PDF (VPDF).",
+      "Finalize invoice 1001: draft → open, marked as sent as a downloaded " + "PDF (VPDF).",
     );
     expect(plan.preview.facts.slice(0, 4)).toEqual([
       { label: "Invoice (Rechnung)", value: "id 1001, no number yet" },
@@ -449,7 +448,9 @@ describe("sevdesk_order_finalize details", () => {
     const kind = cases[0];
     if (kind === undefined) throw new Error("missing case");
     const plan = await prepareWrite(finalizeTool("invoice"), { id: 1001 }, staged(kind));
-    expect(plan.preview.action).toContain("no number yet");
-    expect(plan.previewDe.action).toContain("(noch ohne Nummer) fertigstellen");
+    expect(plan.preview.action).toMatch(/^Finalize invoice 1001: /);
+    expect(plan.preview.facts[0]?.value).toBe("id 1001, no number yet");
+    expect(plan.previewDe.action).toMatch(/^Rechnung 1001 fertigstellen: /);
+    expect(plan.previewDe.facts[0]?.value).toBe("ID 1001, noch ohne Nummer");
   });
 });

@@ -1,7 +1,7 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
 exports[`German previews > accept a sent offer: says the same in German 1`] = `
-"Angebot AN-1001 als angenommen markieren (versendet 200 → angenommen 500).
+"Angebot 3001 als angenommen markieren (versendet 200 → angenommen 500).
 ! Das Angebot wird als vom Kunden angenommen vermerkt (Status 500); an niemanden wird etwas gesendet. Danach: sevdesk_order_create_confirmation oder sevdesk_invoice_create_from_order. Mit der Aktion „reopen“ lässt es sich zurücksetzen.
 ! sevDesk ändert nur den Status des Angebots: Die Anfrage enthält nichts anderes.
 ! Die Angaben nennen die gespeicherten Texte, die Anschrift und die Positionen. Nicht gezeigt werden: der Ansprechpartner, das Land der Anschrift, die Einheiten und verknüpften Artikel der Positionen sowie das Layout des PDF. Prüfe bei Bedarf sevdesk_order_pdf.
@@ -29,7 +29,7 @@ Lieferbedingungen: Lieferung frei Haus"
 `;
 
 exports[`German previews > book a bank transaction to an invoice: says the same in German 1`] = `
-"Kontoumsatz 5101 (177,33 EUR) zuordnen zu Rechnung RE-1001: insgesamt 177,33 EUR.
+"Kontoumsatz 5101 (177,33 EUR) zuordnen zu Rechnung 1001: insgesamt 177,33 EUR.
 ! Der Status jedes Dokuments ändert sich (siehe die einzelnen Zuordnungen). Rückgängig machen lässt sich das mit sevdesk_transaction_reset: Das setzt diese Dokumente auf offen zurück und entfernt damit alle ihre Zahlungen.
 (umkehrbar)
 Kontoumsatz: ID 5101, 177,33 EUR (Eingang)
@@ -45,7 +45,7 @@ Danach nicht zugeordnet: 0,00 EUR (Umsatz vollständig gebucht, Status 400)"
 `;
 
 exports[`German previews > book a credit note payout on the offline account: says the same in German 1`] = `
-"Auszahlung von 23,80 EUR auf Gutschrift GU-1001 buchen (vollständige Zahlung (FULL_PAYMENT)), über das Zahlungskonto Basiskonto.
+"Auszahlung von 23,80 EUR auf Gutschrift 2001 buchen (vollständige Zahlung (FULL_PAYMENT)), über das Zahlungskonto Basiskonto.
 ! sevDesk legt für diese Zahlung einen neuen Kontoumsatz auf dem Konto 4001 an. Ist die Zahlung bereits als importierter Umsatz in sevDesk vorhanden, muss stattdessen dieser Umsatz verknüpft werden (transactionId), sonst wird sie doppelt gezählt.
 (umkehrbar)
 Gutschrift: GU-1001 (ID 2001)
@@ -64,7 +64,7 @@ An sevDesk gesendet als: Betrag -23,8 (Geld verlässt das Konto)"
 `;
 
 exports[`German previews > book an invoice payment linked to a bank transaction: says the same in German 1`] = `
-"Zahlungseingang von 177,33 EUR auf Rechnung RE-1001 buchen (vollständige Zahlung (FULL_PAYMENT)), über das Zahlungskonto Geschäftskonto Musterbank, verknüpft mit dem Kontoumsatz 5101.
+"Zahlungseingang von 177,33 EUR auf Rechnung 1001 buchen (vollständige Zahlung (FULL_PAYMENT)), über das Zahlungskonto Geschäftskonto Musterbank, verknüpft mit dem Kontoumsatz 5101.
 (umkehrbar)
 Rechnung: RE-1001 (ID 1001)
 Typ: Rechnung (RE)
@@ -108,7 +108,7 @@ An sevDesk gesendet als: Betrag -298,1 (Geld verlässt das Konto)"
 `;
 
 exports[`German previews > cancel an open, unpaid invoice: says the same in German 1`] = `
-"Rechnung RE-1001 stornieren: sevDesk erstellt eine Stornorechnung (SR) über -177,33 EUR, die sie ausgleicht.
+"Rechnung 1001 stornieren: sevDesk erstellt eine Stornorechnung (SR) über -177,33 EUR, die sie ausgleicht.
 ! sevDesk erstellt eine neue Stornorechnung mit denselben Beträgen mit umgekehrtem Vorzeichen, die bereits als bezahlt markiert ist. Beide Rechnungen bleiben in der Buchhaltung; das Storno lässt sich nicht rückgängig machen.
 ! Die ursprüngliche Rechnung zeigt danach den Status „Bezahlt“ (1000), obwohl nichts bezahlt wurde: sevDesk kennt keinen Status „Storniert“.
 ! Hat der Kunde die Rechnung bereits erhalten, sende ihm auch die Stornorechnung.
@@ -299,7 +299,7 @@ Summe je Rechnung: netto 55,00 EUR, USt. 10,45 EUR, brutto 65,45 EUR"
 `;
 
 exports[`German previews > create an order confirmation from a sent offer: says the same in German 1`] = `
-"Aus dem Angebot AN-1001 eine Auftragsbestätigung (AB) als Entwurf erstellen; sevDesk markiert das Angebot dabei als angenommen (versendet 200 → angenommen 500).
+"Aus dem Angebot 3001 eine Auftragsbestätigung (AB) als Entwurf erstellen; sevDesk markiert das Angebot dabei als angenommen (versendet 200 → angenommen 500).
 ! sevDesk markiert das Angebot in derselben Anfrage als angenommen (Status 500): Das ist der bindende Schritt dieser Aktion. War das nicht gewollt, setze das Angebot mit sevdesk_order_set_offer_status (Aktion „reopen“) zurück.
 ! Die Auftragsbestätigung wird als Entwurf mit Kontakt, Texten und Positionen des Angebots erstellt, wie hier aufgeführt; prüfe sie mit sevdesk_order_get und stelle sie mit sevdesk_order_finalize fertig.
 ! sevDesk gibt der Auftragsbestätigung die nächste Nummer des AB-Nummernkreises, ohne den Zähler weiterzuschalten; eine andere Auftragsbestätigung kann daher dieselbe Nummer tragen. Das Ergebnis nennt solche, die es findet.
@@ -330,7 +330,7 @@ Lieferbedingungen: Lieferung frei Haus"
 `;
 
 exports[`German previews > create an order confirmation from an accepted offer with a document discount: says the same in German 1`] = `
-"Aus dem Angebot AN-1003 eine Auftragsbestätigung (AB) als Entwurf erstellen; das Angebot bleibt angenommen (500).
+"Aus dem Angebot 3003 eine Auftragsbestätigung (AB) als Entwurf erstellen; das Angebot bleibt angenommen (500).
 ! Das Angebot ist bereits angenommen (Status 500) und bleibt es.
 ! Die Auftragsbestätigung wird als Entwurf mit Kontakt, Texten und Positionen des Angebots erstellt, wie hier aufgeführt; prüfe sie mit sevdesk_order_get und stelle sie mit sevdesk_order_finalize fertig.
 ! sevDesk gibt der Auftragsbestätigung die nächste Nummer des AB-Nummernkreises, ohne den Zähler weiterzuschalten; eine andere Auftragsbestätigung kann daher dieselbe Nummer tragen. Das Ergebnis nennt solche, die es findet.
@@ -385,7 +385,7 @@ Bisher bezahlt: 0,00 EUR"
 `;
 
 exports[`German previews > delete a numbered credit note draft: says the same in German 1`] = `
-"Gutschrift GU-1101 (Entwurf) aus sevDesk löschen.
+"Gutschrift 2001 (Entwurf) aus sevDesk löschen.
 ! Der Entwurf und alle seine Positionen werden aus sevDesk gelöscht; das lässt sich nicht rückgängig machen.
 ! Ist die Nummer des Entwurfs die zuletzt vergebene seines Nummernkreises, vergibt sevDesk sie an das nächste Dokument erneut; sonst bleibt die Nummer unbenutzt und der Nummernkreis hat eine Lücke.
 (nicht umkehrbar)
@@ -413,7 +413,7 @@ Angelegt: 09.11.2026"
 `;
 
 exports[`German previews > delete an invoice draft that has a number and was sent: says the same in German 1`] = `
-"Rechnung RE-1001 (Entwurf) aus sevDesk löschen.
+"Rechnung 1004 (Entwurf) aus sevDesk löschen.
 ! Der Entwurf und alle seine Positionen werden aus sevDesk gelöscht; das lässt sich nicht rückgängig machen.
 ! Dieser Rechnungsentwurf hat eine Nummer, und sevDesk führt ihn als versendet (am 01.10.2026): Der Kunde hat die Rechnung wahrscheinlich unter dieser Nummer erhalten. Das Löschen hinterlässt eine Lücke im Nummernkreis der Rechnungen und entfernt eine Rechnung, die beim Kunden liegt. Eine ausgestellte Rechnung wird nicht gelöscht, sondern storniert: Stelle sie erneut fertig und storniere sie mit sevdesk_invoice_cancel (Storno).
 (nicht umkehrbar)
@@ -478,7 +478,7 @@ Status nach dem Speichern: Entwurf (50), noch nicht gebucht"
 `;
 
 exports[`German previews > email an open credit note: says the same in German 1`] = `
-"Gutschrift GU-1001 über sevDesk per E-Mail senden an kunde@example.com.
+"Gutschrift 2001 über sevDesk per E-Mail senden an kunde@example.com.
 ! Die E-Mail geht sofort aus sevDesk an alle aufgeführten Empfänger und lässt sich nicht zurückholen.
 ! Die Angaben nennen die gespeicherten Texte, die Anschrift und die Positionen. Nicht gezeigt werden: der Ansprechpartner, das Land der Anschrift, die Einheiten und verknüpften Artikel der Positionen sowie das Layout des PDF. Prüfe bei Bedarf sevdesk_credit_note_pdf.
 (nicht umkehrbar)
@@ -506,7 +506,7 @@ Positionen: keine"
 `;
 
 exports[`German previews > email an open invoice: says the same in German 1`] = `
-"Rechnung RE-1001 über sevDesk per E-Mail senden an kunde@example.com.
+"Rechnung 1001 über sevDesk per E-Mail senden an kunde@example.com.
 ! Die E-Mail geht sofort aus sevDesk an alle aufgeführten Empfänger und lässt sich nicht zurückholen.
 ! Die Angaben nennen die gespeicherten Texte, die Anschrift und die Positionen. Nicht gezeigt werden: der Ansprechpartner, das Land der Anschrift, die Einheiten und verknüpften Artikel der Positionen sowie das Layout des PDF. Prüfe bei Bedarf sevdesk_invoice_pdf.
 (nicht umkehrbar)
@@ -537,7 +537,7 @@ Fußtext: Bitte überweisen Sie den Betrag innerhalb von 14 Tagen."
 `;
 
 exports[`German previews > email an order: says the same in German 1`] = `
-"Auftrag AB-1002 über sevDesk per E-Mail senden an kunde@example.com.
+"Auftrag 3002 über sevDesk per E-Mail senden an kunde@example.com.
 ! Die E-Mail geht sofort aus sevDesk an alle aufgeführten Empfänger und lässt sich nicht zurückholen.
 ! Die Angaben nennen die gespeicherten Texte, die Anschrift und die Positionen. Nicht gezeigt werden: der Ansprechpartner, das Land der Anschrift, die Einheiten und verknüpften Artikel der Positionen sowie das Layout des PDF. Prüfe bei Bedarf sevdesk_order_pdf.
 (nicht umkehrbar)
@@ -600,7 +600,7 @@ Gebucht auf: Rechnung 1001"
 `;
 
 exports[`German previews > enshrine an open credit note: says the same in German 1`] = `
-"Gutschrift GU-1001 festschreiben (GoBD): dauerhaft sperren.
+"Gutschrift 2001 festschreiben (GoBD): dauerhaft sperren.
 ! Nicht umkehrbar (GoBD): Die Gutschrift kann nie wieder geändert, gelöscht oder auf Entwurf zurückgesetzt werden; Korrekturen sind dann nur noch mit einem neuen Dokument möglich.
 ! Zahlungen können weiterhin darauf gebucht werden; sie später wieder zu lösen ist nur möglich, solange ihre Kontoumsätze nicht festgeschrieben sind.
 ! Die Angaben nennen die gespeicherten Texte, die Anschrift und die Positionen. Nicht gezeigt werden: der Ansprechpartner, das Land der Anschrift, die Einheiten und verknüpften Artikel der Positionen sowie das Layout des PDF. Prüfe bei Bedarf sevdesk_credit_note_pdf.
@@ -625,7 +625,7 @@ Positionen: keine"
 `;
 
 exports[`German previews > enshrine an open invoice: says the same in German 1`] = `
-"Rechnung RE-1001 festschreiben (GoBD): dauerhaft sperren.
+"Rechnung 1001 festschreiben (GoBD): dauerhaft sperren.
 ! Nicht umkehrbar (GoBD): Die Rechnung kann nie wieder geändert, gelöscht oder auf Entwurf zurückgesetzt werden; Korrekturen sind dann nur noch mit einem Storno oder einer Gutschrift möglich.
 ! Zahlungen können weiterhin darauf gebucht werden; sie später wieder zu lösen ist nur möglich, solange ihre Kontoumsätze nicht festgeschrieben sind.
 ! Die Angaben nennen die gespeicherten Texte, die Anschrift und die Positionen. Nicht gezeigt werden: der Ansprechpartner, das Land der Anschrift, die Einheiten und verknüpften Artikel der Positionen sowie das Layout des PDF. Prüfe bei Bedarf sevdesk_invoice_pdf.
@@ -676,7 +676,7 @@ Belegdatei: angehängt (ihr Inhalt wird hier nicht gezeigt)"
 `;
 
 exports[`German previews > enter a bank transaction by hand and book it to an invoice: says the same in German 1`] = `
-"Kontoumsatz über 177,33 EUR (Eingang) vom 09.11.2026 auf dem Dateiimport-Konto Import-Konto (ID 4004) anlegen und zuordnen zu Rechnung RE-1001.
+"Kontoumsatz über 177,33 EUR (Eingang) vom 09.11.2026 auf dem Dateiimport-Konto Import-Konto (ID 4004) anlegen und zuordnen zu Rechnung 1001.
 ! Der neue Umsatz ändert den Saldo des Kontos 4004 um 177,33 EUR und gilt als ungebucht (Status 100), bis er Dokumenten zugeordnet ist. Löschen lässt er sich nur, solange er ungebucht ist (sevdesk_transaction_delete).
 ! Der Status jedes Dokuments ändert sich (siehe die einzelnen Zuordnungen). Rückgängig machen lässt sich das mit sevdesk_transaction_reset: Das setzt diese Dokumente auf offen zurück und entfernt damit alle ihre Zahlungen.
 (umkehrbar)
@@ -691,7 +691,7 @@ Danach nicht zugeordnet: 0,00 EUR (Umsatz vollständig gebucht, Status 400)"
 `;
 
 exports[`German previews > finalize a draft credit note: says the same in German 1`] = `
-"Gutschrift GU-1101 fertigstellen: Entwurf → offen, als Versandart wird „Post (VP)“ vermerkt.
+"Gutschrift 2001 fertigstellen: Entwurf → offen, als Versandart wird „Post (VP)“ vermerkt.
 ! Die Gutschrift wird rechtlich bindend: sevDesk bucht sie unter der Nummer, die der Entwurf trägt. Danach lässt sie sich nur noch durch Zurücksetzen auf Entwurf (solange sie nicht festgeschrieben ist) oder ein neues Dokument korrigieren.
 ! sevDesk sendet nichts an den Kunden: Es wird nur vermerkt, wie das Dokument versendet wurde. Für den Versand per E-Mail über sevDesk gibt es stattdessen sevdesk_credit_note_send_email.
 ! Schreibt das sevDesk-Konto Dokumente beim Abschließen automatisch fest (Einstellung „Automatische Festschreibung“), wird das Dokument dabei auch festgeschrieben und kann nie wieder geändert oder zurückgesetzt werden.
@@ -721,7 +721,7 @@ Briefpapier: nicht gewählt (Standard von sevDesk)"
 `;
 
 exports[`German previews > finalize a draft invoice on a cost centre: says the same in German 1`] = `
-"Rechnung 1001 (noch ohne Nummer) fertigstellen: Entwurf → offen, als Versandart wird „PDF-Download (VPDF)“ vermerkt.
+"Rechnung 1001 fertigstellen: Entwurf → offen, als Versandart wird „PDF-Download (VPDF)“ vermerkt.
 ! Die Rechnung wird rechtlich bindend: sevDesk vergibt ihre endgültige Nummer und bucht sie. Danach lässt sie sich nur noch durch Zurücksetzen auf Entwurf (solange sie nicht festgeschrieben ist), ein Storno oder eine Gutschrift korrigieren.
 ! sevDesk sendet nichts an den Kunden: Es wird nur vermerkt, wie das Dokument versendet wurde. Für den Versand per E-Mail über sevDesk gibt es stattdessen sevdesk_invoice_send_email.
 ! Schreibt das sevDesk-Konto Dokumente beim Abschließen automatisch fest (Einstellung „Automatische Festschreibung“), wird das Dokument dabei auch festgeschrieben und kann nie wieder geändert oder zurückgesetzt werden.
@@ -755,7 +755,7 @@ Briefpapier: Briefpapier 1 (ID lp-1)"
 `;
 
 exports[`German previews > finalize a draft invoice with a discount on the whole invoice: says the same in German 1`] = `
-"Rechnung 1002 (noch ohne Nummer) fertigstellen: Entwurf → offen, als Versandart wird „PDF-Download (VPDF)“ vermerkt.
+"Rechnung 1002 fertigstellen: Entwurf → offen, als Versandart wird „PDF-Download (VPDF)“ vermerkt.
 ! Die Rechnung wird rechtlich bindend: sevDesk vergibt ihre endgültige Nummer und bucht sie. Danach lässt sie sich nur noch durch Zurücksetzen auf Entwurf (solange sie nicht festgeschrieben ist), ein Storno oder eine Gutschrift korrigieren.
 ! sevDesk sendet nichts an den Kunden: Es wird nur vermerkt, wie das Dokument versendet wurde. Für den Versand per E-Mail über sevDesk gibt es stattdessen sevdesk_invoice_send_email.
 ! Schreibt das sevDesk-Konto Dokumente beim Abschließen automatisch fest (Einstellung „Automatische Festschreibung“), wird das Dokument dabei auch festgeschrieben und kann nie wieder geändert oder zurückgesetzt werden.
@@ -791,7 +791,7 @@ Briefpapier: Briefpapier 1 (ID lp-1)"
 `;
 
 exports[`German previews > finalize a draft invoice: says the same in German 1`] = `
-"Rechnung 1001 (noch ohne Nummer) fertigstellen: Entwurf → offen, als Versandart wird „PDF-Download (VPDF)“ vermerkt.
+"Rechnung 1001 fertigstellen: Entwurf → offen, als Versandart wird „PDF-Download (VPDF)“ vermerkt.
 ! Die Rechnung wird rechtlich bindend: sevDesk vergibt ihre endgültige Nummer und bucht sie. Danach lässt sie sich nur noch durch Zurücksetzen auf Entwurf (solange sie nicht festgeschrieben ist), ein Storno oder eine Gutschrift korrigieren.
 ! sevDesk sendet nichts an den Kunden: Es wird nur vermerkt, wie das Dokument versendet wurde. Für den Versand per E-Mail über sevDesk gibt es stattdessen sevdesk_invoice_send_email.
 ! Schreibt das sevDesk-Konto Dokumente beim Abschließen automatisch fest (Einstellung „Automatische Festschreibung“), wird das Dokument dabei auch festgeschrieben und kann nie wieder geändert oder zurückgesetzt werden.
@@ -824,7 +824,7 @@ Briefpapier: Briefpapier 1 (ID lp-1)"
 `;
 
 exports[`German previews > finalize a draft order: says the same in German 1`] = `
-"Auftrag 3002 (noch ohne Nummer) fertigstellen: Entwurf → versendet, als Versandart wird „PDF-Download (VPDF)“ vermerkt.
+"Auftrag 3002 fertigstellen: Entwurf → versendet, als Versandart wird „PDF-Download (VPDF)“ vermerkt.
 ! Der Auftrag wird als versendet markiert (Status 200), und sevDesk vergibt seine endgültige Nummer.
 ! sevDesk sendet nichts an den Kunden: Es wird nur vermerkt, wie das Dokument versendet wurde. Für den Versand per E-Mail über sevDesk gibt es stattdessen sevdesk_order_send_email.
 ! Die Angaben nennen die gespeicherten Texte, die Anschrift, die Positionen und das Layout (Sprache, Vorlage, Briefpapier). Nicht gezeigt werden: der Ansprechpartner, das Land der Anschrift, die Einheiten und verknüpften Artikel der Positionen sowie die übrigen Druckoptionen des PDF (etwa ein QR-Code zur Zahlung). Prüfe bei Bedarf sevdesk_order_pdf.
@@ -996,7 +996,7 @@ Summe (unverändert): 119 EUR"
 `;
 
 exports[`German previews > reset a paid invoice to open: says the same in German 1`] = `
-"Rechnung RE-1001 auf offen zurücksetzen (Bezahlt → offen 200) und alle Zahlungen davon lösen.
+"Rechnung 1001 auf offen zurücksetzen (Bezahlt → offen 200) und alle Zahlungen davon lösen.
 ! Jede auf dieser Rechnung gebuchte Zahlung wird zurückgenommen: Verknüpfte Kontoumsätze werden davon gelöst und gelten wieder als ungebucht (Status 100) oder, solange sie noch andere Dokumente bezahlen (Sammelzahlungen), als teilweise verknüpft (Status 200); der bezahlte Betrag geht auf 0 zurück. sevDesk erstellt dafür keine Gegenbuchung. Umsätze, die sevDesk für Zahlungen auf Verrechnungskonten (offline) selbst angelegt hat, werden gelöscht. Auf einer Kasse bleibt ein solcher Umsatz stehen: sevDesk bucht eine Gegenbuchung mit dem umgekehrten Betrag und dem Datum des Zurücksetzens.
 ! sevDesk lehnt das Zurücksetzen ab, wenn einer der Zahlungsumsätze festgeschrieben ist; dann ändert sich nichts.
 (umkehrbar)
@@ -1013,7 +1013,7 @@ Bisher bezahlt: 177,33 EUR"
 `;
 
 exports[`German previews > reset an open credit note to draft: says the same in German 1`] = `
-"Gutschrift GU-1001 auf Entwurf zurücksetzen (offen 200 → Entwurf 100).
+"Gutschrift 2001 auf Entwurf zurücksetzen (offen 200 → Entwurf 100).
 ! Die Gutschrift ist dann nicht mehr bindend und nicht mehr gebucht und kann wieder bearbeitet werden; danach muss sie erneut fertiggestellt werden.
 ! Eine Gutschrift zu ändern, die der Kunde bereits erhalten hat, ist kein zulässiger Buchhaltungsvorgang; wurde sie bereits versendet, stelle stattdessen ein neues Dokument aus.
 (umkehrbar)
@@ -1044,7 +1044,7 @@ Bisher bezahlt: 0,00 EUR"
 `;
 
 exports[`German previews > set language, template and letterhead of a draft invoice: says the same in German 1`] = `
-"Sprache, Vorlage und Briefpapier von Rechnung 1003 (noch ohne Nummer) ändern.
+"Sprache, Vorlage und Briefpapier von Rechnung 1003 ändern.
 ! Nur das Layout ändert sich: Status, Nummer, Texte und Positionen des Entwurfs bleiben, wie sie sind.
 ! Jede Auswahl geht als eigene Anfrage an sevDesk (changeParameter), in der Reihenfolge Sprache, Vorlage, Briefpapier, und keine wird wiederholt. Schlägt eine fehl, bleiben die vorherigen gesetzt, und das Ergebnis nennt sie.
 (umkehrbar)
@@ -1074,7 +1074,7 @@ Wirtschaftsjahresbeginn: 01.01.2026 (unverändert)"
 `;
 
 exports[`German previews > set the language of a draft order: says the same in German 1`] = `
-"Sprache von Auftrag 3002 (noch ohne Nummer) ändern.
+"Sprache von Auftrag 3002 ändern.
 ! Nur das Layout ändert sich: Status, Nummer, Texte und Positionen des Entwurfs bleiben, wie sie sind.
 ! Jede Auswahl geht als eigene Anfrage an sevDesk (changeParameter), in der Reihenfolge Sprache, Vorlage, Briefpapier, und keine wird wiederholt. Schlägt eine fehl, bleiben die vorherigen gesetzt, und das Ergebnis nennt sie.
 ! sevDesk nimmt eine Layout-Änderung an diesem Entwurf erst nach einer PDF-Vorschau an; der Server ruft daher zuerst eine ab (getPdf mit preventSendBy=true, der Entwurf bleibt ein Entwurf).
@@ -1091,7 +1091,7 @@ Sprache: Deutsch (Deutschland), de_DE → Englisch (USA), en_US"
 `;
 
 exports[`German previews > undo the booking of a bank transaction: says the same in German 1`] = `
-"Buchungen des Kontoumsatzes 5101 rückgängig machen: 1 Dokument auf offen zurücksetzen (Rechnung RE-1001) und dabei alle ihre Zahlungen entfernen.
+"Buchungen des Kontoumsatzes 5101 rückgängig machen: 1 Dokument auf offen zurücksetzen (Rechnung 1001) und dabei alle ihre Zahlungen entfernen.
 ! sevDesk kann einen einzelnen Umsatz nicht lösen: Jedes Dokument wird auf offen zurückgesetzt, und das entfernt ALLE darauf gebuchten Zahlungen, nicht nur die dieses Umsatzes. Dieser Umsatz verliert alle seine Buchungen und gilt wieder als ungebucht (Status 100). Andere Kontoumsätze, die auf diese Dokumente gebucht sind (je Dokument aufgeführt), verlieren nur diese Buchungen: Bezahlt ein solcher Umsatz noch andere Dokumente, gilt er danach als teilweise verknüpft (200), sonst als ungebucht (100). Umsätze, die sevDesk für Zahlungen ohne Umsatz selbst angelegt hat, werden auf Verrechnungskonten (offline) stattdessen gelöscht; auf einer Kasse bleiben sie stehen, und sevDesk bucht eine Gegenbuchung mit dem Datum des Zurücksetzens.
 (umkehrbar)
 Kontoumsatz: ID 5101, 177,33 EUR (Eingang)

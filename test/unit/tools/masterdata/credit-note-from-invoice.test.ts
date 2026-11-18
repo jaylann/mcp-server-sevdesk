@@ -96,7 +96,7 @@ describe("sevdesk_credit_note_create_from_invoice", () => {
     const client = new FakeSevdeskClient(routes());
     const plan = await prepareWrite(tool, { invoiceId: 1004 }, client);
     expect(plan.preview).toEqual({
-      action: "Create a credit note (Gutschrift) draft from Invoice RE-1004 (id 1004).",
+      action: "Create a credit note (Gutschrift) draft from invoice 1004.",
       facts: [
         { label: "Invoice", value: "Invoice RE-1004 (id 1004) (Paid)" },
         { label: "Customer", value: "Musterfirma GmbH (contact 1001)" },

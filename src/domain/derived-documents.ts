@@ -313,7 +313,7 @@ export async function planOrderToInvoice(
   }
   return {
     preview: {
-      action: `Create a draft ${MODE_LABELS[input.mode]} from ${label}.`,
+      action: `Create a draft ${MODE_LABELS[input.mode]} from order ${String(order.id)}.`,
       facts,
       warnings,
       irreversible: false,
@@ -509,7 +509,7 @@ export async function planCreditNoteFromInvoice(
   }
   return {
     preview: {
-      action: `Create a credit note (Gutschrift) draft from ${label}.`,
+      action: `Create a credit note (Gutschrift) draft from invoice ${String(invoice.id)}.`,
       facts,
       warnings,
       irreversible: false,
@@ -917,7 +917,7 @@ export async function planInvoiceReminder(
   }
   return {
     preview: {
-      action: `Create a reminder (Mahnung) draft for ${label}.`,
+      action: `Create a reminder (Mahnung) draft for invoice ${String(invoice.id)}.`,
       facts,
       warnings,
       irreversible: false,
@@ -1177,9 +1177,10 @@ function requireRevenueInvoice(typeCode: string, ref: string, what: string): voi
 }
 
 /**
- * "Invoice RE-1001 (id 1001)", or "Invoice 1001" without a number: for previews only. Error texts
- * name a document by its id (`ref`): the number is sevDesk text, and a hostile one read like
- * instructions inside a trusted error (security review 2026-11, wave 2).
+ * "Invoice RE-1001 (id 1001)", or "Invoice 1001" without a number: for preview fact values only.
+ * Error texts name a document by its id (`ref`) and preview actions by kind and id ("invoice
+ * 1001"): the number is sevDesk text, and a hostile one read like instructions inside a trusted
+ * error (security review 2026-11, wave 2) or in the sentence a human approves (#129).
  */
 function documentLabel(kind: "Invoice" | "Order", id: number, number: string | undefined): string {
   const shown = cleanText(number, DISPLAY_MAX);

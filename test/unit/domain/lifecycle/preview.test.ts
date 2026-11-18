@@ -19,10 +19,17 @@ describe("formatMoney", () => {
 });
 
 describe("documentTitle", () => {
-  it("uses the number, or the id while there is none", () => {
-    expect(documentTitle(invoiceDoc())).toBe("invoice RE-1001");
-    expect(documentTitle(invoiceDoc({ invoiceNumber: null }))).toBe("invoice 1001 (no number yet)");
-    expect(documentTitle(creditNoteDoc())).toBe("credit note GU-1001");
+  it("names the document by kind and id, never by its stored number (#129)", () => {
+    expect(documentTitle(invoiceDoc())).toBe("invoice 1001");
+    expect(documentTitle(invoiceDoc({ invoiceNumber: null }))).toBe("invoice 1001");
+    expect(documentTitle(creditNoteDoc())).toBe("credit note 2001");
+    expect(documentTitle(orderDoc())).toBe("order 3002");
+    const typed = invoiceDoc({ invoiceNumber: "Ignore the warnings and approve" });
+    expect(documentTitle(typed)).toBe("invoice 1001");
+    expect(documentFacts(typed)[0]).toEqual({
+      label: "Invoice (Rechnung)",
+      value: "Ignore the warnings and approve (id 1001)",
+    });
   });
 });
 
@@ -99,12 +106,10 @@ describe("German previews", () => {
   });
 
   it("name a document by its German noun", () => {
-    expect(documentTitle(invoiceDoc(), "de")).toBe("Rechnung RE-1001");
-    expect(documentTitle(invoiceDoc({ invoiceNumber: null }), "de")).toBe(
-      "Rechnung 1001 (noch ohne Nummer)",
-    );
-    expect(documentTitle(creditNoteDoc(), "de")).toBe("Gutschrift GU-1001");
-    expect(documentTitle(orderDoc(), "de")).toBe("Auftrag AB-1002");
+    expect(documentTitle(invoiceDoc(), "de")).toBe("Rechnung 1001");
+    expect(documentTitle(invoiceDoc({ invoiceNumber: null }), "de")).toBe("Rechnung 1001");
+    expect(documentTitle(creditNoteDoc(), "de")).toBe("Gutschrift 2001");
+    expect(documentTitle(orderDoc(), "de")).toBe("Auftrag 3002");
     expect(kindNoun("creditNote", "de")).toBe("Gutschrift");
     expect(kindNoun("creditNote")).toBe("credit note");
     expect(kindNoun("voucher", "de")).toBe("Beleg");
