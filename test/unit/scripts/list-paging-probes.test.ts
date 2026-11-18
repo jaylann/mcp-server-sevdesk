@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { ALL_PROBES } from "../../../scripts/lib/probes/catalog.js";
 import { berlinMidnight } from "../../../scripts/lib/probes/core.js";
 import {
+  ADDRESS_SEED_COUNT,
   LIST_PAGING_BUDGET,
   LIST_PAGING_PROBES,
   LIST_PAGING_SEED_COUNT,
@@ -21,6 +22,7 @@ const TAG = "MCP-E2E 20261120-1000-abcd";
 const TODAY = "2026-11-20";
 const READ = "read-list-paging-order";
 const SEED = "write-list-paging-seed";
+const ADDRESS_SEED = "write-contact-address-paging-seed";
 
 type Rec = Record<string, unknown>;
 
@@ -45,6 +47,8 @@ interface ListSettings {
   readonly refuse?: readonly string[];
   /** The `saveInvoice` call (1-based) the account refuses. */
   readonly refuseInvoiceAt?: number;
+  /** The `POST /ContactAddress` call (1-based) the account refuses. */
+  readonly refuseAddressAt?: number;
 }
 
 function refuse(status: number, upstreamMessage: string): never {
@@ -88,6 +92,7 @@ function row(path: string, id: number, index: number): Rec {
 function account(settings: ListSettings = {}) {
   let nextId = 5000;
   let invoiceSaves = 0;
+  let addressSaves = 0;
   const lists = new Map<string, Rec[]>();
   const listOf = (path: string): Rec[] => {
     let rows = lists.get(path);
@@ -120,6 +125,12 @@ function account(settings: ListSettings = {}) {
     if (path === "/SevUser") return { total: "1", objects: [{ id: "7", objectName: "SevUser" }] };
     if (method === "POST" && path === "/Contact") {
       return { objects: { id: add("/Contact"), objectName: "Contact" } };
+    }
+    if (method === "POST" && path === "/ContactAddress") {
+      addressSaves += 1;
+      if (addressSaves === settings.refuseAddressAt)
+        refuse(422, "Refused by the simulated account");
+      return { objects: { id: add("/ContactAddress"), objectName: "ContactAddress" } };
     }
     if (path === "/Invoice/Factory/saveInvoice") {
       invoiceSaves += 1;
@@ -185,7 +196,7 @@ function listCalls(client: ScriptedClient): ScriptedCall[] {
 }
 
 describe("list paging probe catalog (#162)", () => {
-  it("registers both probes once, opt-in, the seed as the only write", () => {
+  it("registers every probe once, opt-in, the seeds as the writes", () => {
     const ids = ALL_PROBES.map((probe) => probe.id);
     for (const probe of LIST_PAGING_PROBES) {
       expect(
@@ -199,16 +210,17 @@ describe("list paging probe catalog (#162)", () => {
     expect(LIST_PAGING_PROBES.map((probe) => [probe.id, probe.mode])).toEqual([
       [READ, "read"],
       [SEED, "write"],
+      [ADDRESS_SEED, "write"],
     ]);
   });
 
   it("runs only when selected", async () => {
     const { client } = account({ rows: 30 });
-    // A run without --only, writes allowed: both are left out.
+    // A run without --only, writes allowed: every one is left out.
     const report = await runProbes(
       options(client, { probes: LIST_PAGING_PROBES, allowWrites: true }),
     );
-    expect(report.results.map((item) => item.status)).toEqual(["skipped", "skipped"]);
+    expect(report.results.map((item) => item.status)).toEqual(["skipped", "skipped", "skipped"]);
     const result = report.results.find((item) => item.id === READ);
     expect(result).toMatchObject({ status: "skipped", finding: `opt-in: run with --only ${READ}` });
     expect(listCalls(client)).toEqual([]);
@@ -469,6 +481,83 @@ describe("write-list-paging-seed (#162)", () => {
     );
     expect(lists.get("/Invoice")).toEqual([]);
     expect(lists.get("/Contact")).toHaveLength(1);
+    expect(listCalls(client)).toEqual([]);
+  });
+});
+
+describe("write-contact-address-paging-seed (#164)", () => {
+  it(`seeds ${ADDRESS_SEED_COUNT} contacts with an address each, compares GET /ContactAddress as audit parties reads it, and deletes them all`, async () => {
+    const { client, lists } = account({
+      perPath: { "/ContactAddress": 3 },
+      modes: { "/ContactAddress": "skips" },
+    });
+    const { report, status, finding } = await run(client, {
+      only: [ADDRESS_SEED],
+      allowWrites: true,
+    });
+    expect(status).toBe("observed");
+    expect(finding).toMatch(
+      /^Answer per list, pages of 5 against one page of 1000: NOT stable \(rows skipped or repeated\): contact addresses \(audit parties\)\. The probe created 25 tagged contacts with one German billing address each; /,
+    );
+    expect(finding).toContain(
+      "contact addresses (audit parties): GET /ContactAddress (no filter; read by audit parties listContactAddressLocations (scanPages)): one page (limit 1000) 28 rows, total 28, order: ",
+    );
+    expect(finding).toMatch(/apparent sort key id descending, 0 rows tie on it \(a total order\)/);
+    expect(finding).toContain(
+      "first pass 28 rows, NOT the rows of the one page: 1 missing, 1 repeated, 0 not on the one page",
+    );
+    expect(finding).toMatch(
+      /orderBy\[0\]\[field\]=id, orderBy\[0\]\[arrangement\]=asc \(not in the spec\): one page 28 rows, .*another order than without it; pages of 5: the same rows in the same order as the one page/,
+    );
+    expect(finding).toMatch(/Cleanup: 50 records deleted\.$/);
+    expect(finding).not.toContain(TAG);
+    // One page and two passes of 6 pages, then the id order with one page and one pass.
+    const calls = listCalls(client);
+    expect(calls).toHaveLength(13 + 7);
+    for (const call of calls) {
+      expect(call.path).toBe("/ContactAddress");
+      expect([5, 1000]).toContain(call.query["limit"]);
+      expect(call.query["countAll"]).toBe(true);
+      const filters = Object.keys(call.query).filter(
+        (key) => !["limit", "offset", "countAll"].includes(key) && !key.startsWith("orderBy"),
+      );
+      expect(filters).toEqual([]);
+    }
+    const writes = client.writes();
+    for (const call of writes) expect(call.tier).toBe("write");
+    const posts = writes.filter((call) => call.method === "POST");
+    expect(posts.map((call) => call.path)).toEqual(
+      Array.from({ length: ADDRESS_SEED_COUNT }, () => ["/Contact", "/ContactAddress"]).flat(),
+    );
+    expect(posts[1]?.body).toEqual({
+      contact: { id: expect.any(Number) as unknown, objectName: "Contact" },
+      street: `${TAG} Adresse 01`,
+      zip: "10115",
+      city: "Berlin",
+      country: { id: 1, objectName: "StaticCountry" },
+      category: { id: 47, objectName: "Category" },
+    });
+    // Addresses are deleted before their contacts; only the three that were there stay.
+    const deletes = writes.filter((call) => call.method === "DELETE").map((call) => call.path);
+    expect(deletes).toHaveLength(2 * ADDRESS_SEED_COUNT);
+    expect(
+      deletes.slice(0, ADDRESS_SEED_COUNT).every((path) => path.startsWith("/ContactAddress/")),
+    ).toBe(true);
+    expect(lists.get("/ContactAddress")).toHaveLength(3);
+    expect(lists.get("/Contact")).toEqual([]);
+    expect(report.created.every((record) => record.state === "deleted by the probe")).toBe(true);
+    assertNoSecrets(renderReport(report), [TOKEN]);
+  });
+
+  it("deletes what it made when sevDesk refuses an address, and compares nothing", async () => {
+    const { client, lists } = account({ refuseAddressAt: 3 });
+    const { status, finding } = await run(client, { only: [ADDRESS_SEED], allowWrites: true });
+    expect(status).toBe("inconclusive");
+    expect(finding).toBe(
+      "Address 3 of 25: POST /ContactAddress refused (422: Refused by the simulated account). Cleanup: 5 records deleted.",
+    );
+    expect(lists.get("/ContactAddress")).toEqual([]);
+    expect(lists.get("/Contact")).toEqual([]);
     expect(listCalls(client)).toEqual([]);
   });
 });
