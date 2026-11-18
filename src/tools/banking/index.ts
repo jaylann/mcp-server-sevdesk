@@ -1,5 +1,7 @@
 import type { AnyToolDefinition } from "../types.js";
+import { bankAccountArchiveTool } from "./account-archive.js";
 import { bankAccountCreateTool } from "./account-create.js";
+import { bankAccountUpdateTool } from "./account-update.js";
 import { bankAccountsListTool } from "./accounts.js";
 import {
   privateRuleCreateTool,
@@ -15,6 +17,8 @@ export const BANKING_TOOLS: readonly AnyToolDefinition[] = [
   transactionsListTool,
   ...BANKING_RECONCILE_TOOLS,
   bankAccountCreateTool,
+  bankAccountUpdateTool,
+  bankAccountArchiveTool,
   privateRulesListTool,
   privateRuleCreateTool,
   privateRuleDeleteTool,

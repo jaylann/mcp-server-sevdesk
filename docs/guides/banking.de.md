@@ -1,9 +1,9 @@
-<!-- translated-from: docs/guides/banking.md sha256:17d8eed4d2e5 -->
+<!-- translated-from: docs/guides/banking.md sha256:2074c304a84e -->
 
 # Bank und Kasse
 
-Diese Anleitung behandelt das Geld auf deinen Zahlungskonten: welches Konto was annimmt, einen
-Barverkauf oder eine Barausgabe in der Kasse erfassen, einen Kontoumsatz von Hand eintragen, Umsätze
+Diese Anleitung behandelt das Geld auf deinen Zahlungskonten: welches Konto was annimmt, ein Konto
+umbenennen und archivieren, einen Barverkauf oder eine Barausgabe in der Kasse erfassen, einen Kontoumsatz von Hand eintragen, Umsätze
 Dokumenten zuordnen, einen Umsatz löschen oder festschreiben und die Regeln, die Umsätze als privat
 markieren. Zu jedem Schritt steht, was du fragst, das Werkzeug, die
 [Stufe](../permissions.de.md#stufen) und ob du bestätigst.
@@ -14,6 +14,7 @@ markieren. Zu jedem Schritt steht, was du fragst, das Werkzeug, die
 | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- | ---------------- |
 | [Konten und Bestände ansehen](#welches-konto-was-annimmt)                              | [`sevdesk_bank_accounts_list`](../tools.md#sevdesk_bank_accounts_list), [`sevdesk_cash_position`](../tools.md#sevdesk_cash_position)                                                               | `read`           | nein             |
 | [Ein Konto anlegen](#welches-konto-was-annimmt)                                        | [`sevdesk_bank_account_create`](../tools.md#sevdesk_bank_account_create)                                                                                                                           | `write`          | nein             |
+| [Ein Konto umbenennen oder archivieren](#ein-konto-umbenennen-oder-archivieren)        | [`sevdesk_bank_account_update`](../tools.md#sevdesk_bank_account_update), [`sevdesk_bank_account_archive`](../tools.md#sevdesk_bank_account_archive)                                               | `commit`         | **ja**           |
 | [Barverkauf oder Barausgabe erfassen](#einen-barverkauf-oder-eine-barausgabe-erfassen) | [`sevdesk_voucher_book_payment`](../tools.md#sevdesk_voucher_book_payment), [`sevdesk_invoice_book_payment`](../tools.md#sevdesk_invoice_book_payment)                                             | `commit`         | **ja**           |
 | [Einen Umsatz von Hand erfassen](#einen-umsatz-von-hand-erfassen)                      | [`sevdesk_transaction_create`](../tools.md#sevdesk_transaction_create)                                                                                                                             | `commit`         | **ja**           |
 | [Umsätze Dokumenten zuordnen](#umsätze-zuordnen)                                       | [`sevdesk_reconcile_suggest`](../tools.md#sevdesk_reconcile_suggest), [`sevdesk_transaction_book`](../tools.md#sevdesk_transaction_book)                                                           | `read`, `commit` | Zuordnen: **ja** |
@@ -43,6 +44,31 @@ Währung. Woher die Umsätze eines Kontos kommen, hängt von seiner Art ab:
 [`sevdesk_bank_account_create`](../tools.md#sevdesk_bank_account_create) (`write`) legt ein
 Dateiimport- oder ein Verrechnungskonto an. Eine Kasse richtest du in der sevDesk-Weboberfläche
 ein; über die API lässt sie sich nicht anlegen.
+
+## Ein Konto umbenennen oder archivieren
+
+> Benenne Konto 4004 in „Sparkasse Import“ um und archiviere dann das alte Verrechnungskonto 4006.
+
+[`sevdesk_bank_account_update`](../tools.md#sevdesk_bank_account_update) (`commit`) benennt ein
+Dateiimport-Konto, ein Verrechnungskonto oder eine Kasse um. Bei einem Dateiimport-Konto ändert es
+auch das Buchungskonto, IBAN und BIC und ob sevDesk importierte Umsätze selbst Dokumenten zuordnet.
+Gib nur an, was sich ändert. Die Vorschau zeigt jede Änderung als „bisher → neu“ neben dem
+Konto, wie es gespeichert ist. Eine IBAN zeigt nur ihre letzten vier Zeichen, dort und im
+Audit-Log: Notiere dir die alte, bevor du sie ersetzt. sevDesk meldet eine Änderung auch für Felder als erfolgreich, die es
+übergeht; das Werkzeug liest das Konto deshalb zurück und schlägt fehl, wenn ein Feld nicht
+gespeichert wurde. Es lehnt einen Namen oder ein Buchungskonto ab, das ein anderes Konto hat, und
+ein neues Buchungskonto auf einem Konto mit gebuchten Umsätzen (was sevDesk dann mit deren
+Buchungen macht, ist nicht aufgezeichnet): Frag vor einer solchen Änderung deine Steuerberatung.
+
+[`sevdesk_bank_account_archive`](../tools.md#sevdesk_bank_account_archive) (`commit`, unumkehrbar)
+archiviert ein Dateiimport- oder Verrechnungskonto; die API von sevDesk nennt das Löschen. Das
+Konto verschwindet aus den Kontolisten, bleibt aber über seine ID lesbar, seine offenen Umsätze
+werden mitgelöscht (die Vorschau führt sie auf), und sevDesk entfernt seine IBAN. Über die API
+lässt sich ein archiviertes Konto nicht wiederherstellen. Ein Konto mit gebuchten Umsätzen
+archiviert sevDesk nicht, und das Werkzeug lehnt es schon ab, bevor etwas gesendet wird: Heb die
+Buchungen zuerst auf ([`sevdesk_transaction_reset`](../tools.md#sevdesk_transaction_reset); ein
+festgeschriebener Umsatz lässt sich nicht aufheben), oder behalte das Konto. Kassen, das
+Standardkonto und Konten mit Bankanbindung archiviert der Server nicht.
 
 ## Einen Barverkauf oder eine Barausgabe erfassen
 
@@ -142,12 +168,12 @@ passt.
 [`sevdesk_private_transaction_rule_create`](../tools.md#sevdesk_private_transaction_rule_create)
 (`commit`) legt eine Regel mit einem Text an, `counterparty` oder `purpose`, und
 [`sevdesk_private_transaction_rule_delete`](../tools.md#sevdesk_private_transaction_rule_delete)
-(`commit`) löscht eine. Beide sind `commit`, weil eine Regel von selbst tut, was
+(`commit`) löscht eine. Beide sind `commit`, weil eine Regel von selbst tun soll, was
 [`sevdesk_transaction_mark_private`](../tools.md#sevdesk_transaction_mark_private) von Hand tut.
 
-**Wo Regeln wirken, und was sich nicht testen ließ.** sevDesk wendet eine Regel an, wenn es Umsätze
-von der Bank importiert. Ein Testkonto importiert nichts: Dort änderten zwei Regeln keinen der
-vorhandenen offenen Umsätze, auch keinen, der nach den Regeln von Hand erfasst wurde, und das
+**Wo Regeln wirken, und was sich nicht testen ließ.** sevDesk soll eine Regel anwenden, wenn es
+Umsätze von der Bank importiert. Ein Testkonto importiert nichts: Dort änderten zwei Regeln keinen
+der vorhandenen offenen Umsätze, auch keinen, der nach den Regeln von Hand erfasst wurde, und das
 Löschen der Regeln änderte ebenfalls nichts. Wie sevDesk eine Regel abgleicht (ganzer Text oder ein
 Teil davon, Groß- und Kleinschreibung) und ob auch ein CSV-Dateiimport Regeln anwendet, ist daher
 nicht bekannt.
@@ -164,8 +190,8 @@ Das Werkzeug zum Anlegen lehnt ab, bevor etwas gesendet wird:
 - eine Regel mit beiden Texten: Ob sevDesk dann beide Texte oder nur einen verlangt, wurde nicht
   getestet. Lege eine Regel je Text an, wenn jeder davon einen Umsatz privat machen soll;
 - einen Text mit weniger als vier Buchstaben oder Ziffern: Ein kurzer Text wie „AG“ oder „dm“ kommt
-  in sehr vielen fremden Auftraggebern und Verwendungszwecken vor, und eine Regel markiert jeden
-  Import, zu dem sie passt;
+  in sehr vielen fremden Auftraggebern und Verwendungszwecken vor, und sevDesk soll jeden Import,
+  zu dem eine Regel passt, als privat markieren;
 - einen Text, den eine vorhandene Regel schon hat (ohne Rücksicht auf Groß- und Kleinschreibung und
   zusätzliche Leerzeichen); die Ablehnung nennt diese Regel.
 
@@ -178,7 +204,9 @@ ihre Buchhaltung.
 ## Grenzen
 
 - Konten mit Bankanbindung ließen sich nicht testen (ein Testkonto hat keine): Umsätze dort von
-  Hand zu erfassen oder zu löschen wird abgelehnt.
+  Hand zu erfassen oder zu löschen sowie die Konten selbst zu ändern oder zu archivieren wird
+  abgelehnt.
 - Regeln für private Umsätze ließen sich dort, wo sie wirken, beim Bankimport, nicht testen (siehe
   [oben](#regeln-für-private-umsätze)).
-- Konten umbenennen und archivieren ist noch nicht abgedeckt.
+- Welches Konto das Standardkonto ist, ändert der Server nicht, und ein archiviertes Konto lässt
+  sich weder ändern noch wiederherstellen.

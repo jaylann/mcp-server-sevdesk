@@ -12,6 +12,10 @@
  * - saving a recurring invoice template, `saveInvoice` with `invoiceType` `WKR` (#91): sevDesk
  *   issues invoices from it later on its own (D-111, D-112).
  *
+ * Creating or deleting a private-transaction rule (`POST /PrivateTransactionRule`,
+ * `DELETE /PrivateTransactionRule/{id}`, #131) joined them later: a rule makes sevDesk mark
+ * matching bank imports as private on every later import (D-099).
+ *
  * A status written directly skips `sendBy` on every document, so the same holds for a status
  * other than the draft status 100 saved through `saveInvoice`, `saveOrder` or `saveCreditNote`,
  * and for a status in the query, in a multipart form or behind a body's `toJSON` (what is sent
@@ -64,7 +68,7 @@ async function refusal(run: () => Promise<unknown>): Promise<SevdeskError> {
   return caught;
 }
 
-/** The binding requests, in the form the tools of #88, #89 and #91 will send them. */
+/** The binding requests, in the form the tools of #88, #89, #91 and #122 send them. */
 const BINDING: readonly (readonly [string, SevdeskRequest])[] = [
   [
     "creating a bank transaction",
@@ -81,6 +85,18 @@ const BINDING: readonly (readonly [string, SevdeskRequest])[] = [
         status: 100,
       },
     },
+  ],
+  [
+    "creating a private-transaction rule",
+    {
+      method: "POST",
+      path: "/PrivateTransactionRule",
+      body: { objectName: "PrivateTransactionRule", counterpartName: "Netflix" },
+    },
+  ],
+  [
+    "deleting a private-transaction rule",
+    { method: "DELETE", path: "/PrivateTransactionRule/951" },
   ],
   ["accepting an offer", { method: "PUT", path: "/Order/7", body: { status: 500 } }],
   [
@@ -212,6 +228,10 @@ const NEIGHBOURS: readonly (readonly [string, SevdeskRequest])[] = [
         orderPosDelete: null,
       },
     },
+  ],
+  [
+    "listing the private-transaction rules",
+    { method: "GET", path: "/PrivateTransactionRule", query: { limit: 100, offset: 0 } },
   ],
   [
     "uploading a receipt file",

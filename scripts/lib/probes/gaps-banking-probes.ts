@@ -1351,8 +1351,9 @@ export const GAPS_BANKING_PROBES: readonly ProbeDefinition[] = [
         { objectName: "PrivateTransactionRule", counterpartName: `${tag} Privatregel` },
         { objectName: "PrivateTransactionRule", paymentPurpose: `${tag} Privatzweck` },
       ]) {
+        // A rule needs commit: sevDesk marks imports private by it (`minimumWriteTier`, #131).
         const created = await ctx.http.write("POST", "/PrivateTransactionRule", {
-          tier: "write",
+          tier: "commit",
           body,
         });
         const id = createdId(created.objects);
@@ -1396,7 +1397,7 @@ export const GAPS_BANKING_PROBES: readonly ProbeDefinition[] = [
 
       for (const id of rules) {
         const deleted = await ctx.http.write("DELETE", `/PrivateTransactionRule/${id}`, {
-          tier: "write",
+          tier: "commit",
         });
         if (deleted.ok) data(ctx).mark("PrivateTransactionRule", id, "deleted by the probe");
         lines.push(

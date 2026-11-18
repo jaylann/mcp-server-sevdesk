@@ -55,8 +55,11 @@ or an https link to a host in `SEVDESK_FILE_URL_HOSTS`.
    preview's SHA-256 as `fileSha256`. sevDesk creates the draft at once and fills in date,
    number, sums, a supplier text and positions, all unchecked (one position at a wrong rate is
    common for a receipt with several rates). Every call makes another draft, so send each
-   receipt once; when the result lists `possibleDuplicates`, check them and delete the new draft
-   if it repeats one. Complete the draft with `sevdesk_voucher_update_draft` (tax rule, one
+   receipt once. Before the upload the tool refuses a file a voucher already carries (same
+   SHA-256; the refusal names the voucher): check that voucher and pass `allowDuplicate: true`
+   only if the file really has to be filed again. It cannot see a file sent to the recognition
+   before (sevDesk stores no checksum for those), so when the result lists
+   `possibleDuplicates`, check them and delete the new draft if it repeats one. Complete the draft with `sevdesk_voucher_update_draft` (tax rule, one
    position per rate with its booking account, supplier) before step 7.
 
 6. Corrections while it is a draft: `sevdesk_voucher_update_draft` (changes only what is given;

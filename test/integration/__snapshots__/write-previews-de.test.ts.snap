@@ -28,6 +28,22 @@ Zahlungsbedingungen: 14 Tage netto
 Lieferbedingungen: Lieferung frei Haus"
 `;
 
+exports[`German previews > archive a file-import account with an open transaction: says the same in German 1`] = `
+"Zahlungskonto 4004 archivieren.
+! sevDesk archiviert das Konto (die API nennt das Löschen): Es verschwindet aus den Kontolisten und kann nicht mehr gewählt werden, bleibt aber über seine ID lesbar. Über die API lässt es sich nicht wiederherstellen.
+! sevDesk löscht den offenen (ungebuchten) Umsatz des Kontos mit: Er verschwindet aus den Umsatzlisten und aus dem Saldo, als gelöscht markiert.
+! sevDesk entfernt beim Archivieren die gespeicherte IBAN des Kontos (die BIC bleibt).
+! Geprüft: Keiner der Umsätze des Kontos ist gebucht; ein Konto mit gebuchten Umsätzen archiviert sevDesk nicht.
+(nicht umkehrbar)
+Zahlungskonto: ID 4004
+Art: Dateiimport-Konto
+Name: Import-Konto
+Buchungskonto: 1810
+IBAN: ****9999
+Offene Umsätze, die gelöscht werden: 1
+Kontoumsatz 5401: 09.11.2026, 177,33 EUR, Musterfirma GmbH"
+`;
+
 exports[`German previews > book a bank transaction to an invoice: says the same in German 1`] = `
 "Kontoumsatz 5101 (177,33 EUR) zuordnen zu Rechnung RE-1001: insgesamt 177,33 EUR.
 ! Der Status jedes Dokuments ändert sich (siehe die einzelnen Zuordnungen). Rückgängig machen lässt sich das mit sevdesk_transaction_reset: Das setzt diese Dokumente auf offen zurück und entfernt damit alle ihre Zahlungen.
@@ -261,7 +277,7 @@ Status nach dem Speichern: Entwurf (50), noch nicht gebucht"
 
 exports[`German previews > create a private-transaction rule: says the same in German 1`] = `
 "Eine Regel für private Umsätze zum Auftraggeber/Empfänger anlegen: sevDesk soll Kontoumsätze, die es von der Bank importiert, anhand des Textes unten als privat markieren.
-! sevDesk wendet eine Regel selbst an, wenn es Kontoumsätze von der Bank importiert: Ein passender Umsatz wird dann als privat markiert (Privatentnahme bei Ausgängen, Privateinlage bei Eingängen) und zählt weder als Betriebsausgabe noch als Betriebseinnahme. Getestet werden konnte das nicht: Ein Testkonto importiert keine Kontoumsätze.
+! sevDesk soll eine Regel selbst anwenden, wenn es Kontoumsätze von der Bank importiert: Ein passender Umsatz wird dann als privat markiert (Privatentnahme bei Ausgängen, Privateinlage bei Eingängen) und zählt weder als Betriebsausgabe noch als Betriebseinnahme. Getestet werden konnte das nicht: Ein Testkonto importiert keine Kontoumsätze.
 ! Die aufgeführten Umsätze sind eine Schätzung dieses Servers, nicht sevDesks Abgleich: offene (ungebuchte) Umsätze, deren Auftraggeber/Empfänger den Text enthält, ohne Rücksicht auf Groß- und Kleinschreibung. Wie sevDesk eine Regel abgleicht (ganzer Text, Teil davon, Schreibweise), ist nicht bekannt, und bei der Messung änderte es weder bestehende noch von Hand erfasste Umsätze. Das Anlegen der Regel ändert keinen der aufgeführten Umsätze; sevdesk_transaction_mark_private markiert einen davon als privat.
 ! Kapitalgesellschaften (GmbH, UG, AG) kennen keine Privatentnahmen oder Privateinlagen; dort führt eine solche Regel zu falschen Buchungen.
 ! Rückgängig: sevdesk_private_transaction_rule_delete. Umsätze, die sevDesk bis dahin als privat markiert hat, bleiben privat (bei der Messung änderte das Löschen von Regeln keinen Umsatz); sevdesk_transaction_reset setzt einen davon zurück.
@@ -403,7 +419,7 @@ Brutto: 23,80 EUR"
 
 exports[`German previews > delete a private-transaction rule: says the same in German 1`] = `
 "Regel für private Umsätze 951 löschen.
-! sevDesk markiert importierte Kontoumsätze danach nicht mehr nach dieser Regel als privat. Wo Regeln wirken, beim Bankimport, ließ sich auf einem Testkonto nicht testen.
+! sevDesk soll importierte Kontoumsätze danach nicht mehr nach dieser Regel als privat markieren. Wo Regeln wirken, beim Bankimport, ließ sich auf einem Testkonto nicht testen.
 ! Bereits als privat markierte Umsätze bleiben privat: Bei der Messung änderte das Löschen einer Regel keinen Umsatz. sevdesk_transaction_reset setzt einen davon auf ungebucht zurück.
 ! Rückgängig: die Regel mit sevdesk_private_transaction_rule_create neu anlegen; sie erhält eine neue ID.
 (umkehrbar)
@@ -466,15 +482,16 @@ exports[`German previews > draft a voucher with sevDesk's receipt recognition: s
 ! Der Entwurf entsteht, sobald die Datei gesendet ist, auch wenn die Erkennung nichts findet, und bleibt, bis er vervollständigt oder gelöscht wird (sevdesk_voucher_delete_draft). Jeder Aufruf legt einen weiteren Entwurf an.
 ! sevdesk_voucher_finalize lehnt den Entwurf ab, bis sevdesk_voucher_update_draft eine Steuerregel und auf jeder Position ein Buchungskonto gesetzt hat.
 ! Die erkannten Positionen und Steuersätze können falsch sein, auch wenn die Summe stimmt (ein Beleg mit 19 % und 7 % kam als eine Position zu 7 % zurück).
-! sevDesk lehnt eine schon gesendete Datei nicht ab, und Dubletten lassen sich erst nach der Erkennung suchen: Das Ergebnis nennt Belege mit demselben Datum, derselben Bruttosumme und Belegnummer.
-! sevDesk speichert für die Belegdatei dieses Entwurfs keine Prüfsumme: sevdesk_receipt_folder_check findet sie nicht, und sevdesk_records_audit erkennt doppelte Entwürfe stattdessen an Nummer und Betrag.
+! sevDesk lehnt eine schon gesendete Datei nicht ab. Dieser Server vergleicht vor dem Senden die SHA-256 der Datei mit den Belegdateien der Belege etwa des letzten halben Jahres (Angabe „Gleiche Datei in sevDesk“); nach der Erkennung nennt das Ergebnis außerdem Belege mit demselben Datum, derselben Bruttosumme und Belegnummer.
+! sevDesk speichert für die Belegdatei dieses Entwurfs keine Prüfsumme, auch nicht für frühere aus dieser Belegerkennung: Die Prüfsummenprüfung dieses Werkzeugs und sevdesk_receipt_folder_check finden sie nicht, und sevdesk_records_audit erkennt doppelte Entwürfe stattdessen an Nummer und Betrag.
 (umkehrbar)
 Art: Ausgabe: Die Zahlung geht vom Bankkonto ab
 Belegdatei: Rechnung-0815.pdf (PDF, 77 Bytes)
 SHA-256: 56c2ac043c28d3543275a6f50b593a6beb0b6888ed8159ac02e3e7f4a32ccb26
 Von sevDesk ausgefüllt: Belegdatum, Belegnummer, Summen, ein Lieferantentext, Positionen (ungeprüft)
 Bleibt leer: Steuerregel, Buchungskonten, Lieferantenkontakt
-Status nach dem Speichern: Entwurf (50), noch nicht gebucht"
+Status nach dem Speichern: Entwurf (50), noch nicht gebucht
+Gleiche Datei in sevDesk: keine unter 1 Beleg vom 10.05.2026 bis 10.12.2026; 1 Belegdatei ohne Prüfsumme nicht verglichen"
 `;
 
 exports[`German previews > email an open credit note: says the same in German 1`] = `
@@ -993,6 +1010,16 @@ Beleg: 2101, Entwurf
 Art: Ausgabe: Die Zahlung geht vom Bankkonto ab
 Kostenstelle: MCP1 Mustername 3 (ID 344959) → entfernt
 Summe (unverändert): 119 EUR"
+`;
+
+exports[`German previews > rename a file-import account: says the same in German 1`] = `
+"Zahlungskonto 4004 ändern: Name.
+! Sonst ändert sich nichts: Umsätze und Saldo bleiben, wie sie sind. Rückgängig: die Werte links der Pfeile mit sevdesk_bank_account_update wieder setzen.
+(umkehrbar)
+Zahlungskonto: ID 4004
+Art: Dateiimport-Konto
+Name: Import-Konto → Import Sparkasse
+Buchungskonto: 1810"
 `;
 
 exports[`German previews > reset a paid invoice to open: says the same in German 1`] = `

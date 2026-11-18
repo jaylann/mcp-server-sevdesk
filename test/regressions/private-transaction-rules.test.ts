@@ -111,7 +111,11 @@ describe("the preview never states a match as a fact", () => {
     expect(shown).toContain("Estimate: bank transaction 5101");
     expect(shown).toContain("(estimate)");
     expect(shown).toContain("an estimate made here, not sevDesk's matching");
-    expect(shown).toContain("sevDesk applies a rule on its own when it imports bank transactions");
+    // Where rules act was never measured (D-099): hedged, never stated as a fact.
+    expect(shown).toContain(
+      "sevDesk is expected to apply a rule on its own when it imports bank transactions",
+    );
+    expect(shown).not.toMatch(/sevDesk (?:applies|marks)\b/);
     expect(shown).not.toMatch(/\b(?:will|would)\s+(?:be\s+marked|become)\s+private\b/i);
     expect(shown).not.toMatch(/\bmatches\s*:/i);
     expect(writesOf(fake)).toEqual([]);

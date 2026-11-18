@@ -5,7 +5,8 @@
  * `src/domain/private-transaction-rules.ts`.
  *
  * Tiers: marking one transaction private is `commit` (`sevdesk_transaction_mark_private`), and a
- * rule makes sevDesk do that on its own for future bank imports, so creating and deleting rules is
+ * rule is meant to make sevDesk do that on its own for future bank imports (not measured, D-099),
+ * so creating and deleting rules is
  * `commit` too: a human confirms the preview.
  */
 import { z } from "zod";
@@ -59,11 +60,12 @@ export const privateRulesListTool = defineTool({
   name: "sevdesk_private_transaction_rules_list",
   title: "List sevDesk private-transaction rules",
   description:
-    "List the private-transaction rules (Regeln für private Umsätze): texts by which sevDesk " +
-    "marks bank transactions as private (Privatentnahme/Privateinlage) on its own when it " +
-    "imports them from the bank. Each rule has a counterparty text (Auftraggeber/Empfänger), a " +
-    "purpose text (Verwendungszweck) or both. Create or delete one with " +
-    "sevdesk_private_transaction_rule_create / sevdesk_private_transaction_rule_delete.",
+    "List the private-transaction rules (Regeln für private Umsätze): texts by which sevDesk is " +
+    "expected to mark bank transactions as private (Privatentnahme/Privateinlage) on its own " +
+    "when it imports them from the bank (not testable on a trial account). Each rule has a " +
+    "counterparty text (Auftraggeber/Empfänger), a purpose text (Verwendungszweck) or both. " +
+    "Create or delete one with sevdesk_private_transaction_rule_create / " +
+    "sevdesk_private_transaction_rule_delete.",
   toolset: "banking",
   tier: "read",
   annotations: READ_ANNOTATIONS,
@@ -95,11 +97,11 @@ const FIELD_TEXT: Readonly<Record<RuleField, Phrase>> = {
 
 /** Where rules take effect, and that this could not be tested. */
 const WHERE_RULES_ACT = phrase(
-  "sevDesk applies a rule on its own when it imports bank transactions: a matching transaction " +
-    "is then marked private (Privatentnahme for money out, Privateinlage for money in) and counts " +
-    "as neither business expense nor income. This could not be tested: a trial account imports " +
-    "no bank transactions.",
-  "sevDesk wendet eine Regel selbst an, wenn es Kontoumsätze von der Bank importiert: Ein " +
+  "sevDesk is expected to apply a rule on its own when it imports bank transactions: a matching " +
+    "transaction is then marked private (Privatentnahme for money out, Privateinlage for money " +
+    "in) and counts as neither business expense nor income. This could not be tested: a trial " +
+    "account imports no bank transactions.",
+  "sevDesk soll eine Regel selbst anwenden, wenn es Kontoumsätze von der Bank importiert: Ein " +
     "passender Umsatz wird dann als privat markiert (Privatentnahme bei Ausgängen, Privateinlage " +
     "bei Eingängen) und zählt weder als Betriebsausgabe noch als Betriebseinnahme. Getestet " +
     "werden konnte das nicht: Ein Testkonto importiert keine Kontoumsätze.",
@@ -135,15 +137,16 @@ export const privateRuleCreateTool = defineWriteTool({
   name: "sevdesk_private_transaction_rule_create",
   title: "Create a sevDesk private-transaction rule",
   description:
-    "Create a private-transaction rule (Regel für private Umsätze): sevDesk then marks bank " +
-    "transactions it imports from the bank as private (Privatentnahme/Privateinlage) on its own " +
-    "when their counterparty (Auftraggeber/Empfänger) or purpose (Verwendungszweck) matches the " +
-    "text. One text per rule. It does not change existing transactions; how sevDesk matches is " +
-    "not known. The preview lists open transactions that look like what the rule is meant for, " +
-    "as an estimate. Only for sole proprietors and partnerships, not for a GmbH or UG. Refuses " +
-    "a text equal to an existing rule's and one that is too short. Commit tier: asks a human " +
-    "to confirm the preview; dryRun only previews. Undo: sevdesk_private_transaction_rule_delete. " +
-    "Existing rules: sevdesk_private_transaction_rules_list.",
+    "Create a private-transaction rule (Regel für private Umsätze): sevDesk is then expected to " +
+    "mark bank transactions it imports from the bank as private (Privatentnahme/Privateinlage) " +
+    "on its own when their counterparty (Auftraggeber/Empfänger) or purpose (Verwendungszweck) " +
+    "matches the text (not testable on a trial account). One text per rule. It does not change " +
+    "existing transactions; how sevDesk matches is not known. The preview lists open " +
+    "transactions that look like what the rule is meant for, as an estimate. Only for sole " +
+    "proprietors and partnerships, not for a GmbH or UG. Refuses a text equal to an existing " +
+    "rule's and one that is too short. Commit tier: asks a human to confirm the preview; dryRun " +
+    "only previews. Undo: sevdesk_private_transaction_rule_delete. Existing rules: " +
+    "sevdesk_private_transaction_rules_list.",
   toolset: "banking",
   tier: "commit",
   annotations: COMMIT_ANNOTATIONS,
@@ -306,12 +309,13 @@ function createWarnings(plan: PrivateRuleCreatePlan): Phrase[] {
     );
   }
   if (!plan.rulesComplete) {
+    const read = String(plan.rulesRead);
     warnings.push(
       phrase(
-        "sevDesk lists more than 1000 rules: the check for an equal rule read the first 1000 " +
-          "only.",
-        "sevDesk listet mehr als 1000 Regeln: Die Prüfung auf eine gleiche Regel las nur die " +
-          "ersten 1000.",
+        `sevDesk lists more than ${read} rules: the check for an equal rule read the first ` +
+          `${read} only.`,
+        `sevDesk listet mehr als ${read} Regeln: Die Prüfung auf eine gleiche Regel las nur die ` +
+          `ersten ${read}.`,
       ),
     );
   }
@@ -335,10 +339,10 @@ function createWarnings(plan: PrivateRuleCreatePlan): Phrase[] {
 
 const DELETE_WARNINGS: readonly Phrase[] = [
   phrase(
-    "sevDesk no longer marks imported bank transactions private by this rule. Where rules act, on " +
-      "bank imports, could not be tested on a trial account.",
-    "sevDesk markiert importierte Kontoumsätze danach nicht mehr nach dieser Regel als privat. " +
-      "Wo Regeln wirken, beim Bankimport, ließ sich auf einem Testkonto nicht testen.",
+    "sevDesk is no longer expected to mark imported bank transactions private by this rule. " +
+      "Where rules act, on bank imports, could not be tested on a trial account.",
+    "sevDesk soll importierte Kontoumsätze danach nicht mehr nach dieser Regel als privat " +
+      "markieren. Wo Regeln wirken, beim Bankimport, ließ sich auf einem Testkonto nicht testen.",
   ),
   phrase(
     "Transactions already marked private stay private: when measured, deleting a rule changed no " +
@@ -358,10 +362,11 @@ export const privateRuleDeleteTool = defineWriteTool({
   name: "sevdesk_private_transaction_rule_delete",
   title: "Delete a sevDesk private-transaction rule",
   description:
-    "Delete a private-transaction rule (Regel für private Umsätze), so sevDesk no longer marks " +
-    "imported bank transactions private by it. Transactions already marked private stay private " +
-    "(sevdesk_transaction_reset sets one back). Commit tier: asks a human to confirm the " +
-    "preview; dryRun only previews. Rule ids: sevdesk_private_transaction_rules_list.",
+    "Delete a private-transaction rule (Regel für private Umsätze), so sevDesk is no longer " +
+    "expected to mark imported bank transactions private by it. Transactions already marked " +
+    "private stay private (sevdesk_transaction_reset sets one back). Commit tier: asks a human " +
+    "to confirm the preview; dryRun only previews. Rule ids: " +
+    "sevdesk_private_transaction_rules_list.",
   toolset: "banking",
   tier: "commit",
   annotations: COMMIT_ANNOTATIONS,

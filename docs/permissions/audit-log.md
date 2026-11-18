@@ -38,8 +38,8 @@ event:
 | `callId`             | write events                                                         | Shared by the lines of one action, from the request to the result.                                                                                                                                                                         |
 | `tool`               | write events                                                         | The tool name.                                                                                                                                                                                                                             |
 | `tier`               | write events                                                         | `write`, `commit` or `external`.                                                                                                                                                                                                           |
-| `argsHash`           | write events                                                         | A hash of the tool and its arguments (without `dryRun`).                                                                                                                                                                                   |
-| `args`               | write events except `approval_decided`                               | The arguments: the token redacted, upload ids redacted, hidden characters written as visible `\u{…}` escapes, strings up to 20,000 characters.                                                                                             |
+| `argsHash`           | write events                                                         | A hash of the tool and its arguments as `args` shows them (without `dryRun`).                                                                                                                                                              |
+| `args`               | write events except `approval_decided`                               | The arguments: the token redacted, upload ids redacted, an IBAN masked, hidden characters written as visible `\u{…}` escapes, strings up to 20,000 characters.                                                                             |
 | `previewHash`        | `dry_run`, `confirmation_requested`, `approval_decided`, `executing` | A hash of the preview that was shown and approved; for `commit` and `external` tools it covers the English and the German text.                                                                                                            |
 | `preview`            | `dry_run`, `confirmation_requested`                                  | The preview as shown: `action` (one sentence), `facts` (`label`, `value`), `warnings` and `irreversible`.                                                                                                                                  |
 | `approval`           | `executing`                                                          | How the action was approved: `elicit`, `browser`, `confirmation_off` or `not_required`.                                                                                                                                                    |
@@ -55,6 +55,11 @@ event:
 
 A longer string in `args` is cut there and ends with a note of how many characters were not
 logged.
+
+An IBAN in `args` keeps only its last four characters (`****3000`), as the previews show it; so
+far `sevdesk_bank_account_update` is the only write tool that takes one. `argsHash` is then the
+hash of the masked arguments, so nobody can find the full IBAN by hashing candidates. The approval
+itself stays bound to the real arguments: an approval for one IBAN never covers another.
 
 For example (shortened):
 

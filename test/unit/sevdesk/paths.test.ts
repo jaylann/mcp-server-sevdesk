@@ -391,6 +391,42 @@ describe("minimumWriteTier for creating a bank transaction (#88, D-096, D-098)",
   });
 });
 
+describe("minimumWriteTier for private-transaction rules (#131, D-099)", () => {
+  const rule = { objectName: "PrivateTransactionRule", counterpartName: "Netflix" };
+
+  it.each(["/PrivateTransactionRule", "/privatetransactionrule", "/PRIVATETRANSACTIONRULE"])(
+    "needs commit to create a rule at %s, whatever the body",
+    (path) => {
+      expect(minimumWriteTier(path, undefined, rule)).toBe("commit");
+      expect(minimumWriteTier(path, undefined, {})).toBe("commit");
+      expect(minimumWriteTier(path, undefined, undefined)).toBe("commit");
+    },
+  );
+
+  it.each([
+    "/PrivateTransactionRule/951",
+    "/privatetransactionrule/951",
+    "/PrivateTransactionRule/x/y",
+  ])("needs commit to delete a rule (or reach below one) at %s", (path) => {
+    expect(minimumWriteTier(path, undefined, undefined)).toBe("commit");
+  });
+
+  it.each([
+    ["/PrivateTransactionRules", "write"],
+    ["/PrivateTransaction", "write"],
+    ["/CheckAccount/5", "write"],
+  ] as const)("leaves the neighbour %s at %s", (path, tier) => {
+    expect(minimumWriteTier(path, undefined, rule)).toBe(tier);
+  });
+
+  it("keeps the rule list a plain read that sevdesk_api_get may send", () => {
+    const query = { limit: 100, offset: 0 };
+    expect(resolveGetSafety("/PrivateTransactionRule", query, false).sideEffect).toBe(false);
+    expect(genericGetRefusal("/PrivateTransactionRule", undefined)).toBeUndefined();
+    expect(genericGetRefusal("/privatetransactionrule/951", undefined)).toBeUndefined();
+  });
+});
+
 describe("minimumWriteTier for accepting an offer (#89, D-107, D-108)", () => {
   it("needs commit for a contract note, which sets the source offer to accepted", () => {
     const query = { "order[id]": 7, "order[objectName]": "Order" };

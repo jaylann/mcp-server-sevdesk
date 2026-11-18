@@ -191,6 +191,7 @@ async function runUnlocked(
   }
   const dryRun = deps.config.dryRun || parsed[DRY_RUN_ARGUMENT] === true;
   const argsHash = argumentsHash(tool.name, parsed);
+  const auditArgs = tool.auditArgs?.(args) ?? parsed;
 
   const plan = await tool.prepare(args, {
     ...context,
@@ -210,6 +211,8 @@ async function runUnlocked(
     args,
     plan,
     argsHash,
+    auditArgs,
+    auditArgsHash: auditArgs === parsed ? argsHash : argumentsHash(tool.name, auditArgs),
     previewHash: previewHash(plan.preview, plan.previewDe, plan.binding),
     preview: displayPreview(plan.preview),
     previewDe: plan.previewDe === undefined ? undefined : displayPreview(plan.previewDe),
@@ -249,7 +252,12 @@ interface Action {
   readonly owner: RequestPrincipal;
   readonly args: unknown;
   readonly plan: WritePlan<unknown>;
+  /** Binds the confirmation and the browser approval to the real arguments. */
   readonly argsHash: string;
+  /** The arguments as the audit log records them (`WriteToolDefinition.auditArgs`). */
+  readonly auditArgs: Readonly<Record<string, unknown>>;
+  /** `argsHash` of {@link auditArgs}: the one audit lines carry, so it reveals no more than they do. */
+  readonly auditArgsHash: string;
   readonly previewHash: string;
   /** Sanitized for display. */
   readonly preview: ConfirmationPreview;
@@ -452,6 +460,7 @@ async function requestBrowserApproval(
       toolTitle: tool.title,
       tier: tool.tier,
       argsHash: action.argsHash,
+      ...(action.auditArgsHash === action.argsHash ? {} : { auditArgsHash: action.auditArgsHash }),
       previewHash: action.previewHash,
       preview: action.preview,
       ...(action.previewDe === undefined ? {} : { previewDe: action.previewDe }),
@@ -685,8 +694,8 @@ function auditEvent(action: Action, fields: EventFields): AuditEvent {
     ...auditPrincipal(action.owner),
     tool: action.tool.name,
     tier: action.tool.tier,
-    argsHash: action.argsHash,
-    args: action.args,
+    argsHash: action.auditArgsHash,
+    args: action.auditArgs,
     // In OAuth mode the log has no token of its own: each line redacts its account's token.
     secrets: [action.call.deps.config.token],
   };

@@ -1,4 +1,4 @@
-<!-- translated-from: docs/faq.md sha256:ae82a8dc01ca -->
+<!-- translated-from: docs/faq.md sha256:3204febe1009 -->
 
 # Häufige Fragen
 
@@ -154,7 +154,12 @@ sevDesks Belegerkennung, die einen Belegentwurf anlegt und binnen Sekunden Datum
 und einen Lieferantentext ausfüllt. Diese Werte sind ungeprüft, und Positionen und Steuersätze
 können falsch sein, auch wenn die Summe stimmt (ein Beleg mit zwei Steuersätzen kam als eine
 Position zurück). Der Entwurf hat noch keine Steuerregel und kein Buchungskonto: Der Assistent
-vervollständigt ihn mit der normalen Entwurfsänderung, bevor er sich fertigstellen lässt
+vervollständigt ihn mit der normalen Entwurfsänderung, bevor er sich fertigstellen lässt. sevDesk
+selbst legt einen zweiten Entwurf an, wenn dieselbe Datei zweimal kommt; daher vergleicht das
+Werkzeug vorher die SHA-256 der Datei mit den Belegdateien in sevDesk und lehnt eine Datei ab, die
+schon an einem Beleg hängt, außer du setzt `allowDuplicate: true`. Eine Datei, die schon einmal
+an die Erkennung ging, findet es so nicht, weil sevDesk für solche Belegdateien keine Prüfsumme
+speichert
 ([sevDesk den Beleg lesen lassen](guides/receipts.de.md#sevdesk-den-beleg-lesen-lassen)).
 
 ### Kann es nach DATEV exportieren?
@@ -192,8 +197,8 @@ Umsatz von Hand ein und kann ihn im selben Schritt einem Dokument zuordnen. Beid
 ### Kann es wiederkehrende private Zahlungen automatisch markieren?
 
 Über die Regeln für private Umsätze in sevDesk: Eine Regel nennt einen Text zum
-Auftraggeber/Empfänger oder zum Verwendungszweck, und sevDesk markiert passende Umsätze als privat,
-wenn es sie von der Bank importiert. Der Server listet Regeln, legt sie an und löscht sie; Anlegen
+Auftraggeber/Empfänger oder zum Verwendungszweck, und sevDesk soll passende Umsätze als privat
+markieren, wenn es sie von der Bank importiert. Der Server listet Regeln, legt sie an und löscht sie; Anlegen
 und Löschen sind `commit`-Werkzeuge, die du bestätigst. Wo Regeln wirken, ließ sich nicht testen,
 weil ein Testkonto keine Kontoumsätze importiert, und dort änderten sie keinen vorhandenen Umsatz.
 Die Liste offener Umsätze in der Vorschau, die die Regel vermutlich meint, ist eine Schätzung des

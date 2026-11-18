@@ -18,7 +18,9 @@ import {
   recognisedPositionRow,
   recognisedRow,
   recognitionRoute,
+  sameFileRoute,
   saveRoute,
+  storedReceiptRow,
   uploadRoute,
   version2Route,
   voucherListRoute,
@@ -191,6 +193,8 @@ export const VOUCHERS_CASES: readonly WriteToolCase[] = [
     args: { file: "Rechnung-0815.pdf" },
     routes: [
       version2Route,
+      // The checksum check before the upload: one receipt without a checksum (D-100), no match.
+      sameFileRoute([storedReceiptRow(null)]),
       recognitionRoute(),
       voucherRoute(recognisedRow()),
       positionsRoute(2301, [recognisedPositionRow()]),
