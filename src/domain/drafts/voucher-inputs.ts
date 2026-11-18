@@ -312,6 +312,14 @@ export const voucherRecognitionInputShape = {
       "expense (Ausgabe, default: a receipt or supplier invoice, money out) or revenue " +
         "(Einnahme, money in).",
     ),
+  allowDuplicate: z
+    .boolean()
+    .optional()
+    .describe(
+      "Send the file although a voucher in sevDesk already carries a receipt with the same " +
+        "SHA-256 (otherwise refused). A guard against filing the same file twice, not a safety " +
+        "confirmation: set it only after checking that voucher.",
+    ),
 };
 
 export interface VoucherImportArgs extends ExchangeArgs {

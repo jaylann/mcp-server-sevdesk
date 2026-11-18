@@ -3925,8 +3925,14 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   rendered file or a recognized receipt); `test/unit/domain/reports/audit/receipt-folder.test.ts`
   (matches by the listed checksum, counts receipts without one and rows without the embedded
   document, never matches by size); `test/unit/domain/reports/audit/duplicates-check.test.ts`
-  (checksums from the list with `embed=document`, no read by id). Handling: done,
-  `sevdesk_receipt_folder_check` and the `duplicates` check of `sevdesk_records_audit` (#92).
+  (checksums from the list with `embed=document`, no read by id);
+  `test/unit/tools/vouchers/recognize-receipt.test.ts` ("the same file before the upload (#127)":
+  one list read with `embed=document`, a refusal naming the voucher, `allowDuplicate`, a receipt
+  with `contentHash` null never matched but counted, a row without the embedded document, partial
+  and failed reads); `test/regressions/recognition-same-file.test.ts` (the refusal before the
+  upload, and the same file recognised before not found). Handling: done,
+  `sevdesk_receipt_folder_check` and the `duplicates` check of `sevdesk_records_audit` (#92), and
+  the checksum check of `sevdesk_voucher_recognize_receipt` before its upload (#127, see D-103).
 
 ### D-101: The ZIP exports answer files only with `download=true` and change no document
 
@@ -4121,17 +4127,29 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   answer already names the attached receipt (`document`), so a remote upload is released right
   then, not after the read-back: a read that fails afterwards cannot leave an upload id that a
   retry turns into a second draft.
-  Because sevDesk does not deduplicate, the tool's own scan after the recognition is the only
-  guard: other vouchers of the same direction with the same date, gross total and recognised
-  Belegnummer (the supplier text is not compared), reported, not refused. It reads one page of
-  up to 1,000 vouchers; when sevDesk has more, when it failed, or when there was no recognised
-  date and total to compare, the result says that the check was partial or did not run.
+  Because sevDesk does not deduplicate, the tool runs two duplicate checks of its own. Before the
+  upload (#127, in `prepare`, so a dry run shows it too) it compares the file's
+  SHA-256 with the `contentHash` of the receipts of the vouchers dated from 183 days before today
+  to 31 days after it (`GET /Voucher?embed=document`, D-100; drafts included, both directions,
+  one request of up to 1,000 rows) and refuses a match before anything is sent unless
+  `allowDuplicate` (a waste guard, not a safety gate); the refusal names up to three vouchers with
+  id, fenced Belegnummer, date, gross total and status (fewer when three would pass the
+  500-character error cap and cut its closing instruction), and the result lists allowed matches in
+  `sameFileCheck.vouchers`. A failed read does not block the upload (the result says it ran
+  unchecked), a cut one is reported as partial, and receipts without a checksum are counted as
+  not compared. After the recognition it looks for other vouchers of the same direction with the
+  same date, gross total and recognised Belegnummer (the supplier text is not compared), reported,
+  not refused. It reads one page of up to 1,000 vouchers; when sevDesk has more, when it failed,
+  or when there was no recognised date and total to compare, the result says that the check was
+  partial or did not run.
   The receipt of such a draft has a Document with `contentHash` null (D-100, recorded
-  2026-11-17 for a PDF and a PNG), so `sevdesk_receipt_folder_check` cannot match it (it counts
-  it under `coverage.vouchers.withoutChecksum`) and the audit's same-receipt rule
-  (`voucher_receipt_twice`) cannot see it; the audit's `duplicates` check still pairs two such
-  drafts by direction, document number and gross amount across suppliers (`draft_twice`, or
-  `draft_repeats_voucher` against a booked voucher). The preview says so.
+  2026-11-17 for a PDF and a PNG), so the checksum check before a later upload of the same file
+  cannot find it (only the scan after the recognition can), `sevdesk_receipt_folder_check`
+  cannot match it (it counts it under `coverage.vouchers.withoutChecksum`) and the audit's
+  same-receipt rule (`voucher_receipt_twice`) cannot see it; the audit's `duplicates` check still
+  pairs two such drafts by direction, document number and gross amount across suppliers
+  (`draft_twice`, or `draft_repeats_voucher` against a booked voucher). The preview, the
+  description and the result say so.
   `sevdesk_voucher_finalize` refuses the draft, expense or revenue, until both the tax rule and
   every booking account are set (`storedRule`, `storedPositionsFor`).
 - **Test:** `test/unit/scripts/gaps-banking-probes.test.ts` ("runs the opt-in probes only when
@@ -4142,7 +4160,13 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   once, after waits, and not within the bound; a partial recognition; the several-rates note;
   duplicates, a partial scan, a page without a count and a skipped scan; an unreadable answer; a
   refused upload; a cancelled wait and a failed read naming the draft; recognised text kept out
-  of summary and notes). The upload release: `test/unit/tools/remote-files.test.ts` (released
+  of summary and notes; the checksum check before the upload: its query, the refusal in a dry
+  run and a real call, at most three vouchers named with the number fenced, fewer when the error
+  cap would cut the instruction, `allowDuplicate`, a
+  receipt with `contentHash` null not found, partial, failed and cancelled reads);
+  `test/regressions/recognition-same-file.test.ts` (the same file refused before the upload,
+  sent with `allowDuplicate`, and not found when the earlier copy came from the recognition). The
+  upload release: `test/unit/tools/remote-files.test.ts` (released
   from the answer also when the read fails, kept when neither the answer nor the read-back
   shows the receipt). The tier: `test/unit/sevdesk/paths.test.ts` (the multipart POST stays
   `write`). The safety net:
