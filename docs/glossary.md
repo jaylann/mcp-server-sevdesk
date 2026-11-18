@@ -98,10 +98,10 @@ one-line meaning and where each matters. The server's own terms are at the end.
 | Artikelnummer           | part number        | The part's unique number.                                                                                         | [`sevdesk_part_create`](tools.md#sevdesk_part_create)                                     |
 | Lagerbestand            | stock              | The quantity in stock, when stock tracking is on.                                                                 | [`sevdesk_part_get`](tools.md#sevdesk_part_get)                                           |
 
-Kontaktfelder and Eigene Felder are the names sevDesk's help centre uses: the fields are set up
+Kontaktfelder and "Eigene Felder" are the names sevDesk's help centre uses: the fields are set up
 under Einstellungen → System → Kontaktfelder
 ([Kontaktfelder anlegen](https://hilfe.sevdesk.de/de/articles/9382263-kontaktfelder-anlegen)), and
-a contact's values are filled in under Eigene Felder
+a contact's values are filled in under "Eigene Felder"
 ([Kontakte anlegen](https://hilfe.sevdesk.de/de/articles/9064553-kontakte-anlegen-v1)).
 
 ## Server terms

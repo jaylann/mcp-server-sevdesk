@@ -101,10 +101,10 @@ jeder Begriff wichtig ist. Die Begriffe des Servers selbst stehen am Ende.
 | Artikelnummer           | part number        | Die eindeutige Nummer des Artikels.                                                                                            | [`sevdesk_part_create`](tools.md#sevdesk_part_create)                                     |
 | Lagerbestand            | stock              | Die Menge auf Lager, wenn die Bestandsführung aktiv ist.                                                                       | [`sevdesk_part_get`](tools.md#sevdesk_part_get)                                           |
 
-Kontaktfelder und Eigene Felder sind die Namen aus der sevDesk-Hilfe: Die Felder legst du unter
+Kontaktfelder und „Eigene Felder“ sind die Namen aus der sevDesk-Hilfe: Die Felder legst du unter
 Einstellungen → System → Kontaktfelder an
 ([Kontaktfelder anlegen](https://hilfe.sevdesk.de/de/articles/9382263-kontaktfelder-anlegen)), die
-Werte eines Kontakts trägst du unter Eigene Felder ein
+Werte eines Kontakts trägst du unter „Eigene Felder“ ein
 ([Kontakte anlegen](https://hilfe.sevdesk.de/de/articles/9064553-kontakte-anlegen-v1)).
 
 ## Begriffe des Servers
