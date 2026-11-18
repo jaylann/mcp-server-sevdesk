@@ -5,7 +5,9 @@ import {
   orderCreateInputShape,
   prepareOrderCreate,
 } from "../../domain/drafts/order.js";
+import { ORDER_TYPE_FILTERS } from "../../domain/orders.js";
 import { defineWriteTool } from "../define-tool.js";
+import { ACCOUNT_ORDER_NUMBERS } from "../types.js";
 import { dryRunInputShape } from "../write-input.js";
 import { orderDraftOutput, orderDraftToolOutput } from "./draft-output.js";
 
@@ -39,6 +41,14 @@ export const orderCreateDraftTool = defineWriteTool({
   },
   input: z.strictObject({ ...orderCreateInputShape, ...dryRunInputShape }),
   output: orderDraftOutput,
+  // The number is reserved by one sevDesk request, but the order factory tools hand out the AB or
+  // LI counter's current number and move the counter on only afterwards (#134): an AB or LI draft
+  // takes the range's key so that its reservation cannot fall in between. Offers have no factory:
+  // no lock.
+  locks: (args) => {
+    const code = ORDER_TYPE_FILTERS[args.type];
+    return code === "AN" ? [] : [ACCOUNT_ORDER_NUMBERS[code]];
+  },
   prepare: (args, ctx) =>
     prepareOrderCreate(ctx.client, args, { signal: ctx.signal, cacheOwner: ctx.config }),
   execute: async (_args, plan, ctx) =>

@@ -57,8 +57,6 @@ const UPLOAD_OPENERS = ["sevdesk_upload_request"];
 const WITHOUT_LOCKS: Readonly<Record<string, string>> = {
   sevdesk_invoice_create_draft:
     "creates a new draft; its duplicate check only warns, and sevDesk assigns the number at finalization",
-  sevdesk_order_create_draft:
-    "creates a new draft; its duplicate check only warns, and the number is reserved by one sevDesk request",
   sevdesk_datev_export: "starts an export job from its arguments; no record is checked before it",
   sevdesk_archive_export:
     "asks sevDesk for an archive of PDFs from its arguments; no record is checked and none changes",

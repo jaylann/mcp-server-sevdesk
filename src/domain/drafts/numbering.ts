@@ -8,7 +8,9 @@
  *   ("GU-1002"; `creditNoteType=CN` gives the same, so it is not sent).
  * - `useNextNumber=false` only peeks; `useNextNumber=true` returns the current number AND advances
  *   the counter (true → AN-1000, then false → AN-1001). The verified spellings are the literals
- *   `true`/`false`, so they are sent as strings (the client would send booleans as 1/0).
+ *   `true`/`false`, so they are sent as strings (the client would send booleans as 1/0). For
+ *   `orderType=AB` and `LI` only the peek is recorded (the order factories hand out its number,
+ *   D-107); that the reservation advances those counters too is assumed, not recorded (D-066).
  * - Orders: `saveOrder` without `orderNumber` answers 400, and neither saving nor finalizing an
  *   order with a peeked number advances the counter (sevDesk handed out AN-1000 twice). So the
  *   number is reserved (`useNextNumber=true`) right before the save, as sevDesk's web app does.

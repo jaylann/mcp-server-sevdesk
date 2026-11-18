@@ -1143,12 +1143,28 @@ content}}` for invoices, credit notes and orders (recorded; key casing: D-072). 
   `sevdesk_credit_note_create_from_invoice` advances the counter once when the next number equals
   the one sevDesk gave the new draft (`src/domain/derived-documents.ts`), and the credit note
   finalize and send-email tools refuse a draft without a number
-  (`src/domain/lifecycle/transitions.ts`) (fix in this PR). The draft
+  (`src/domain/lifecycle/transitions.ts`) (fix in this PR). `sevdesk_order_create_confirmation`
+  and `sevdesk_order_create_delivery_note` do the same for the `AB` and `LI` counters
+  (`src/domain/order-follow-ups.ts`, #134): after the factory request, when the peek still offers
+  the new order's number, it is reserved once, so consecutive confirmations or delivery notes no
+  longer share a number, provided the reservation advances the `AB` and `LI` counters (assumed,
+  not recorded: D-066; previews, descriptions and the result note say so). Every real create
+  therefore reserves a number, also for a draft that
+  is deleted later, which can leave a gap in the range (D-066 recorded the number coming back only
+  for the draft saved with the number reserved last; for a factory draft it is not recorded). The
+  two tools, and `sevdesk_order_create_draft` for an `AB` or `LI` draft, hold the range's
+  account-wide lock (`ACCOUNT_ORDER_NUMBERS`) from `prepare` to the end, so this server's calls
+  cannot take the same number between a factory request and the reservation; the other orders of
+  the type with the same number are still looked up as a safety net (numbers shared from before,
+  or taken in the web app). The draft
   read-back notes a missing number and a number with `%…%` placeholders (`readBackNotes` in
   `src/domain/drafts/read-back.ts`); the finalize preview warns when the stored number contains
   `%` (`src/tools/lifecycle/finalize.ts`).
-- **Test:** `test/regressions/b4-numbering.test.ts`, `test/unit/domain/drafts/payloads.test.ts`
-  ("notes unexpanded placeholders in a number (D-027)"),
+- **Test:** `test/regressions/b4-numbering.test.ts`,
+  `test/regressions/order-factory-number-counter.test.ts` (#134: two confirmations or delivery
+  notes made at once get different numbers, the counter moves once per create, the lock, no
+  repeated request), `test/unit/domain/order-follow-ups.test.ts`,
+  `test/unit/domain/drafts/payloads.test.ts` ("notes unexpanded placeholders in a number (D-027)"),
   `test/unit/tools/lifecycle/finalize.test.ts` ("warns about unexpanded placeholders in the number
   (D-027)"); `test/unit/domain/drafts/numbering.test.ts`, `test/unit/tools/drafts/numbering.test.ts`
   (peek, reservation, collisions); `test/contract/recorded-fixtures.test.ts` ("lists credit notes,
@@ -2520,7 +2536,13 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
 - **Impact:** The order and credit note draft tools peek the number for the preview and reserve
   it in execute, right before `saveOrder`/`saveCreditNote` (`peekNextNumber`,
   `reserveNextNumber` in `src/domain/drafts/numbering.ts`; D-027); invoices are never reserved,
-  since `sendBy` numbers them. A failure that may still have reserved a number says that the
+  since `sendBy` numbers them. The credit note and order factory tools reserve once after their
+  request to move the counter past the number sevDesk handed out (D-027, D-107). That
+  `useNextNumber=true` reserves and advances was recorded for `orderType=AN` and the credit note
+  counter only; the `AB` and `LI` reservations of the order draft tool and the order factory tools
+  assume the same of `getNextOrderNumber` for those types, which is not recorded. If sevDesk did
+  not advance them, the counter step would report the counter as moved, and the same-number check
+  after the next confirmation or delivery note would name the clash. A failure that may still have reserved a number says that the
   number may stay unused (a gap in the Nummernkreis). `resolveGetSafety` (`src/sevdesk/paths.ts`)
   treats any `getNext…Number` GET whose `useNextNumber` is not clearly off as a side effect of the
   `write` tier ("it reserves the next document number"): it is refused in read-only and dry-run
@@ -4281,9 +4303,14 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   is not recorded; it is allowed because the factory left every recorded source alone, whatever
   its status (decided 2026-11-17). Both send the order in the query and the body, read the new
   order back (its id comes from the answer itself, `createdDocumentId`, D-064), check that it is
-  a draft of the expected type that points to the source, and look up other orders of the type
-  with the same number for a trusted note. A failure after the request lists the new order and,
-  for a confirmation, the offer as completed writes. Both refuse a second document from the same
+  a draft of the expected type that points to the source, move the counter of its range past its
+  number (peek, then one reservation when the counter still offers it; #134, D-027) and look up
+  other orders of the type with the same number for a trusted note. They hold the range's
+  account-wide lock (`ACCOUNT_ORDER_NUMBERS`), so calls that number confirmations, or delivery
+  notes, run one at a time per account. Every real create advances the counter, also for a draft
+  deleted later (a possible gap); previews, tool descriptions and the invoices guide say so. A
+  failure after the request lists the new order and, for a confirmation, the offer as completed
+  writes; a counter step or number check that fails becomes a note. Both refuse a second document from the same
   source unless `allowDuplicate`; the delivery note refuses only a second draft and names
   finalized delivery notes from the same source in a warning (a further one can be a partial
   delivery). Both previews list the source's discounts on the whole document with the rest of its
@@ -4304,7 +4331,9 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   (review of #112, L1)", "shows the order's document discounts (review of #112, L5)"),
   `test/unit/domain/document-discounts.test.ts`,
   `test/regressions/offer-status-and-confirmation.test.ts` ("refuses a confirmation from an offer
-  with status 100/300"), `test/integration/order-acceptance-path.test.ts`. Live: probes
+  with status 100/300"), `test/regressions/order-factory-number-counter.test.ts`,
+  `test/unit/domain/order-follow-ups.test.ts`, `test/integration/order-acceptance-path.test.ts`.
+  Live: probes
   `write-order-contract-note-from-order`, `write-order-packing-list-from-order` (their reporting:
   `test/unit/scripts/gaps-documents-probes.test.ts`, "describes order confirmations and delivery
   notes against their source").

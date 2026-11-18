@@ -3,13 +3,16 @@ import { describe, expect, it } from "vitest";
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
 import type { CollectedList, SevdeskClient } from "../../../../src/sevdesk/types.js";
 import { orderCreateConfirmationTool as tool } from "../../../../src/tools/orders/create-confirmation.js";
+import { ACCOUNT_ORDER_NUMBERS } from "../../../../src/tools/types.js";
 import type { FakeRoute } from "../../../helpers/fake-client.js";
 import { executeWrite, prepareWrite } from "../../../helpers/write-tools.js";
 import {
+  counterRoutes,
   derivedReadRoutes,
   derivedRow,
   discountRow,
   discountsOf,
+  NEXT_ORDER_NUMBER,
   positionsOf,
   sentOffer,
 } from "../../../write-cases/orders.js";
@@ -63,16 +66,32 @@ function staged(options: Options = {}): StagedClient {
       list(options.sameNumber ?? []),
       ...derivedReadRoutes(readBack),
       documentRoute("order", options.afterOffer ?? offer({ status: "500" })),
+      // The AB counter still offers the new number: it is moved on once (#134).
+      ...counterRoutes("AB", "AB-1003"),
       ...positionRoutes(),
     ],
   );
 }
 
-/** What the tool's execute throws after the one request it sends. */
-async function executeFailure(client: SevdeskClient, staged: StagedClient): Promise<SevdeskError> {
+/** The counter note: it points at the number in the output instead of quoting it (#147). */
+const MOVED =
+  "The new order confirmation's number (order.number) was reserved on sevDesk's AB number " +
+  "counter, which should move the counter past it so that the next order confirmation does not " +
+  "get it again. That a reservation moves the AB counter is assumed, not checked against " +
+  "sevDesk; if it did not, the next call names the order confirmation with the same number.";
+
+/**
+ * What the tool's execute throws after the request it sends (and, when the failure comes after
+ * the counter step, the reservation: `writes` 2).
+ */
+async function executeFailure(
+  client: SevdeskClient,
+  staged: StagedClient,
+  writes = 1,
+): Promise<SevdeskError> {
   const error = await executeWrite(tool, { orderId: 3001 }, client).catch((e: unknown) => e);
   expect(error).toBeInstanceOf(SevdeskError);
-  expect(staged.writes()).toHaveLength(1);
+  expect(staged.writes()).toHaveLength(writes);
   return error as SevdeskError;
 }
 
@@ -105,7 +124,7 @@ async function refusal(before: Row, earlier: readonly Row[] = []): Promise<strin
 }
 
 describe("sevdesk_order_create_confirmation (D-107)", () => {
-  it("is a commit tool of the orders toolset that locks the offer", () => {
+  it("is a commit tool of the orders toolset that locks the AB number range and the offer", () => {
     expect(tool.tier).toBe("commit");
     expect(tool.toolset).toBe("orders");
     expect(tool.annotations).toEqual({
@@ -115,8 +134,35 @@ describe("sevdesk_order_create_confirmation (D-107)", () => {
       openWorldHint: false,
     });
     expect(tool.locks?.(tool.input.parse({ orderId: 3001 }))).toEqual([
+      ACCOUNT_ORDER_NUMBERS.AB,
       { objectName: "Order", id: "3001" },
     ]);
+  });
+
+  it("says in both languages that the AB counter is moved on (assumed, not checked), with a possible gap and the lock (#134)", async () => {
+    const client = staged();
+    const plan = await prepareWrite(tool, { orderId: 3001 }, client);
+    // The preview only reads: the counter is neither peeked nor reserved before the approval.
+    expect(client.calls.filter((call) => call.path === NEXT_ORDER_NUMBER)).toEqual([]);
+    expect(plan.preview.warnings[2]).toBe(
+      "sevDesk gives the confirmation the next number of the AB range without moving its " +
+        "counter, so that number is then reserved on the AB counter to move the counter past " +
+        "it; otherwise the next confirmation could get the same number. That a reservation " +
+        "moves the AB counter is assumed, not checked against sevDesk. A number is reserved on " +
+        "every real create, also for a draft that is deleted later, which can leave a gap in " +
+        "the AB numbers. Calls that number order confirmations run one at a time per account. " +
+        "The result names other confirmations with the same number.",
+    );
+    expect(plan.previewDe.warnings[2]).toBe(
+      "sevDesk gibt der Auftragsbestätigung die nächste Nummer des AB-Nummernkreises, ohne den " +
+        "Zähler weiterzuschalten; danach wird diese Nummer am AB-Zähler reserviert, um den " +
+        "Zähler über sie hinaus weiterzuschalten, sonst könnte die nächste Auftragsbestätigung " +
+        "dieselbe Nummer bekommen. Dass die Reservierung den AB-Zähler weiterschaltet, ist " +
+        "angenommen, aber nicht an sevDesk geprüft. Reserviert wird bei jeder echten Erstellung, " +
+        "auch für einen Entwurf, der später gelöscht wird; dann kann eine Lücke in den " +
+        "AB-Nummern bleiben. Aufrufe, die Auftragsbestätigungen nummerieren, laufen je Konto " +
+        "nacheinander. Das Ergebnis nennt andere Auftragsbestätigungen mit derselben Nummer.",
+    );
   });
 
   it("previews the offer, its positions and that it becomes accepted", async () => {
@@ -150,7 +196,7 @@ describe("sevdesk_order_create_confirmation (D-107)", () => {
     expect(plan.preview.irreversible).toBe(false);
   });
 
-  it("creates the confirmation with the offer in query and body, and reads both back", async () => {
+  it("creates the confirmation with the offer in query and body, reads both back and moves the AB counter on", async () => {
     const client = staged();
     const { output } = await executeWrite(tool, { orderId: 3001 }, client);
     expect(
@@ -163,6 +209,17 @@ describe("sevdesk_order_create_confirmation (D-107)", () => {
         { "order[id]": 3001, "order[objectName]": "Order" },
         { id: 3001, objectName: "Order" },
       ],
+      // Once, after the request: the reservation that moves the counter past AB-1003.
+      ["GET", NEXT_ORDER_NUMBER, "commit", { orderType: "AB", useNextNumber: "true" }, undefined],
+    ]);
+    // Peeked first: the counter still offered the new number.
+    expect(
+      client.calls
+        .filter((call) => call.path === NEXT_ORDER_NUMBER)
+        .map((call) => [call.query["useNextNumber"], call.sideEffect]),
+    ).toEqual([
+      ["false", false],
+      ["true", true],
     ]);
     expect(output.data.order).toMatchObject({
       id: 3101,
@@ -173,12 +230,7 @@ describe("sevdesk_order_create_confirmation (D-107)", () => {
     });
     expect(output.data.sourceOrderId).toBe(3001);
     expect(output.data.sourceOrderStatus).toMatchObject({ code: 500 });
-    // The notes point at the number in the output instead of quoting it (#147).
-    expect(output.data.notes).toEqual([
-      "sevDesk does not move its AB number counter for this request, so the next order " +
-        "confirmation may get the same number (order.number) again; check the number before " +
-        "sending either.",
-    ]);
+    expect(output.data.notes).toEqual([MOVED]);
     expect(output.affected).toEqual([
       { objectName: "Order", id: "3101" },
       { objectName: "Order", id: "3001" },
@@ -264,11 +316,14 @@ describe("sevdesk_order_create_confirmation (D-107)", () => {
   it("names another confirmation with the same number", async () => {
     const client = staged({ sameNumber: [derivedRow("2990", "AB", "AB-1003", "2900")] });
     const { output } = await executeWrite(tool, { orderId: 3001 }, client);
-    expect(output.data.notes?.[0]).toBe(
+    // The counter was behind the numbers in use (a confirmation made before #134): it is moved
+    // on, and the older confirmation is named.
+    expect(output.data.notes).toEqual([
+      MOVED,
       "The new order confirmation has the same number (order.number) as order 2990: sevDesk " +
-        "hands out the next number of the range without moving its counter. Give one of them " +
-        "another number in the sevDesk web app before sending it.",
-    );
+        "handed out a number of its AB range that is in use already. Give one of them another " +
+        "number in the sevDesk web app before sending either.",
+    ]);
   });
 
   it("says so when sevDesk did not accept the offer", async () => {
@@ -332,8 +387,47 @@ describe("sevdesk_order_create_confirmation (D-107)", () => {
           { path: "/Order", query: { orderNumber: "AB-1003" }, response: failing("aborted") },
         ],
       });
-      const error = await executeFailure(client, client);
+      const error = await executeFailure(client, client, 2);
       expect(error.kind).toBe("aborted");
+      expect(error.completedWrites).toEqual(both);
+    });
+
+    it("names them when cancelled while the counter is moved on (#134)", async () => {
+      const client = staged({
+        afterFirst: [
+          {
+            path: NEXT_ORDER_NUMBER,
+            query: { useNextNumber: "true" },
+            response: failing("aborted"),
+          },
+        ],
+      });
+      const error = await executeFailure(client, client, 2);
+      expect(error.kind).toBe("aborted");
+      // The reservation may have gone through: the message says so.
+      expect(error.message).toContain(
+        "sevDesk may have reserved the next order number anyway; then that number stays unused",
+      );
+      expect(error.completedWrites).toEqual(both);
+    });
+
+    it("names them when moving the counter fails unexpectedly (#134)", async () => {
+      const client = staged();
+      const broken: SevdeskClient = {
+        request: (request) =>
+          request.path === NEXT_ORDER_NUMBER
+            ? Promise.reject(new TypeError("broken"))
+            : client.request(request),
+        list: (path, query, options) => client.list(path, query, options),
+        listAll: (path, query, options) => client.listAll(path, query, options),
+        download: (request) => client.download(request),
+      };
+      const error = await executeFailure(broken, client);
+      expect(error.kind).toBe("unexpected_response");
+      expect(error.message).toBe(
+        "The order confirmation was created, but moving sevDesk's number counter past its " +
+          "number failed unexpectedly.",
+      );
       expect(error.completedWrites).toEqual(both);
     });
 
@@ -342,7 +436,7 @@ describe("sevdesk_order_create_confirmation (D-107)", () => {
       const broken = scansBy(client, "orderNumber", () => {
         throw new TypeError("broken");
       });
-      const error = await executeFailure(broken, client);
+      const error = await executeFailure(broken, client, 2);
       expect(error.kind).toBe("unexpected_response");
       expect(error.message).toBe(
         "The order confirmation was created, but checking its number against other orders " +
@@ -353,10 +447,7 @@ describe("sevdesk_order_create_confirmation (D-107)", () => {
   });
 
   describe("notes and warnings of the checks around the request (review of #112, L4)", () => {
-    const counter =
-      "sevDesk does not move its AB number counter for this request, so the next order " +
-      "confirmation may get the same number (order.number) again; check the number before " +
-      "sending either.";
+    const counter = MOVED;
 
     it("notes a number check that failed, without failing the call", async () => {
       const client = staged({
@@ -386,9 +477,11 @@ describe("sevdesk_order_create_confirmation (D-107)", () => {
       const client = staged({ readBack: { ...created, orderNumber: null } });
       const { output } = await executeWrite(tool, { orderId: 3001 }, client);
       expect(output.data.notes).toEqual([
-        "sevDesk gave the new order confirmation no number; set one before sending it.",
+        "sevDesk gave the new order confirmation no number, so its AB number counter was not " +
+          "touched; set a number before sending it.",
       ]);
       expect(client.calls.filter((call) => call.query["orderNumber"] !== undefined)).toEqual([]);
+      expect(client.calls.filter((call) => call.path === NEXT_ORDER_NUMBER)).toEqual([]);
     });
 
     it("notes an offer that could not be read again and lists it as affected", async () => {

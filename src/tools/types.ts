@@ -97,6 +97,19 @@ export const ACCOUNT_CREDIT_NOTE_NUMBERS: SevdeskObjectRef = {
 };
 
 /**
+ * Lock keys for an account's order confirmation (AB) and delivery note (LI) number ranges, one per
+ * range: every tool that gives a new AB or LI a number takes the key of its range. The order
+ * factories (`createContractNoteFromOrder`, `createPackingListFromOrder`) hand out the counter's
+ * current value without advancing it, and the tools move the counter on afterwards
+ * (`src/domain/order-follow-ups.ts`); two creations that interleave would both get that number
+ * before either moved the counter (#134). Offers (AN) have no factory, so their range needs none.
+ */
+export const ACCOUNT_ORDER_NUMBERS: Readonly<Record<"AB" | "LI", SevdeskObjectRef>> = {
+  AB: { objectName: "OrderNumbersAB", id: "account" },
+  LI: { objectName: "OrderNumbersLI", id: "account" },
+};
+
+/**
  * A lock key for an account's customer numbers (Kundennummern): creating a contact and setting a
  * contact's customer number check first that the number (and, on create, the name and e-mail) is
  * not in use, then write. Two such calls at once both passed the check (review 2026-11, round 3).

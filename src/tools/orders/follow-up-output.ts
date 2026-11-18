@@ -38,7 +38,10 @@ export const derivedOrderOutput = z.object({
   notes: z
     .array(z.string())
     .optional()
-    .describe("Things to check, e.g. other orders that carry the same number."),
+    .describe(
+      "Things to check, e.g. whether sevDesk's number counter was moved on, or other orders " +
+        "that carry the same number.",
+    ),
 });
 
 /** The tool output of a factory result. */
