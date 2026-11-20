@@ -670,13 +670,32 @@ describe("sevdesk_voucher_create_draft", () => {
     const routes = [voucherListRoute([duplicate])];
     const message = await refusal(prepareWrite(tool, args, client(routes)));
     expect(message).toBe(
-      "Possible duplicate: voucher 2050 with the same supplier, Belegnummer, date (2026-11-02) " +
-        "and gross total (119.00 EUR) already exists. Check it with sevdesk_voucher_get; if " +
-        "this really is another receipt, call again with allowDuplicate: true.",
+      "Possible duplicate: voucher 2050 with the same Belegnummer, date (2026-11-02) and gross " +
+        "total (119.00 EUR) and a matching or unlinked supplier already exists. Check it with " +
+        "sevdesk_voucher_get; if this really is another receipt, call again with " +
+        "allowDuplicate: true.",
     );
     const { preview } = await prepareWrite(tool, { ...args, allowDuplicate: true }, client(routes));
     expect(preview.warnings[0]).toContain(
       "Possible duplicate (allowDuplicate is set): voucher 2050",
+    );
+  });
+
+  it("finds the same receipt drafted once with a contact and once with only a supplier text (review 2026-11-20)", async () => {
+    // A recognition draft has no contact, only a supplier text (D-100).
+    const textOnly = {
+      ...draftRow(),
+      id: "2060",
+      voucherDate: "2026-11-02T00:00:00+01:00",
+      supplier: null,
+      supplierName: "Bürobedarf Muster",
+    };
+    const fake = client([voucherListRoute([textOnly])]);
+    const message = await refusal(prepareWrite(tool, args, fake));
+    expect(message).toContain("Possible duplicate: voucher 2060 with the same Belegnummer");
+    // sevDesk's contact filter would have dropped the text-only copy.
+    expect(fake.calls.find((call) => call.path === "/Voucher")?.query).not.toHaveProperty(
+      "contact[id]",
     );
   });
 

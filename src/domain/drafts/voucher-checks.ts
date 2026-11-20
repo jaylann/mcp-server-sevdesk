@@ -493,9 +493,12 @@ export interface VoucherDuplicateScan {
 }
 
 /**
- * Existing vouchers of the same kind with the same supplier (contact or name), Belegnummer, date
- * and gross total (sevDesk's filters narrow the list, the comparison here is exact), from one page
- * of {@link DUPLICATE_SCAN_LIMIT} rows.
+ * Existing vouchers of the same kind, date and gross total (sevDesk's filters narrow the list, the
+ * comparison here is exact), from one page of {@link DUPLICATE_SCAN_LIMIT} rows. With a
+ * Belegnummer, the number names the receipt: a voucher with the same number counts unless both
+ * name different contacts, so a copy that only carries a supplier text (a recognition draft, a
+ * draft by name) and one linked to the contact find each other (review 2026-11-20). Without a
+ * Belegnummer the supplier (contact, else name) must match too.
  */
 export async function findVoucherDuplicates(
   client: SevdeskClient,
@@ -506,8 +509,13 @@ export async function findVoucherDuplicates(
     client,
     {
       kind: query.kind,
-      supplierId: query.supplierId,
-      supplierName: query.supplierId === undefined ? query.supplierName : undefined,
+      // With a Belegnummer the supplier is compared below: sevDesk's contact filter would drop a
+      // copy that has only a supplier text.
+      supplierId: query.number === undefined ? query.supplierId : undefined,
+      supplierName:
+        query.number === undefined && query.supplierId === undefined
+          ? query.supplierName
+          : undefined,
       description: query.number,
       from: query.date,
       to: query.date,
@@ -520,6 +528,17 @@ export async function findVoucherDuplicates(
     normalize(a) === normalize(b);
   const { received, total } = result.window;
   const complete = total === undefined ? received < DUPLICATE_SCAN_LIMIT : total <= received;
+  const sameSupplier = (row: (typeof result.items)[number]): boolean => {
+    const rowContact = row.supplier?.id;
+    if (query.number !== undefined) {
+      return rowContact === undefined || query.supplierId === undefined
+        ? true
+        : rowContact === query.supplierId;
+    }
+    return query.supplierId === undefined
+      ? same(row.supplier?.name, query.supplierName)
+      : rowContact === query.supplierId;
+  };
   const ids = result.items
     .filter(
       (row) =>
@@ -528,9 +547,7 @@ export async function findVoucherDuplicates(
         row.totals.gross !== undefined &&
         compare(row.totals.gross.amount, query.gross) === 0 &&
         (query.number === undefined || same(row.number, query.number)) &&
-        (query.supplierId === undefined
-          ? same(row.supplier?.name, query.supplierName)
-          : row.supplier?.id === query.supplierId),
+        sameSupplier(row),
     )
     .map((row) => row.id)
     .sort((a, b) => a - b);
@@ -576,9 +593,11 @@ export function duplicateCheck(
   if (ids.length === 0) return undefined;
   const which = ids.length === 1 ? `voucher ${String(ids[0])}` : `vouchers ${ids.join(", ")}`;
   const what =
-    `${which} with the same supplier, ` +
-    `${query.number === undefined ? "" : "Belegnummer, "}date (${query.date}) and gross total ` +
-    `(${query.gross} ${query.currency ?? "EUR"})`;
+    query.number === undefined
+      ? `${which} with the same supplier, date (${query.date}) and gross total ` +
+        `(${query.gross} ${query.currency ?? "EUR"})`
+      : `${which} with the same Belegnummer, date (${query.date}) and gross total ` +
+        `(${query.gross} ${query.currency ?? "EUR"}) and a matching or unlinked supplier`;
   if (!allowDuplicate) {
     refuse(
       `Possible duplicate: ${what} already exist${ids.length === 1 ? "s" : ""}. Check it with ` +
@@ -586,8 +605,12 @@ export function duplicateCheck(
         "allowDuplicate: true.",
     );
   }
-  if (lang === "de")
-    return `Mögliche Dublette (allowDuplicate ist gesetzt): Beleg ${ids.join(", ")} hat denselben Lieferanten, ${query.number === undefined ? "" : "dieselbe Belegnummer, "}dasselbe Datum (${dateText(query.date, lang)}) und dieselbe Bruttosumme (${query.gross.replace(".", ",")} ${query.currency ?? "EUR"}).`;
+  if (lang === "de") {
+    const sums = `dasselbe Datum (${dateText(query.date, lang)}) und dieselbe Bruttosumme (${query.gross.replace(".", ",")} ${query.currency ?? "EUR"})`;
+    return query.number === undefined
+      ? `Mögliche Dublette (allowDuplicate ist gesetzt): Beleg ${ids.join(", ")} hat denselben Lieferanten, ${sums}.`
+      : `Mögliche Dublette (allowDuplicate ist gesetzt): Beleg ${ids.join(", ")} hat dieselbe Belegnummer, ${sums}, und denselben oder keinen verknüpften Lieferanten.`;
+  }
   return `Possible duplicate (allowDuplicate is set): ${what} already exist${
     ids.length === 1 ? "s" : ""
   }.`;
