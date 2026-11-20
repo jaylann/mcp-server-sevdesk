@@ -138,8 +138,9 @@ const wrappedSchemas = new WeakMap<z.ZodObject, z.ZodObject>();
 
 /**
  * The output schema every write tool advertises: an object with `status` and, depending on it,
- * `result` (the tool's own output, only when `done`), `preview` (dry run, pending approval,
- * declined) and `approval` (pending approval). Built once per tool output schema.
+ * `result` (the tool's own output, only when `done`), `warnings` (the preview's warnings, when
+ * `done` and there were any), `preview` (dry run, pending approval, declined) and `approval`
+ * (pending approval). Built once per tool output schema.
  */
 export function writeOutputSchema(output: z.ZodObject): z.ZodObject {
   let schema = wrappedSchemas.get(output);
@@ -153,6 +154,10 @@ export function writeOutputSchema(output: z.ZodObject): z.ZodObject {
             "declined: user did not approve, nothing changed.",
         ),
       result: output.optional().describe("Changed record; only when done."),
+      warnings: z
+        .array(z.string())
+        .optional()
+        .describe("When done: the preview's warnings (e.g. a possible duplicate). Tell the user."),
       preview: previewSchema.optional().describe("Proposed action."),
       approval: approvalSchema.optional(),
     });
@@ -611,7 +616,14 @@ async function execute(
     return outputValidationFailedResult(call.errorContext, data.error, { changedData: true });
   }
   await audit(action, { event: "executed", callId, affected: output.affected ?? [] });
-  return wrapped(action, "done", output.summary, undefined, data.data, output.extraContent);
+  // A write-tier call runs without showing its preview to anyone: its warnings (a possible
+  // duplicate, a total to check) reach the model only here (review 2026-11-20).
+  const { warnings } = action.preview;
+  const summary =
+    warnings.length === 0
+      ? output.summary
+      : `${output.summary} The preview warned before the change (see warnings); tell the user.`;
+  return wrapped(action, "done", summary, undefined, data.data, output.extraContent);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -626,9 +638,10 @@ function wrapped(
   result?: unknown,
   extraContent?: Parameters<typeof successResult>[0]["extraContent"],
 ): CallToolResult {
+  const { warnings } = action.preview;
   const data =
     status === "done"
-      ? { status, result }
+      ? { status, result, ...(warnings.length === 0 ? {} : { warnings }) }
       : { status, preview: action.preview, ...(approval === undefined ? {} : { approval }) };
   return successResult(
     { summary, data, ...(extraContent === undefined ? {} : { extraContent }) },

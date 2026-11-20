@@ -64,9 +64,10 @@ beide Texte.
 Jeder Aufruf führt `prepare` aus, dann endet ein Probelauf, Aufrufe der Stufen `commit`/`external`
 werden bestätigt, das Audit-Log verzeichnet `executing`, und erst dann läuft `execute`. Ergebnisse
 werden als
-`{status: "done" | "dry_run" | "approval_pending" | "declined", result?, preview?, approval?}`
-verpackt (`result` nur bei `done`); für `outputSchema` und `structuredContent` gelten dieselben
-Regeln je Protokollgeneration wie bei Lesezugriffen.
+`{status: "done" | "dry_run" | "approval_pending" | "declined", result?, warnings?, preview?, approval?}`
+verpackt (`result` nur bei `done`; `warnings`, die Warnungen der Vorschau, bei `done`, wenn es
+welche gab, weil ein `write`-Aufruf seine Vorschau niemandem zeigt); für `outputSchema` und
+`structuredContent` gelten dieselben Regeln je Protokollgeneration wie bei Lesezugriffen.
 
 ## Bestätigung durch einen Menschen
 

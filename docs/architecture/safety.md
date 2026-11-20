@@ -55,9 +55,10 @@ covers both texts.
 
 Every call runs `prepare`, then a dry run stops, `commit`/`external` calls are confirmed, the audit
 log records `executing` and only then `execute` runs. Results are wrapped as
-`{status: "done" | "dry_run" | "approval_pending" | "declined", result?, preview?, approval?}`
-(`result` only when done); the same era rules for `outputSchema` and `structuredContent` apply as
-for reads.
+`{status: "done" | "dry_run" | "approval_pending" | "declined", result?, warnings?, preview?, approval?}`
+(`result` only when done; `warnings`, the preview's warnings, when done and there were any, because
+a `write` call shows its preview to no one); the same era rules for `outputSchema` and
+`structuredContent` apply as for reads.
 
 ## Human confirmation
 

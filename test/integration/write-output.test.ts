@@ -44,6 +44,9 @@ describe("writeOutputSchema", () => {
 
     expect(writeOutputSchema(output)).toBe(schema);
     expect(schema.safeParse({ status: "done", result: { id: "1" } }).success).toBe(true);
+    expect(
+      schema.safeParse({ status: "done", result: { id: "1" }, warnings: ["Check it."] }).success,
+    ).toBe(true);
     expect(schema.safeParse({ status: "done", result: { id: 1 } }).success).toBe(false);
     expect(schema.safeParse({ status: "dry_run", preview: PREVIEW }).success).toBe(true);
     expect(schema.safeParse({ status: "finished" }).success).toBe(false);
@@ -83,15 +86,22 @@ describe("modern clients (structured output on)", () => {
     });
   });
 
-  it("receive done results as structuredContent, with result only", async () => {
+  it("receive done results as structuredContent, with the result and the preview's warnings", async () => {
     const { client } = await writeHarness({ tools: [finalize], routes });
 
     const result = await client.callTool({ name: "sevdesk_dummy_finalize", arguments: { id: 7 } });
 
-    expect(result.structuredContent).toEqual({ status: "done", result: { status: "open" } });
+    // The warnings reach the model also when no one was asked (review 2026-11-20).
+    expect(result.structuredContent).toEqual({
+      status: "done",
+      result: { status: "open" },
+      warnings: PREVIEW.warnings,
+    });
     expect(resultData(result)).toEqual(result.structuredContent);
     expect(resultText(result).split("\n\n")[1]).toBe(JSON.stringify(result.structuredContent));
-    expect(resultSummary(result)).toBe("Finalized the invoice.");
+    expect(resultSummary(result)).toBe(
+      "Finalized the invoice. The preview warned before the change (see warnings); tell the user.",
+    );
   });
 
   it("receive dry runs with the sanitized preview and without result", async () => {
@@ -166,7 +176,11 @@ describe("2025-era clients (structured output auto)", () => {
 
     expect(tools[0]?.outputSchema).toBeUndefined();
     expect(result.structuredContent).toBeUndefined();
-    expect(resultData(result)).toEqual({ status: "done", result: { status: "open" } });
+    expect(resultData(result)).toEqual({
+      status: "done",
+      result: { status: "open" },
+      warnings: PREVIEW.warnings,
+    });
   });
 
   it("get structured output when SEVDESK_STRUCTURED_OUTPUT=on", async () => {
