@@ -42,11 +42,18 @@ const REFUSAL = {
   },
 };
 
+/** A `getTabsItemCount` answer with nothing counted (its shape as the spec gives it). */
+const NO_REFERENCES = (): Response =>
+  envelope({ orders: 0, invoices: 0, creditNotes: 0, documents: 0, vouchers: 0, letters: 0 });
+
 /** sevDesk as recorded: person 1002 without addresses or communication ways, still referenced. */
 function answer(request: { readonly url: URL; readonly method: string }): Response {
   const path = request.url.pathname.replace(/^\/api\/v1/, "");
   if (request.method === "DELETE" && path === "/Contact/1002") return jsonResponse(REFUSAL, 200);
   if (request.method === "GET" && path === "/Contact/1002") return envelope(PERSON);
+  // What uses it, as sevDesk counts it: nothing the count shows, so the deletion is tried and
+  // sevDesk's own refusal is what this test checks (the pre-check is in the unit tests).
+  if (request.method === "GET" && path === "/Contact/1002/getTabsItemCount") return NO_REFERENCES();
   // Its addresses, communication ways, custom field values and the contacts stored with it as
   // parent: none.
   if (
@@ -70,6 +77,7 @@ function answerOrganisation(request: { readonly url: URL; readonly method: strin
   if (request.method === "DELETE" && path === "/Contact/1001") return jsonResponse(REFUSAL, 200);
   if (request.method === "GET" && path === "/Contact/1001") return envelope(ORGANISATION);
   if (request.method === "GET" && path === "/Contact/1002") return envelope(PERSON);
+  if (request.method === "GET" && path === "/Contact/1001/getTabsItemCount") return NO_REFERENCES();
   // The contacts whose parent the organisation is: person 1002 on the first page, then none.
   if (request.method === "GET" && path === "/Contact") {
     return request.url.searchParams.get("offset") === "0"
@@ -86,7 +94,7 @@ function answerOrganisation(request: { readonly url: URL; readonly method: strin
 }
 
 function setup(respond: typeof answer = answer) {
-  const fake = createFakeFetch(...Array.from({ length: 10 }, () => respond));
+  const fake = createFakeFetch(...Array.from({ length: 12 }, () => respond));
   const clock = createFakeClock();
   const client = createSevdeskClient(
     {

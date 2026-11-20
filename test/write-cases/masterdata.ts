@@ -221,6 +221,22 @@ export const MASTERDATA_CASES: readonly WriteToolCase[] = [
         response: { fixture: "contacts/contact-1002.json" },
       },
       { path: "/Contact/1002", response: { fixture: "contacts/contact-1002.json" } },
+      // What uses it (spec shape, nothing counted): checked before the deletion.
+      {
+        path: "/Contact/1001/getTabsItemCount",
+        response: {
+          body: {
+            objects: {
+              orders: 0,
+              invoices: 0,
+              creditNotes: 0,
+              documents: 0,
+              vouchers: 0,
+              letters: 0,
+            },
+          },
+        },
+      },
       { method: "DELETE", path: "/Contact/1001", response: DELETED },
     ],
     writes: [{ method: "DELETE", path: "/Contact/1001" }],

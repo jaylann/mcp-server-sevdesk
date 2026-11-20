@@ -67,6 +67,26 @@ function customFieldsRoute(
   };
 }
 
+/** `GET /Contact/{id}/getTabsItemCount` (the spec's shape); nothing counted unless given. */
+function countsRoute(id: number, counts: Record<string, unknown> = {}): FakeRoute {
+  return {
+    path: `/Contact/${String(id)}/getTabsItemCount`,
+    response: {
+      body: {
+        objects: {
+          orders: 0,
+          invoices: 0,
+          creditNotes: 0,
+          documents: 0,
+          vouchers: 0,
+          letters: 0,
+          ...counts,
+        },
+      },
+    },
+  };
+}
+
 /** Organisation 1001 with its two addresses, three communication ways and two custom fields. */
 function organisationRoutes(
   persons: FakeRoute = personsRoute(),
@@ -86,6 +106,7 @@ function organisationRoutes(
     },
     customFieldsRoute(1001, customFields),
     persons,
+    countsRoute(1001),
   ];
 }
 
@@ -105,6 +126,7 @@ function personRoutes(children: readonly unknown[] = []): FakeRoute[] {
       query: { depth: "1", "parent[id]": "1002", "parent[objectName]": "Contact" },
       response: { body: { objects: children } },
     },
+    countsRoute(1002),
   ];
 }
 
@@ -155,6 +177,56 @@ describe("sevdesk_contact_delete", () => {
       selectTools([tool], testConfig({ allowedTiers: allowed })).map((entry) => entry.name);
     expect(names(tiers("read", "write"))).toEqual([]);
     expect(names(tiers("read", "commit"))).toEqual(["sevdesk_contact_delete"]);
+  });
+
+  describe("documents that still use the contact (review 2026-11-20)", () => {
+    /** Person 1002's routes with its counts replaced. */
+    function withCounts(counts: FakeRoute): FakeRoute[] {
+      return [
+        ...personRoutes().filter((route) => !route.path.endsWith("getTabsItemCount")),
+        counts,
+      ];
+    }
+
+    it("refuses before anything is sent when vouchers, orders or credit notes use it", async () => {
+      const client = new FakeSevdeskClient(
+        withCountryRoute(withCounts(countsRoute(1002, { vouchers: "2", creditNotes: 1 }))),
+      );
+      const error = await prepareWrite(tool, { id: 1002 }, client).catch((e: unknown) => e);
+      expect((error as SevdeskError).message).toBe(
+        "Contact 1002 is still used by 1 credit note, 2 vouchers; nothing was deleted. sevDesk " +
+          "was seen to refuse such a deletion only for an invoice, so this server does not try. " +
+          "Keep the contact, or move those documents to another contact first.",
+      );
+      expect(client.writes()).toEqual([]);
+    });
+
+    it("warns, without refusing, when the counts cannot be read", async () => {
+      const unreadable: FakeRoute = {
+        path: "/Contact/1002/getTabsItemCount",
+        response: { body: { objects: { something: "else" } } },
+      };
+      const client = new FakeSevdeskClient(withCountryRoute(withCounts(unreadable)));
+      const { preview, previewDe } = await prepareWrite(tool, { id: 1002 }, client);
+      expect(preview.warnings.join(" ")).toContain(
+        "Which documents still use the contact could not be read (getTabsItemCount)",
+      );
+      expect(previewDe.warnings.join(" ")).toContain(
+        "Welche Dokumente den Kontakt noch verwenden, ließ sich nicht lesen",
+      );
+    });
+
+    it("binds the counts, so a document added meanwhile asks again", async () => {
+      const read = async (counts: Record<string, unknown>) =>
+        prepareWrite(
+          tool,
+          { id: 1002 },
+          new FakeSevdeskClient(withCountryRoute(withCounts(countsRoute(1002, counts)))),
+        );
+      expect((await read({ documents: 0 })).binding).not.toBe(
+        (await read({ documents: 1 })).binding,
+      );
+    });
   });
 
   it("deletes an organisation with its contact persons and reads every one back (D-084)", async () => {

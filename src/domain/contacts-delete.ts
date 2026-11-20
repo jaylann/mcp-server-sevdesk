@@ -408,9 +408,11 @@ interface DeletePreview {
  * read of them is shown, not raised), the contact persons (listed by name and id up to
  * {@link LISTED_PERSONS}): an organisation's, which sevDesk deletes with it too, or those stored
  * under a person, which it may delete (not measured), and that this cannot be undone. Refuses a
- * contact that does not exist, and one whose contact persons cannot all be read (a partial list
- * would hide what goes). Whether documents still reference the contact only sevDesk knows, and it
- * refuses that itself (see {@link executeContactDelete}).
+ * contact that does not exist, one whose contact persons cannot all be read (a partial list
+ * would hide what goes), and one that invoices, orders, credit notes, vouchers or letters still
+ * use by sevDesk's own count ({@link referenceCounts}); when that count cannot be read, the
+ * preview says so. sevDesk also refuses a referenced deletion itself (see
+ * {@link executeContactDelete}), but that was recorded for an invoice only.
  */
 export async function prepareContactDelete(
   client: SevdeskClient,
@@ -431,11 +433,27 @@ export async function prepareContactDelete(
   // Persons are read for every kind: sevDesk stores any contact as a parent (D-083), so a person
   // (or data from other clients) can have contacts whose parent it is, and the cascade may take
   // them too.
-  const [persons, customFields] = await Promise.all([
+  const [persons, customFields, references] = await Promise.all([
     contactPersons(client, contact, options.signal),
     readCustomFieldsForDisplay(client, id, options.signal),
+    referenceCounts(client, id, options.signal),
   ]);
   const organisation = contact.kind === "organisation";
+  if (references !== undefined) {
+    const used = REFERENCE_TABS.filter(({ key }) => (references[key] ?? 0) > 0);
+    if (used.length > 0) {
+      throw validation(
+        `Contact ${String(id)} is still used by ${used
+          .map(
+            ({ key, noun }) =>
+              `${String(references[key])} ${noun}${references[key] === 1 ? "" : "s"}`,
+          )
+          .join(", ")}; nothing was deleted. sevDesk was seen to refuse such a deletion only for ` +
+          "an invoice, so this server does not try. Keep the contact, or move those documents to " +
+          "another contact first.",
+      );
+    }
+  }
 
   const addresses = countText(details.addresses.length, details.addressesComplete);
   const ways = countText(details.communicationWays.length, details.communicationWaysComplete);
@@ -486,6 +504,29 @@ export async function prepareContactDelete(
   }
   const customFieldWarning = customFieldValuesWarning(customFields, personCount, organisation);
   if (customFieldWarning !== undefined) warnings.push(customFieldWarning);
+  if (references === undefined) {
+    warnings.push(
+      phrase(
+        "Which documents still use the contact could not be read (getTabsItemCount). sevDesk " +
+          "was seen to refuse deleting a contact an invoice uses; for vouchers, orders and " +
+          "credit notes that was not checked, and a booked voucher could lose its supplier.",
+        "Welche Dokumente den Kontakt noch verwenden, ließ sich nicht lesen " +
+          "(getTabsItemCount). Dass sevDesk das Löschen eines Kontakts ablehnt, den eine " +
+          "Rechnung verwendet, wurde beobachtet; für Belege, Aufträge und Gutschriften nicht, " +
+          "und ein gebuchter Beleg könnte seinen Lieferanten verlieren.",
+      ),
+    );
+  } else if ((references["documents"] ?? 0) > 0) {
+    const count = references["documents"] ?? 0;
+    warnings.push(
+      phrase(
+        `sevDesk counts ${String(count)} document${plural(count)} (Dokumente) for the contact; ` +
+          "whether they are deleted with it or kept is not recorded.",
+        `sevDesk zählt ${String(count)} ${count === 1 ? "Dokument" : "Dokumente"} zum Kontakt; ` +
+          "ob sie mitgelöscht oder behalten werden, ist nicht beobachtet.",
+      ),
+    );
+  }
 
   const name = cleanText(contact.displayName, VALUE_MAX) ?? `(unnamed contact ${String(id)})`;
   const customerNumber = cleanText(contact.customerNumber, VALUE_MAX);
@@ -545,6 +586,8 @@ export async function prepareContactDelete(
         // The values the fact row counts, so one swapped for another asks again; null when
         // they could not be read.
         customFieldValues: customFields.readable ? customFields.rows.map((row) => row.id) : null,
+        // What uses the contact, as read: a document added meanwhile asks again.
+        references: references ?? null,
       }),
     ),
     state: { contact, addressIds, communicationWayIds, persons },
@@ -940,6 +983,64 @@ function categoryText(contact: ContactDto, lang: PreviewLanguage): string | unde
 }
 
 /** A count in both languages, "at least" when the list was cut. */
+/**
+ * The kinds of record that keep a contact in use, as `GET /Contact/{id}/getTabsItemCount` names
+ * their counts (spec; the answer itself is not recorded yet). A deletion is refused while any is
+ * above 0: sevDesk was seen to refuse it for an invoice (D-085), but not checked for the others,
+ * where a booked voucher could lose its supplier (review 2026-11-20).
+ */
+const REFERENCE_TABS = [
+  { key: "invoices", noun: "invoice" },
+  { key: "orders", noun: "order" },
+  { key: "creditNotes", noun: "credit note" },
+  { key: "vouchers", noun: "voucher" },
+  { key: "letters", noun: "letter" },
+] as const;
+
+/**
+ * The counts of {@link REFERENCE_TABS} (and `documents`) for a contact; `undefined` when the
+ * answer cannot be read, including any of those counts missing or not a whole number. Counts may
+ * come as numbers or numeric strings (D-002).
+ */
+async function referenceCounts(
+  client: SevdeskClient,
+  contactId: number,
+  signal: AbortSignal | undefined,
+): Promise<Readonly<Record<string, number>> | undefined> {
+  let answer: unknown;
+  try {
+    answer = await client.request({
+      method: "GET",
+      path: sevdeskPath("Contact", contactId, "getTabsItemCount"),
+      ...(signal === undefined ? {} : { signal }),
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") throw error;
+    return undefined;
+  }
+  const record =
+    typeof answer === "object" && answer !== null && !Array.isArray(answer)
+      ? (answer as Record<string, unknown>)
+      : undefined;
+  if (record === undefined) return undefined;
+  const counts: Record<string, number> = {};
+  for (const key of [...REFERENCE_TABS.map((tab) => tab.key), "documents"]) {
+    const value = record[key];
+    const count =
+      typeof value === "number"
+        ? value
+        : typeof value === "string" && /^\d+$/.test(value.trim())
+          ? Number(value)
+          : undefined;
+    if (count === undefined || !Number.isSafeInteger(count) || count < 0) {
+      if (key === "documents") continue;
+      return undefined;
+    }
+    counts[key] = count;
+  }
+  return counts;
+}
+
 function countText(count: number, complete: boolean): Record<PreviewLanguage, string> {
   return complete
     ? { en: String(count), de: String(count) }
