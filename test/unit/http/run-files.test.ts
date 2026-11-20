@@ -62,10 +62,10 @@ describe("startHttpMode: remote file transfer", () => {
   it("serves the transfer pages with sign-in in bearer mode without the inbox", async () => {
     const dir = await stateDir();
     await mkdir(join(dir, "files"), { mode: 0o755 });
-    await writeFile(join(dir, "files", "leftover.bin"), "from an earlier process");
+    await writeFile(join(dir, "files", "AAAAAAAAAAAAAAAAAAAAAA.bin"), "from an earlier process");
     const { fetch, statusOf } = await start({ SEVDESK_HTTP_STATE_DIR: dir });
 
-    // The folder was emptied and tightened once the grant store held the lock.
+    // The old blob was removed and the folder tightened once the grant store held the lock.
     expect(await readdir(join(dir, "files"))).toEqual([]);
     expect((await stat(join(dir, "files"))).mode & 0o777).toBe(0o700);
     expect(await readdir(dir)).toEqual(expect.arrayContaining(["grants.lock", "files"]));
@@ -120,21 +120,31 @@ describe("startHttpMode: remote file transfer", () => {
   });
 
   it.skipIf(process.getuid?.() === 0)(
-    "refuses to start when the files folder cannot be emptied, releasing the lock",
+    "refuses to start when the old blobs cannot be removed, releasing the lock",
     async () => {
       const dir = await stateDir();
-      const stuck = join(dir, "files", "stuck");
-      await mkdir(stuck, { recursive: true });
-      await writeFile(join(stuck, "blob.bin"), "x");
-      await chmod(stuck, 0o500);
-      cleanup.push(() => chmod(stuck, 0o700).catch(() => undefined));
+      const files = join(dir, "files");
+      await mkdir(files, { recursive: true });
+      await writeFile(join(files, "AAAAAAAAAAAAAAAAAAAAAA.bin"), "x");
+      await chmod(files, 0o500);
+      cleanup.push(() => chmod(files, 0o700).catch(() => undefined));
       const failed = start({ SEVDESK_HTTP_STATE_DIR: dir });
       await expect(failed).rejects.toBeInstanceOf(StateDirError);
       await expect(failed).rejects.toThrow(/cannot prepare .*files/);
-      await chmod(stuck, 0o700);
+      await chmod(files, 0o700);
       // The grant store's lock was released: a new start succeeds.
       const { statusOf } = await start({ SEVDESK_HTTP_STATE_DIR: dir });
       expect(await statusOf(`/uploads/${ID}`)).toBe(200);
     },
   );
+
+  it("refuses to start over files it did not write and keeps them (review 2026-11-20)", async () => {
+    const dir = await stateDir();
+    await mkdir(join(dir, "files", "invoices-2025"), { recursive: true });
+    await writeFile(join(dir, "files", "invoices-2025", "RE-1001.pdf"), "the operator's");
+    const failed = start({ SEVDESK_HTTP_STATE_DIR: dir });
+    await expect(failed).rejects.toBeInstanceOf(StateDirError);
+    await expect(failed).rejects.toThrow(/did not write and will not delete/);
+    expect(await readdir(join(dir, "files", "invoices-2025"))).toEqual(["RE-1001.pdf"]);
+  });
 });
