@@ -148,6 +148,7 @@ describe("sevdesk_transaction_reset", () => {
         ...SPLIT_LOG,
         logEntry(7003, 5302, "Invoice", 1001, 58.33),
       ]),
+      transactionRoute(transactionRow({ id: "5302", amount: "58.33", status: "400" })),
     ];
     const failure = new SevdeskError({ kind: "validation", status: 422, message: "322" });
     const partial = new StagedClient(reads, [
@@ -261,9 +262,42 @@ describe("sevdesk_transaction_reset", () => {
     ]);
   });
 
-  it("does not claim nothing changed when a later document's payment is enshrined", async () => {
-    // Invoice 1002 is also paid by bank transaction 5302, which is enshrined: sevDesk resets
-    // invoice 1001, then refuses 1002 (recorded on a voucher as HTTP 400, D-098).
+  it("refuses before any reset when a later document's other payment is enshrined (review 2026-11-20)", async () => {
+    // Invoice 1002 is also paid by bank transaction 5302, which is enshrined: sevDesk would reset
+    // invoice 1001, then refuse 1002 (recorded on a voucher as HTTP 400, D-098).
+    const client = new StagedClient(
+      [
+        transactionRoute(SPLIT),
+        accountRoute(accountRow(4002)),
+        logRoute(5201, SPLIT_LOG),
+        invoiceRoute(paidInvoice(1001, "119")),
+        invoiceRoute({ ...paidInvoice(1002, "238"), sumGross: "238" }),
+        listRoute("/CheckAccountTransactionLog", [
+          ...SPLIT_LOG,
+          logEntry(7003, 5302, "Invoice", 1002, 119),
+        ]),
+        transactionRoute(
+          transactionRow({
+            id: "5302",
+            amount: "119",
+            status: "400",
+            enshrined: "2026-11-16T10:00:00+01:00",
+          }),
+        ),
+      ],
+      [put("/Invoice/1001/resetToOpen"), put("/Invoice/1002/resetToOpen")],
+    );
+    const error = await prepareWrite(tool, { id: 5201 }, client).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(SevdeskError);
+    expect((error as SevdeskError).message).toContain(
+      "bank transaction 5302, which also paid one of its documents, is enshrined",
+    );
+    expect(client.writes()).toEqual([]);
+  });
+
+  it("does not claim nothing changed when a later document's payment is enshrined meanwhile", async () => {
+    // 5302 was enshrined after the preview read it: sevDesk resets invoice 1001, then refuses
+    // 1002 (recorded on a voucher as HTTP 400, D-098).
     const reads = [
       transactionRoute(SPLIT),
       accountRoute(accountRow(4002)),
@@ -274,6 +308,7 @@ describe("sevdesk_transaction_reset", () => {
         ...SPLIT_LOG,
         logEntry(7003, 5302, "Invoice", 1002, 119),
       ]),
+      transactionRoute(transactionRow({ id: "5302", amount: "119", status: "400" })),
     ];
     const enshrined = (): FakeRoute["response"] => ({
       error: new SevdeskError({
