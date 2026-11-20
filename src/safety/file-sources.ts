@@ -309,6 +309,9 @@ async function saveLocal(outputDir: string | undefined, file: OutputFile): Promi
   try {
     return await writeNewFile(directory, file.filename, file.bytes);
   } catch (error) {
+    // `writeNewFile`'s own refusals are trusted and say what is left behind (an empty file after
+    // a swapped folder, 100 files of that name): passed on as they are (review 2026-11-20).
+    if (error instanceof SevdeskError) throw error;
     const code =
       typeof error === "object" &&
       error !== null &&
