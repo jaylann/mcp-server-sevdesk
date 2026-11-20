@@ -5,6 +5,8 @@
 import { z } from "zod";
 
 import { creditNoteDetailSchema } from "../../domain/credit-notes.js";
+import { idList } from "../../domain/derived-documents.js";
+import { findCreditNotesWithNumber } from "../../domain/drafts/numbering.js";
 import { invoiceDetailSchema } from "../../domain/invoices.js";
 import { type DocumentContent, readDocumentContent } from "../../domain/lifecycle/content.js";
 import {
@@ -13,8 +15,11 @@ import {
   type LifecycleDocument,
   type LifecycleKind,
   readLifecycleDocument,
+  statusOf,
 } from "../../domain/lifecycle/documents.js";
+import { refuse } from "../../domain/lifecycle/transitions.js";
 import { orderDetailSchema } from "../../domain/orders.js";
+import { type Phrase, phrase } from "../../domain/preview-text.js";
 import { voucherDetailDtoSchema } from "../../domain/vouchers.js";
 import { SevdeskError, withCompletedWrites } from "../../sevdesk/errors.js";
 import type { ToolsetName } from "../toolsets.js";
@@ -107,6 +112,37 @@ export function idInput(kind: LifecycleKind) {
 /** `{ objectName, id }` of a document, for `affected` and completed-write lists. */
 export function documentObject(kind: LifecycleKind, id: number): SevdeskObjectRef {
   return { objectName: KINDS[kind].objectName, id: String(id) };
+}
+
+/**
+ * Before a credit note draft is finalized (also by sending it): refuses when another credit note
+ * already carries its number. `createFromInvoice` can hand out a number in use, and its note asks
+ * to renumber before finalizing; finalize and send did not look, so a duplicate number became
+ * binding (GoBD: unique numbering; review 2026-11-20). Returns a warning when not every credit
+ * note could be read. Other kinds and non-drafts pass. The numbers are sevDesk's text, so only
+ * ids are named. Callers lock {@link ACCOUNT_CREDIT_NOTE_NUMBERS}.
+ */
+export async function checkCreditNoteNumberFree(
+  ctx: ToolContext,
+  doc: LifecycleDocument,
+): Promise<Phrase | undefined> {
+  if (doc.kind !== "creditNote" || doc.status !== statusOf(doc).draft) return undefined;
+  if (doc.number === undefined || doc.number.trim() === "") return undefined;
+  const others = await findCreditNotesWithNumber(ctx.client, doc.number, doc.id, ctx.signal);
+  if (others.ids.length > 0) {
+    refuse(
+      `Credit note ${String(doc.id)} has the same number as ${idList("credit note", others.ids)}; ` +
+        "finalizing it would make a duplicate number binding. Give one of them another number " +
+        "in the sevDesk web app first.",
+    );
+  }
+  if (!others.truncated) return undefined;
+  return phrase(
+    "Not every credit note could be read to check that no other one has this number; check it " +
+      "with sevdesk_credit_notes_list before finalizing.",
+    "Nicht jede Gutschrift ließ sich lesen, um zu prüfen, dass keine andere diese Nummer hat; " +
+      "prüfe es vor dem Fertigstellen mit sevdesk_credit_notes_list.",
+  );
 }
 
 /**

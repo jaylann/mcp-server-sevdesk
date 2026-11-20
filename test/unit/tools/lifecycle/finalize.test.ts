@@ -87,6 +87,8 @@ describe.each(cases)("$name (community record shapes, fake values)", (kind) => {
     expect(client.calls.map(({ method, path }) => `${method} ${path}`)).toEqual([
       `GET ${kind.path}`,
       "GET /StaticCountry",
+      // A credit note's number is checked against the others first (review 2026-11-20).
+      ...(kind.kind === "creditNote" ? ["GET /CreditNote"] : []),
       // One read of the positions and one of the document discounts, for the preview facts and
       // the approval binding (readDocumentContent); the draft's layout too (render without
       // reload, a reading POST, D-113).
@@ -420,6 +422,40 @@ describe("sevdesk_order_finalize details", () => {
         "trägt. Danach lässt sie sich nur noch durch Zurücksetzen auf Entwurf (solange sie nicht " +
         "festgeschrieben ist) oder ein neues Dokument korrigieren.",
     );
+  });
+
+  describe("a credit note number another credit note has (review 2026-11-20)", () => {
+    const draft = creditNoteRow({ status: "100", creditNoteNumber: "GU-1101" });
+    const tool = finalizeTool("creditNote");
+
+    function withList(body: unknown): StagedClient {
+      return new StagedClient(
+        [documentRoute("creditNote", draft), { path: "/CreditNote", response: { body } }],
+        [],
+      );
+    }
+
+    it("refuses before anything is sent", async () => {
+      const client = withList({
+        objects: [
+          creditNoteRow({ id: "2001", creditNoteNumber: "GU-1101" }),
+          creditNoteRow({ id: "2007", status: "200", creditNoteNumber: "gu-1101 " }),
+        ],
+      });
+      const error = await prepareWrite(tool, { id: 2001 }, client).catch((e: unknown) => e);
+      expect((error as SevdeskError).message).toBe(
+        "Credit note 2001 has the same number as credit note 2007; finalizing it would make a " +
+          "duplicate number binding. Give one of them another number in the sevDesk web app " +
+          "first.",
+      );
+      expect(client.writes()).toEqual([]);
+    });
+
+    it("locks the credit note number range", () => {
+      expect(tool.locks?.({ id: 2001 })).toContainEqual(
+        expect.objectContaining({ objectName: "CreditNoteNumbers" }),
+      );
+    });
   });
 
   it.each([null, "", "  "])(

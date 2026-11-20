@@ -19,9 +19,11 @@ import { documentTitle } from "../../domain/lifecycle/preview.js";
 import { assertFinalizable } from "../../domain/lifecycle/transitions.js";
 import { bothPreviews, type Phrase, phrase } from "../../domain/preview-text.js";
 import { defineWriteTool } from "../define-tool.js";
+import { ACCOUNT_CREDIT_NOTE_NUMBERS } from "../types.js";
 import { dryRunInputShape } from "../write-input.js";
 import {
   capitalize,
+  checkCreditNoteNumberFree,
   COMMIT_ANNOTATIONS,
   documentContent,
   documentObject,
@@ -144,20 +146,30 @@ export function finalizeTool(kind: SalesKind) {
     }),
     output: documentOutputSchema(kind),
     // Serialized with other calls on the same record (see WriteToolDefinition.locks).
-    locks: (args) => [documentObject(kind, args.id)],
+    // A credit note's number is checked against the others before it becomes binding.
+    locks: (args) => [
+      documentObject(kind, args.id),
+      ...(kind === "creditNote" ? [ACCOUNT_CREDIT_NOTE_NUMBERS] : []),
+    ],
     prepare: async (args, ctx) => {
       const doc = await readLifecycleDocument(ctx.client, kind, args.id, {
         signal: ctx.signal,
         cacheOwner: ctx.config,
       });
       assertFinalizable(doc);
+      const numberCheck = await checkCreditNoteNumberFree(ctx, doc);
       const via: SentVia = args.sentVia ?? "pdf_download";
       const payload: SendByPayload = sendByPayload(via);
       // The stored texts, address and positions, and the binding over the same read: all of
       // it is writable without confirmation, so the human sees it here (review 2026-11, round 3).
       const content = await documentContent(ctx, doc);
       // Consequences first, then what the facts leave out, then notes on this document.
-      const warnings = [...finalizeWarnings(kind), content.notShown, ...content.notes];
+      const warnings = [
+        ...finalizeWarnings(kind),
+        content.notShown,
+        ...content.notes,
+        ...(numberCheck === undefined ? [] : [numberCheck]),
+      ];
       if (doc.number?.includes("%") === true) {
         warnings.push(
           phrase(

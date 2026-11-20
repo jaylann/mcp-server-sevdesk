@@ -34,9 +34,11 @@ import {
   type PreviewLanguage,
 } from "../../domain/preview-text.js";
 import { defineWriteTool } from "../define-tool.js";
+import { ACCOUNT_CREDIT_NOTE_NUMBERS } from "../types.js";
 import { dryRunInputShape } from "../write-input.js";
 import {
   capitalize,
+  checkCreditNoteNumberFree,
   documentContent,
   documentObject,
   documentOutput,
@@ -217,7 +219,11 @@ export function sendEmailTool(kind: SalesKind) {
     input,
     output: documentOutputSchema(kind, { email: emailOutputSchema }),
     // Serialized with other calls on the same record (see WriteToolDefinition.locks).
-    locks: (args) => [documentObject(kind, args.id)],
+    // Sending a credit note draft finalizes it: its number is checked against the others first.
+    locks: (args) => [
+      documentObject(kind, args.id),
+      ...(kind === "creditNote" ? [ACCOUNT_CREDIT_NOTE_NUMBERS] : []),
+    ],
     prepare: async (args, ctx) => {
       // Only the invoice input has attachXml; the schema already checked it is a boolean.
       const attachXml = (args as { readonly attachXml?: boolean }).attachXml === true;
@@ -250,6 +256,8 @@ export function sendEmailTool(kind: SalesKind) {
         ),
       ];
       if (doc.status === STATUS.draft) warnings.push(draftWarning(kind));
+      const numberCheck = await checkCreditNoteNumberFree(ctx, doc);
+      if (numberCheck !== undefined) warnings.push(numberCheck);
       // Consequences first, then what the facts leave out, then notes on this document.
       warnings.push(content.notShown, ...content.notes);
       if (attachment === "xml" && doc.eInvoice === undefined) {
