@@ -22,7 +22,7 @@ export const voucherDeleteDraftTool = defineWriteTool({
     "wrongly captured receipt. Only drafts (status 50) that are not enshrined " +
     "(festgeschrieben); booked vouchers stay in the books (reset to draft first with " +
     "sevdesk_voucher_reset only if that is really intended). Cannot be undone, and an attached " +
-    "receipt may go with it. Commit tier: asks a human to confirm the preview, which names the " +
+    "receipt is deleted with it. Commit tier: asks a human to confirm the preview, which names the " +
     "voucher; dryRun only previews. Before: sevdesk_voucher_get.",
   toolset: "vouchers",
   tier: "commit",

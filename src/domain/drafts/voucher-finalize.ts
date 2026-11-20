@@ -398,10 +398,12 @@ export async function prepareVoucherDelete(
   if (doc.dto.hasDocument === true) {
     warnings.push(
       phrase(
-        "The voucher has an attached receipt file; whether sevDesk deletes it too or keeps it " +
-          "among the documents is not documented.",
-        "Am Beleg hängt eine Belegdatei; ob sevDesk sie mitlöscht oder unter den Dokumenten " +
-          "behält, ist nicht dokumentiert.",
+        "The voucher has an attached receipt file, and sevDesk deletes it with the draft " +
+          "(recorded, D-100). If it is the only copy, save it first with " +
+          "sevdesk_voucher_receipt_save.",
+        "Am Beleg hängt eine Belegdatei, und sevDesk löscht sie mit dem Entwurf (beobachtet, " +
+          "D-100). Ist sie die einzige Kopie, sichere sie vorher mit " +
+          "sevdesk_voucher_receipt_save.",
       ),
     );
   }

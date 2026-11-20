@@ -457,15 +457,21 @@ describe("sevdesk_voucher_delete_draft", () => {
     await expect(executeWrite(tool, { id: 2101 }, fake)).rejects.toBe(failure);
   });
 
-  it("warns that an attached receipt may stay", async () => {
+  it("warns that an attached receipt is deleted with the draft (D-100)", async () => {
     const fake = new FakeSevdeskClient([
       voucherRoute(draftRow({ document: { id: "7001", objectName: "Document" } })),
     ]);
     const { preview, previewDe } = await prepareWrite(tool, { id: 2101 }, fake);
     expect(preview.warnings[1]).toContain("attached receipt file");
+    expect(preview.warnings[1]).toBe(
+      "The voucher has an attached receipt file, and sevDesk deletes it with the draft " +
+        "(recorded, D-100). If it is the only copy, save it first with " +
+        "sevdesk_voucher_receipt_save.",
+    );
     expect(previewDe.warnings[1]).toBe(
-      "Am Beleg hängt eine Belegdatei; ob sevDesk sie mitlöscht oder unter den Dokumenten " +
-        "behält, ist nicht dokumentiert.",
+      "Am Beleg hängt eine Belegdatei, und sevDesk löscht sie mit dem Entwurf (beobachtet, " +
+        "D-100). Ist sie die einzige Kopie, sichere sie vorher mit " +
+        "sevdesk_voucher_receipt_save.",
     );
   });
 

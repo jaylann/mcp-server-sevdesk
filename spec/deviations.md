@@ -2919,8 +2919,8 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   a voucher can be deleted.
 - **Actual behavior:** Recorded 2026-11-08: `DELETE /Voucher/{voucherId}` on a draft (status 50)
   answers `{objects: [null]}`, after which GET answers 404. On an open voucher (100) it answers 409
-  "Voucher can only be deleted in status 50 but is status 100", and the voucher stays. Whether
-  the attached receipt file is deleted with a draft was not checked. Orders, credit notes and
+  "Voucher can only be deleted in status 50 but is status 100", and the voucher stays. The
+  attached receipt file (its Document) is deleted with a draft (recorded later, D-100). Orders, credit notes and
   recurring invoice templates answer the same way (2026-11-16): `{objects: [null]}` for a draft,
   409 "… can only be deleted in status 100 but is status 200" otherwise (D-109, D-112).
 - **Sources:** recorded 2026-11-08, trial account, Update 2.0 (probe `write-voucher-delete`: the

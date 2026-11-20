@@ -969,7 +969,7 @@ Create a draft voucher (Beleg) for a receipt or supplier invoice: expense or rev
 
 **Delete a draft voucher** · tier `commit` · changes state, destructive, idempotent, supports `dryRun`, asks the user to confirm
 
-Delete a draft voucher (Belegentwurf löschen) with its positions, e.g. a duplicate or a wrongly captured receipt. Only drafts (status 50) that are not enshrined (festgeschrieben); booked vouchers stay in the books (reset to draft first with sevdesk_voucher_reset only if that is really intended). Cannot be undone, and an attached receipt may go with it. Commit tier: asks a human to confirm the preview, which names the voucher; dryRun only previews. Before: sevdesk_voucher_get.
+Delete a draft voucher (Belegentwurf löschen) with its positions, e.g. a duplicate or a wrongly captured receipt. Only drafts (status 50) that are not enshrined (festgeschrieben); booked vouchers stay in the books (reset to draft first with sevdesk_voucher_reset only if that is really intended). Cannot be undone, and an attached receipt is deleted with it. Commit tier: asks a human to confirm the preview, which names the voucher; dryRun only previews. Before: sevdesk_voucher_get.
 
 | Argument | Type    | Required | Description                                                                                                                                              |
 | -------- | ------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
