@@ -195,8 +195,9 @@ describe("sevdesk_contact_delete", () => {
       const error = await prepareWrite(tool, { id: 1002 }, client).catch((e: unknown) => e);
       expect((error as SevdeskError).message).toBe(
         "Contact 1002 is still used by 1 credit note, 2 vouchers; nothing was deleted. sevDesk " +
-          "was seen to refuse such a deletion only for an invoice, so this server does not try. " +
-          "Keep the contact, or move those documents to another contact first.",
+          "refuses such a deletion for invoices, offers and credit notes, and for vouchers it " +
+          "was not checked, so this server does not try. Keep the contact, or move those " +
+          "documents to another contact first.",
       );
       expect(client.writes()).toEqual([]);
     });

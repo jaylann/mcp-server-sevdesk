@@ -448,9 +448,9 @@ export async function prepareContactDelete(
             ({ key, noun }) =>
               `${String(references[key])} ${noun}${references[key] === 1 ? "" : "s"}`,
           )
-          .join(", ")}; nothing was deleted. sevDesk was seen to refuse such a deletion only for ` +
-          "an invoice, so this server does not try. Keep the contact, or move those documents to " +
-          "another contact first.",
+          .join(", ")}; nothing was deleted. sevDesk refuses such a deletion for invoices, ` +
+          "offers and credit notes, and for vouchers it was not checked, so this server does not " +
+          "try. Keep the contact, or move those documents to another contact first.",
       );
     }
   }
@@ -508,12 +508,12 @@ export async function prepareContactDelete(
     warnings.push(
       phrase(
         "Which documents still use the contact could not be read (getTabsItemCount). sevDesk " +
-          "was seen to refuse deleting a contact an invoice uses; for vouchers, orders and " +
-          "credit notes that was not checked, and a booked voucher could lose its supplier.",
+          "refuses deleting a contact that an invoice, an offer or a credit note uses; for " +
+          "vouchers that was not checked, and a booked voucher could lose its supplier.",
         "Welche Dokumente den Kontakt noch verwenden, ließ sich nicht lesen " +
-          "(getTabsItemCount). Dass sevDesk das Löschen eines Kontakts ablehnt, den eine " +
-          "Rechnung verwendet, wurde beobachtet; für Belege, Aufträge und Gutschriften nicht, " +
-          "und ein gebuchter Beleg könnte seinen Lieferanten verlieren.",
+          "(getTabsItemCount). sevDesk lehnt das Löschen eines Kontakts ab, den eine Rechnung, " +
+          "ein Angebot oder eine Gutschrift verwendet; für Belege wurde das nicht geprüft, und " +
+          "ein gebuchter Beleg könnte seinen Lieferanten verlieren.",
       ),
     );
   } else if ((references["documents"] ?? 0) > 0) {
@@ -985,9 +985,10 @@ function categoryText(contact: ContactDto, lang: PreviewLanguage): string | unde
 /** A count in both languages, "at least" when the list was cut. */
 /**
  * The kinds of record that keep a contact in use, as `GET /Contact/{id}/getTabsItemCount` names
- * their counts (spec; the answer itself is not recorded yet). A deletion is refused while any is
- * above 0: sevDesk was seen to refuse it for an invoice (D-085), but not checked for the others,
- * where a booked voucher could lose its supplier (review 2026-11-20).
+ * their counts (recorded 2026-11-20, D-085: numbers inside `objects`; a draft offer and a draft
+ * credit note were counted). A deletion is refused while any is above 0: sevDesk refused it for
+ * an invoice, an offer and a credit note (D-085), but a voucher was not checked, where a booked
+ * voucher could lose its supplier (review 2026-11-20).
  */
 const REFERENCE_TABS = [
   { key: "invoices", noun: "invoice" },

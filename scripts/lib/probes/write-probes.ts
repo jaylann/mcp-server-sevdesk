@@ -511,6 +511,58 @@ export const WRITE_PROBES: readonly ProbeDefinition[] = [
     },
   },
   {
+    id: "write-reset-then-cancel-invoice",
+    title: "Paid, reset to open, then cancelled: the original's paidAmount and a later resetToOpen",
+    mode: "write",
+    question:
+      "After an invoice is paid, reset to open and then cancelled, what does the original's paidAmount read (0 or null), and does sevDesk refuse resetToOpen on that cancelled original (review 2026-11-20)?",
+    deviations: ["D-037", "D-060", "NEW"],
+    async run(ctx) {
+      const checkAccount = await data(ctx).checkAccount();
+      if (checkAccount === undefined) {
+        return inconclusive(
+          "No check account: create a cash register (Kasse) in the web app first.",
+        );
+      }
+      const invoice = await finalizedInvoice(ctx);
+      if ("failure" in invoice) return inconclusive(`Could not prepare: ${invoice.failure}.`);
+      const id = invoice.id;
+      const open = await ctx.read.byId("Invoice", id);
+      const gross = Number(format(str(open, "sumGross") || "0", 2));
+      const booked = await book(ctx, id, checkAccount, gross, berlinNoon(ctx.today));
+      if (!booked.ok) {
+        data(ctx).mark("Invoice", id, "finalized (cannot be deleted)");
+        return inconclusive(`bookAmount failed: ${String(booked.status)} ${booked.message ?? ""}.`);
+      }
+      const paid = await ctx.read.byId("Invoice", id);
+      const reset = await ctx.http.write("PUT", `/Invoice/${id}/resetToOpen`, { tier: "commit" });
+      const afterReset = await ctx.read.byId("Invoice", id);
+      const cancelled = await ctx.http.write("POST", `/Invoice/${id}/cancelInvoice`, {
+        tier: "commit",
+      });
+      data(ctx).mark("Invoice", id, "paid, reset and cancelled (cannot be deleted)");
+      const srId = createdId(cancelled.objects, "invoice");
+      if (srId !== undefined) {
+        data(ctx).register("Invoice", srId, "cancellation invoice (SR, cannot be deleted)");
+      }
+      const afterCancel = await ctx.read.byId("Invoice", id);
+      const again = await ctx.http.write("PUT", `/Invoice/${id}/resetToOpen`, { tier: "commit" });
+      const afterAgain = await ctx.read.byId("Invoice", id);
+      const state = (row: Row | undefined): string =>
+        `status ${str(row, "status")}, paidAmount ${JSON.stringify(row?.["paidAmount"] ?? null)}`;
+      const outcome = (result: { ok: boolean; status?: number | undefined; message?: string }) =>
+        result.ok ? "accepted" : `refused (${String(result.status)}: ${result.message ?? ""})`;
+      return {
+        verdict: "observed",
+        finding:
+          `Invoice ${id} (gross ${String(gross)}): paid → ${state(paid)}; resetToOpen ` +
+          `${outcome(reset)} → ${state(afterReset)}; cancelInvoice ${outcome(cancelled)} ` +
+          `(SR ${srId ?? "none"}) → ${state(afterCancel)}; resetToOpen on the cancelled ` +
+          `original ${outcome(again)} → ${state(afterAgain)}.`,
+      };
+    },
+  },
+  {
     id: "write-credit-note-from-invoice",
     title: "Credit note from an invoice",
     mode: "write",
@@ -1093,6 +1145,67 @@ export const WRITE_PROBES: readonly ProbeDefinition[] = [
       return {
         verdict: price === 49.99 ? "confirmed" : price === 42.01 ? "contradicted" : "observed",
         finding: `Part ${id}: price ${str(row, "price") || "(empty)"}, priceNet ${str(row, "priceNet")}, priceGross ${str(row, "priceGross")}, taxRate ${str(row, "taxRate")}.`,
+      };
+    },
+  },
+  {
+    id: "write-part-put-partial",
+    title: "PUT /Part with only a new name, and how the partNumber filter matches",
+    mode: "write",
+    question:
+      "Does PUT /Part/{id} with only `name` keep the prices, tax rate, unit and stock (a partial update) or reset them, and does GET /Part?partNumber= match the number exactly, by prefix, or ignore the filter (review 2026-11-20)?",
+    deviations: ["D-062", "NEW"],
+    async run(ctx) {
+      const tag = data(ctx).tag;
+      const number = `${tag.replace(/\s+/g, "-")}-PUT1`;
+      const created = await ctx.http.write("POST", "/Part", {
+        tier: "write",
+        body: {
+          objectName: "Part",
+          mapAll: true,
+          name: `${tag} Teilupdate`,
+          partNumber: number,
+          stock: 7,
+          stockEnabled: false,
+          unity: { id: 1, objectName: "Unity" },
+          taxRate: 19,
+          priceNet: 42.01,
+          priceGross: 49.99,
+          status: 100,
+        },
+      });
+      const id = createdId(created.objects);
+      if (!created.ok || id === undefined) {
+        return inconclusive(`POST /Part: ${String(created.status ?? created.kind)}.`);
+      }
+      data(ctx).register("Part", id, "active (can be deleted in the web app)");
+      const fields = ["priceNet", "priceGross", "price", "taxRate", "stock", "partNumber"];
+      const before = await ctx.read.byId("Part", id);
+      const put = await ctx.http.write("PUT", `/Part/${id}`, {
+        tier: "write",
+        body: { name: `${tag} Teilupdate umbenannt` },
+      });
+      const after = await ctx.read.byId("Part", id);
+      const changed = fields.filter((field) => str(before, field) !== str(after, field));
+      const unityKept = refId(before, "unity") === refId(after, "unity");
+      const listed = async (query: string): Promise<string> => {
+        const page = await ctx.read.page("/Part", { partNumber: query }, 100);
+        const hit = page.rows.some((row) => Number(row["id"]) === id);
+        return `${String(page.rows.length)} row(s), ${hit ? "with" : "without"} the part`;
+      };
+      const exact = await listed(number);
+      const prefix = await listed(number.slice(0, -1));
+      const other = await listed(`${number}-nomatch`);
+      return {
+        verdict: put.ok && changed.length === 0 && unityKept ? "confirmed" : "observed",
+        finding:
+          `Part ${id}: PUT {name} ${put.ok ? "ok" : `failed (${String(put.status)})`}; name now ` +
+          `${str(after, "name") === `${tag} Teilupdate umbenannt` ? "changed" : "unchanged"}; ` +
+          (changed.length === 0
+            ? "no other field changed"
+            : `changed: ${changed.map((field) => `${field} ${str(before, field)} → ${str(after, field)}`).join(", ")}`) +
+          `${unityKept ? "" : ", unity changed"}. partNumber filter: exact → ${exact}; the number ` +
+          `without its last character → ${prefix}; a longer number → ${other}.`,
       };
     },
   },

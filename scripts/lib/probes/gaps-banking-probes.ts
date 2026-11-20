@@ -1562,6 +1562,55 @@ function enshrineOwnTransaction(ctx: ProbeContext, id: number): Promise<HttpResu
 
 export const GAPS_BANKING_PROBES: readonly ProbeDefinition[] = [
   {
+    id: "write-check-account-put-one-field",
+    title: "PUT /CheckAccount/{id} with one field: do the others stay",
+    mode: "write",
+    question:
+      "On a tagged file-import account with name, iban, bic and autoMapTransaction set, does a PUT with only iban, and then one with only autoMapTransaction, keep every other field (review 2026-11-20)?",
+    deviations: ["D-097", "D-141", "NEW"],
+    async run(ctx) {
+      const account = await ownImportAccount(ctx, "Ein Feld", "CSV");
+      if (account.id === undefined) {
+        return inconclusive(`Could not create the account: ${outcomeOf(account.result)}.`);
+      }
+      const id = account.id;
+      const fields = [
+        "name",
+        "iban",
+        "bic",
+        "autoMapTransaction",
+        "accountingNumber",
+        "defaultAccount",
+        "type",
+        "importType",
+        "status",
+      ];
+      const lines: string[] = [];
+      const setup = await ctx.http.write("PUT", `/CheckAccount/${id}`, {
+        tier: "commit",
+        body: { iban: "DE02120300000000202051", bic: "BYLADEM1001", autoMapTransaction: 1 },
+      });
+      lines.push(`setting iban, bic and autoMapTransaction: ${outcomeOf(setup)}`);
+      const steps = [
+        ["only iban", { iban: "DE89370400440532013000" }],
+        ["only autoMapTransaction", { autoMapTransaction: 0 }],
+      ] as const;
+      for (const [label, body] of steps) {
+        const before = await ctx.read.byId("CheckAccount", id);
+        const put = await ctx.http.write("PUT", `/CheckAccount/${id}`, { tier: "commit", body });
+        const after = await ctx.read.byId("CheckAccount", id);
+        const changed = fields.filter((field) => str(before, field) !== str(after, field));
+        lines.push(
+          `PUT ${label}: ${outcomeOf(put)}; changed: ${changed.length === 0 ? "nothing" : changed.join(", ")}` +
+            ` (bic ${str(before, "bic") === "" ? "empty" : "set"} before, ${str(after, "bic") === "" ? "empty" : "set"} after)`,
+        );
+      }
+      const archived = await ctx.http.write("DELETE", `/CheckAccount/${id}`, { tier: "commit" });
+      lines.push(`archived afterwards: ${outcomeOf(archived)}`);
+      return { verdict: "observed", finding: `Account ${id}: ${lines.join("; ")}.` };
+    },
+  },
+  {
     id: "write-check-account-factories",
     title: "Clearing account, PUT and DELETE of accounts, creating a cash register",
     mode: "write",
