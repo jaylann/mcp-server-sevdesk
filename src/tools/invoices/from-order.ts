@@ -40,8 +40,9 @@ export const invoiceFromOrderTool = defineWriteTool({
     "(Auftragsbestätigung, AB) with its positions and its discount on the whole document " +
     "(Rabatt): the whole order (mode full), or a partial invoice (Teilrechnung, mode partial) " +
     "or advance invoice (Abschlagsrechnung, mode advance) for an amount as percentage, net or " +
-    "gross. The order must be sent, accepted or partially " +
-    "invoiced, not a draft, rejected or fully invoiced; partial/advance need tax rule 1 or 11. " +
+    "gross. The order must be sent, accepted or partially invoiced (an offer accepted: record " +
+    "that first with sevdesk_order_set_offer_status), not a draft, rejected or fully invoiced; " +
+    "partial/advance need tax rule 1 or 11. " +
     "Refuses when an invoice draft from the order exists (allowDuplicate overrides). Tier " +
     "write. Then check it with sevdesk_invoice_get and finalize it with " +
     "sevdesk_invoice_finalize.",

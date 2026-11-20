@@ -150,8 +150,8 @@ export interface OrderToInvoiceState {
 }
 
 /**
- * Checks that the order can be invoiced (an offer or order confirmation, sent or accepted or
- * partly invoiced; amounts within the order; AR/TR only with tax rule 1 or 11; no invoice draft
+ * Checks that the order can be invoiced (an accepted or partly invoiced offer, or an order
+ * confirmation that is sent, accepted or partly invoiced; amounts within the order; AR/TR only with tax rule 1 or 11; no invoice draft
  * from it yet) and builds the preview. Reads only.
  */
 export async function planOrderToInvoice(
@@ -187,6 +187,19 @@ export async function planOrderToInvoice(
           "the invoices created from it.",
       );
     case 200:
+      // Invoicing a sent offer moves it to "Berechnet" (1000, recorded) without anyone accepting
+      // it, and no tool moves it back; accepting an offer is a commit action a human confirms
+      // (sevdesk_order_set_offer_status), so this write-tier tool refuses until it is accepted
+      // (review 2026-11-20). A sent confirmation (AB) is already the customer's order.
+      if (order.type.code === "AN") {
+        throw validation(
+          `${ref} is an offer that was sent but not accepted (status 200). Invoicing it would mark ` +
+            "it as billed (Berechnet, 1000) without anyone accepting it, and that cannot be " +
+            "undone. Record the customer's acceptance first with sevdesk_order_set_offer_status " +
+            "(action accept; a human confirms it), then call this tool again.",
+        );
+      }
+      break;
     case 500:
     case 750:
       break;
