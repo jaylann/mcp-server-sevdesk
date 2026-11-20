@@ -305,6 +305,62 @@ describe("sevdesk_contact_update", () => {
     });
   });
 
+  describe("which e-mail, phone or website a change overwrites (review 2026-11-20)", () => {
+    const way = (id: number, type: string, value: string, main: boolean) => ({
+      id: String(id),
+      objectName: "CommunicationWay",
+      contact: { id: "1001", objectName: "Contact" },
+      type,
+      value,
+      main: main ? "1" : "0",
+      key: { id: "2", objectName: "CommunicationWayKey" },
+    });
+
+    it("adds a new main e-mail and keeps the others when none is the main one", async () => {
+      const client = new FakeSevdeskClient(
+        routes({
+          ways: {
+            body: {
+              objects: [
+                way(4004, "EMAIL", "billing@example.com", false),
+                way(4005, "EMAIL", "office@example.com", false),
+              ],
+            },
+          },
+        }),
+      );
+
+      const { plan } = await executeWrite(tool, { id: 1001, email: "new@example.com" }, client);
+
+      expect(plan.preview.facts).toContainEqual({
+        label: "E-mail (new)",
+        value: "new@example.com",
+      });
+      expect(plan.preview.warnings.join(" ")).toContain(
+        "The contact has 2 e-mail entries and none is the main one",
+      );
+      expect(client.writes().map((call) => `${call.method} ${call.path}`)).toEqual([
+        "POST /CommunicationWay",
+      ]);
+    });
+
+    it("changes the only entry of a type even when it is not marked main", async () => {
+      const client = new FakeSevdeskClient(
+        routes({
+          ways: { body: { objects: [way(4002, "PHONE", "+49 30 0000000", false)] } },
+        }),
+      );
+
+      const plan = await prepareWrite(tool, { id: 1001, phone: "+49 30 1111111" }, client);
+
+      expect(plan.preview.facts).toContainEqual({
+        label: "Phone (id 4002)",
+        value: "+49 30 0000000 → +49 30 1111111",
+      });
+      expect(plan.preview.warnings).toEqual([]);
+    });
+  });
+
   it("updates the only address even when it is not a billing address", async () => {
     const client = new FakeSevdeskClient(
       routes({
