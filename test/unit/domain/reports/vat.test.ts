@@ -340,11 +340,10 @@ describe("vatSummary (accrual)", () => {
     expect(report.boxes.find((entry) => entry.kz === "35")?.taxKz).toBe("36");
     expect(report.boxes.find((entry) => entry.kz === "81")?.taxComputedOnForm).toBe(true);
     expect(report.boxes.find((entry) => entry.kz === "46")?.recipientTaxAssumed).toBe(true);
-    expect(report.estimate).toEqual({
-      outputVat: { amount: "379.60", currency: "EUR" },
-      inputVat: { amount: "304.00", currency: "EUR" },
-      kz83: { amount: "75.60", currency: "EUR" },
-    });
+    // Voucher 37 books 1.90 input VAT under a revenue rule: unmapped, so no Kz 83 (review
+    // 2026-11-20). The same quarter without it estimates Kz 83 (next test).
+    expect(report.estimate).toBeUndefined();
+    expect(report.notes.join(" ")).toContain("1 unmapped amount with VAT (unmapped)");
 
     expect(report.zm).toEqual({
       entries: [
@@ -425,7 +424,33 @@ describe("vatSummary (accrual)", () => {
       Date.parse("2026-01-01T00:00:00+01:00") / 1000 - 86_400 * 60,
     );
     expect(vatSummarySentence(report)).toBe(
-      "VAT summary 2026-Q1 (accrual): 20 documents scanned, 13 form lines; Kz 83 estimate 75.60 EUR.",
+      "VAT summary 2026-Q1 (accrual): 20 documents scanned, 13 form lines; Kz 83 not " +
+        "estimated, VAT left to place by hand (see the notes).",
+    );
+  });
+
+  it("estimates Kz 83 when every amount with VAT is on a form line", async () => {
+    const scenario = quarterScenario();
+    const client = new FakeSevdeskClient([
+      ...scenarioRoutes({
+        ...scenario,
+        // Voucher 37 (input VAT under a revenue rule) is the only unmapped amount with VAT.
+        vouchers: (scenario.vouchers ?? []).filter((entry) => entry.row["id"] !== "37"),
+      }),
+      countries,
+      contact77,
+    ]);
+
+    const report = await vatSummary(client, { period: Q1, settings: REGULAR, today: TODAY });
+
+    expect(report.unmapped.every((entry) => entry.tax.amount === "0.00")).toBe(true);
+    expect(report.estimate).toEqual({
+      outputVat: { amount: "379.60", currency: "EUR" },
+      inputVat: { amount: "304.00", currency: "EUR" },
+      kz83: { amount: "75.60", currency: "EUR" },
+    });
+    expect(vatSummarySentence(report)).toBe(
+      "VAT summary 2026-Q1 (accrual): 19 documents scanned, 13 form lines; Kz 83 estimate 75.60 EUR.",
     );
   });
 
@@ -516,6 +541,75 @@ describe("vatSummary (accrual)", () => {
     expect(notes).not.toContain("carried VAT");
     expect(notes).toContain("could not be read");
     expect(notes).toContain("without EUR values");
+    // The invoice without a rule carries 19.00 VAT no form line holds.
+    expect(report.estimate).toBeUndefined();
+  });
+
+  describe("Kz 83 with VAT left to place by hand (review 2026-11-20)", () => {
+    const placed = doc(
+      invoiceDoc({ id: 1, date: "2026-02-01", net: "1000", tax: "190" }),
+      invoicePositions(1, [{ rate: "19", net: "1000", tax: "190" }]),
+    );
+
+    async function reportWith(other: ScenarioDocument): Promise<VatSummary> {
+      const client = new FakeSevdeskClient([
+        ...scenarioRoutes({ invoices: [placed, other] }),
+        countries,
+      ]);
+      return vatSummary(client, { period: Q1, settings: REGULAR, today: TODAY });
+    }
+
+    it("is left out when an unmapped amount carries VAT", async () => {
+      const report = await reportWith(
+        doc(
+          invoiceDoc({ id: 2, date: "2026-02-01", rule: null, net: "5000", tax: "950" }),
+          invoicePositions(2, [{ rate: "19", net: "5000", tax: "950" }]),
+        ),
+      );
+
+      expect(report.unmapped[0]?.tax).toEqual({ amount: "950.00", currency: "EUR" });
+      expect(report.coverage.truncated).toBe(false);
+      expect(report.estimate).toBeUndefined();
+      expect(report.notes.join(" ")).toContain(
+        "Kz 83 is not estimated: VAT this report could not place on a form line would be " +
+          "missing from it: 1 unmapped amount with VAT (unmapped).",
+      );
+      expect(vatSummarySentence(report)).toContain(
+        "Kz 83 not estimated, VAT left to place by hand",
+      );
+    });
+
+    it("is left out when a foreign-currency document with VAT has no EUR values", async () => {
+      const report = await reportWith(
+        doc(invoiceDoc({ id: 2, date: "2026-02-01", currency: "CHF", net: "800", tax: "152" }), []),
+      );
+
+      expect(report.coverage.unconvertibleCount).toBe(1);
+      expect(report.estimate).toBeUndefined();
+      expect(report.notes.join(" ")).toContain(
+        "1 foreign-currency document with VAT but without EUR values (coverage.unconvertible)",
+      );
+    });
+
+    it("is kept when the amounts left out carry no VAT", async () => {
+      const report = await reportWith(
+        doc(
+          invoiceDoc(
+            { id: 2, date: "2026-02-01", rule: null, net: "70", tax: "0" },
+            { taxType: "eu" },
+          ),
+          invoicePositions(2, [{ rate: "0", net: "70", tax: "0" }]),
+        ),
+      );
+      expect(report.unmapped).toHaveLength(1);
+      expect(report.estimate?.kz83).toEqual({ amount: "190.00", currency: "EUR" });
+
+      const chf = await reportWith(
+        doc(invoiceDoc({ id: 2, date: "2026-02-01", currency: "CHF", net: "800", tax: "0" }), []),
+      );
+      expect(chf.coverage.unconvertibleCount).toBe(1);
+      expect(chf.estimate?.kz83).toEqual({ amount: "190.00", currency: "EUR" });
+    });
   });
 
   it("says when a cap stopped reading", async () => {

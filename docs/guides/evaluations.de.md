@@ -105,8 +105,11 @@ voraussichtlichen Saldo, gekennzeichnet als erwartet, nicht gebucht.
 [`sevdesk_vat_summary`](../tools.md#sevdesk_vat_summary) schätzt die Umsatzsteuer-Voranmeldung
 (UStVA) für einen Monat, ein Quartal oder ein Jahr: die Zeilen des Formulars (Kennzahlen, Formular 2026) mit Bemessungsgrundlage und Steuer, die erwartete Zahllast oder Erstattung (Kz 83), die
 Zusammenfassende Meldung je USt-IdNr. des Abnehmers, OSS-Umsätze je Land und die Beträge, die sie
-nicht zuordnen kann. Die Besteuerungsart des Kontos liest sie selbst; ein Kleinunternehmer-Konto
-bekommt keine UStVA.
+nicht zuordnen kann. Trägt ein Betrag, den sie nicht zuordnen kann, Umsatzsteuer (ein Dokument
+ohne Steuerregel, eine Steuerregel in der falschen Richtung, ein Dokument in Fremdwährung ohne
+EUR-Werte von sevDesk), schätzt sie Kz 83 nicht und sagt, warum: Ordne diese Beträge zuerst von
+Hand zu. Die Besteuerungsart des Kontos liest sie selbst; ein Kleinunternehmer-Konto bekommt keine
+UStVA.
 
 Grundlage ist die Sollversteuerung, außer du fragst nach der Istversteuerung. Die API von sevDesk
 sagt nicht, welche davon dein Konto verwendet; nenn sie also, wenn du nach vereinnahmten Entgelten
