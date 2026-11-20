@@ -314,7 +314,10 @@ export function bookPaymentTool(kind: PaymentKind) {
       ),
       date: isoDateInput
         .optional()
-        .describe("Booking date (Zahlungsdatum), YYYY-MM-DD; defaults to today (Berlin)."),
+        .describe(
+          "Booking date (Zahlungsdatum), YYYY-MM-DD; defaults to the linked transaction's date, " +
+            "else today (Berlin).",
+        ),
       checkAccountId: z
         .number()
         .int()
@@ -361,7 +364,7 @@ export function bookPaymentTool(kind: PaymentKind) {
       });
       assertBookable(doc);
       const today = berlinDateOf(Date.now());
-      const date = args.date ?? today;
+      let date = args.date ?? today;
       const request = {
         amount: args.amount,
         paymentType: args.paymentType ?? "payment",
@@ -392,10 +395,32 @@ export function bookPaymentTool(kind: PaymentKind) {
         warnings.push(
           ...checkPaymentTransaction(doc, args.checkAccountId, transaction, args.amount, assigned),
         );
+        // The pay date of a payment from a bank transaction is the transaction's date, as
+        // sevdesk_transaction_book books it: it becomes the document's payDate, which decides the
+        // VAT period under cash accounting (review 2026-11-20).
+        const transactionDate = transaction.valueDate ?? transaction.entryDate;
+        if (args.date === undefined && transactionDate !== undefined) date = transactionDate;
+        if (
+          args.date !== undefined &&
+          transactionDate !== undefined &&
+          args.date !== transactionDate
+        ) {
+          warnings.push(
+            phrase(
+              `The booking date ${args.date} differs from the bank transaction's date ` +
+                `${transactionDate}; the payment date decides the VAT period under cash ` +
+                "accounting (Istversteuerung).",
+              `Das Buchungsdatum ${dateText(args.date, "de")} weicht vom Datum des Umsatzes ` +
+                `${dateText(transactionDate, "de")} ab; bei Istversteuerung bestimmt das ` +
+                "Zahlungsdatum den Voranmeldungszeitraum.",
+            ),
+          );
+        }
         // A payment that uses part of the transaction goes out as N (see transactionBookingType).
         const amount = transaction.amount.amount;
         plan = planPayment(doc, {
           ...request,
+          date,
           transactionAmount: amount.startsWith("-") ? amount.slice(1) : amount,
         });
       }

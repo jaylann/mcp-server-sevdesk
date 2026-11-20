@@ -81,6 +81,7 @@ An sevDesk gesendet als: Betrag -23,8 (Geld verlässt das Konto)"
 
 exports[`German previews > book an invoice payment linked to a bank transaction: says the same in German 1`] = `
 "Zahlungseingang von 177,33 EUR auf Rechnung 1001 buchen (vollständige Zahlung (FULL_PAYMENT)), über das Zahlungskonto 4002, verknüpft mit dem Kontoumsatz 5101.
+! Das Buchungsdatum 02.11.2026 weicht vom Datum des Umsatzes 05.01.2026 ab; bei Istversteuerung bestimmt das Zahlungsdatum den Voranmeldungszeitraum.
 (umkehrbar)
 Rechnung: RE-1001 (ID 1001)
 Typ: Rechnung (RE)
