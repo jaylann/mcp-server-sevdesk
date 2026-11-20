@@ -44,6 +44,24 @@ describe("parseArgs", () => {
     });
   });
 
+  it("takes grant ids that start with a dash (review 2026-11-20)", () => {
+    // Grant ids are 16 random bytes in base64url: about one in 60 starts with "-".
+    expect(parseArgs(["grants", "revoke", "-AbCdEfGhIjKlMnOpQrStU"])).toEqual({
+      kind: "grants-revoke",
+      target: { grantId: "-AbCdEfGhIjKlMnOpQrStU" },
+    });
+    expect(parseArgs(["grants", "revoke", "--", "--bCdEfGhIjKlMnOpQrStU"])).toEqual({
+      kind: "grants-revoke",
+      target: { grantId: "--bCdEfGhIjKlMnOpQrStU" },
+    });
+    expect(parseArgs(["grants", "revoke", "--", "-AbCdEfGhIjKlMnOpQrStU"])).toEqual({
+      kind: "grants-revoke",
+      target: { grantId: "-AbCdEfGhIjKlMnOpQrStU" },
+    });
+    // A misspelt option is not taken for a grant id.
+    expect(parseArgs(["grants", "revoke", "--everything"])).toMatchObject({ kind: "usage-error" });
+  });
+
   it("refuses unknown and malformed input", () => {
     expect(parseArgs(["--http2"])).toMatchObject({
       kind: "usage-error",

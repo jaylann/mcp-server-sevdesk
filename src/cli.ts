@@ -125,13 +125,21 @@ function parseGrants(args: readonly string[]): Command | UsageError {
         ? { kind: "grants-revoke", target: { accountId } }
         : usage("grants revoke --account needs an account id.");
     }
-    if (rest.length === 1 && rest[0] !== undefined && !rest[0].startsWith("-")) {
-      const grantId = rest[0];
+    // Grant ids are base64url and may start with "-" (about one in 60): a single "-" is taken as
+    // part of the id, and `--` ends the options for an id that starts with "--" (review
+    // 2026-11-20).
+    const grantId =
+      rest.length === 2 && rest[0] === "--"
+        ? rest[1]
+        : rest.length === 1 && rest[0] !== undefined && !rest[0].startsWith("--")
+          ? rest[0]
+          : undefined;
+    if (grantId !== undefined) {
       return ID.test(grantId)
         ? { kind: "grants-revoke", target: { grantId } }
         : usage("grants revoke needs a grant id as shown by `grants list`.");
     }
-    return usage("Use: grants revoke <grant-id> | --account <account-id> | --all");
+    return usage("Use: grants revoke [--] <grant-id> | --account <account-id> | --all");
   }
   return usage("Use: grants list [--json] | grants revoke <grant-id> | --account <id> | --all");
 }
