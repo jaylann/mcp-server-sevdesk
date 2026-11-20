@@ -271,7 +271,9 @@ export interface StoredAddressFields {
 
 /**
  * The stored address of an invoice or credit note: its structured fields when any is set (drafts
- * saved through the API), else the free-text `address` (web-app drafts), else none.
+ * saved through the API), else the free-text `address` (web-app drafts), else none. A printed
+ * text with lines the parts do not hold (a "z. Hd." line, a department) counts as free text: an
+ * update rebuilt from the parts would drop those lines (review 2026-11-20).
  */
 export function structuredStoredAddress(doc: StoredAddressFields): StoredAddress {
   const countryId = doc.addressCountry?.id;
@@ -281,6 +283,9 @@ export function structuredStoredAddress(doc: StoredAddressFields): StoredAddress
     zip: doc.addressZip,
     city: doc.addressCity,
   };
+  if (doc.address !== undefined && textHasOtherLines(doc.address, parts)) {
+    return { base: { kind: "text", countryId }, lines: [doc.address], countryId };
+  }
   if (Object.values(parts).some((part) => part !== undefined)) {
     const place = [parts.zip, parts.city].filter((part) => part !== undefined).join(" ");
     return {
@@ -293,6 +298,35 @@ export function structuredStoredAddress(doc: StoredAddressFields): StoredAddress
     return { base: { kind: "text", countryId }, lines: [doc.address], countryId };
   }
   return { base: { kind: "none" }, lines: [], countryId };
+}
+
+/**
+ * Whether a printed address holds a line other than the name, the street and "zip city" of its
+ * parts. A line that differs only as the last one is taken for the country line, which the parts
+ * keep as a reference.
+ */
+function textHasOtherLines(
+  text: string,
+  parts: {
+    readonly name?: string | undefined;
+    readonly street?: string | undefined;
+    readonly zip?: string | undefined;
+    readonly city?: string | undefined;
+  },
+): boolean {
+  const normal = (line: string): string => line.replace(/\s+/g, " ").trim().toLowerCase();
+  const place = [parts.zip, parts.city].filter((part) => part !== undefined).join(" ");
+  const known = new Set(
+    [parts.name, parts.street, place]
+      .filter((line): line is string => line !== undefined && line.trim() !== "")
+      .map(normal),
+  );
+  if (known.size === 0) return false;
+  const lines = text
+    .split(/\r?\n/)
+    .map(normal)
+    .filter((line) => line !== "");
+  return lines.some((line, index) => !known.has(line) && index < lines.length - 1);
 }
 
 export interface UpdateArgs extends AddressInput {
