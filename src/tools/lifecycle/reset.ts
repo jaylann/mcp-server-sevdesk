@@ -15,6 +15,7 @@
  */
 import { z } from "zod";
 
+import { refuseCancelledInvoiceReset } from "../../domain/derived-documents.js";
 import { resetDocument } from "../../domain/lifecycle/actions.js";
 import {
   KINDS,
@@ -193,6 +194,9 @@ export function resetTool(kind: PaymentKind) {
         cacheOwner: ctx.config,
       });
       assertResettable(doc, args.to);
+      if (kind === "invoice" && args.to === "open") {
+        await refuseCancelledInvoiceReset(ctx.client, doc, ctx.signal);
+      }
       const codes = statusOf(doc);
       const warnings = resetWarnings(doc, args.to);
       const action =

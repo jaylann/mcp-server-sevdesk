@@ -28,6 +28,7 @@ import {
   type TransactionDto,
 } from "../banking.js";
 import type { CountryReadOptions } from "../country-codes.js";
+import { refuseCancelledInvoiceReset } from "../derived-documents.js";
 import {
   documentRef,
   KINDS,
@@ -258,6 +259,7 @@ export async function planTransactionReset(
       );
     }
     assertResettable(doc, "open");
+    if (doc.kind === "invoice") await refuseCancelledInvoiceReset(client, doc, signal);
     resettable.push({ doc, share, otherPayments: otherPayments(doc, share, transaction) });
   }
   const documents = await withOtherTransactions(client, transaction, resettable, signal);
