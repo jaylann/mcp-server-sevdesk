@@ -6,14 +6,17 @@
  * holds only ciphertext nobody can open. The additional data binds each blob to its id, account
  * scope and kind, so a blob file swapped for another fails to open.
  *
- * Disk layout: the folder has mode 0700 and is emptied when the store opens (leftovers of an
- * earlier process are unreadable anyway). The caller opens the store only after it holds the
- * state directory's lock (`grants.lock`), so a second server can never empty the folder of a
- * live one. Each blob is one file with a random name, created with `O_EXCL` and mode 0600 and
- * opened with `O_NOFOLLOW`; names never derive from anything a user or the model chose.
+ * Disk layout: the folder has mode 0700. When the store opens it removes the blob files an
+ * earlier process left (unreadable anyway) and nothing else: anything in the folder that this
+ * store cannot have written (another name, a subfolder, a link) makes it refuse to open, so an
+ * operator's own files in a shared state directory are never deleted (review 2026-11-20). The
+ * caller opens the store only after it holds the state directory's lock (`grants.lock`), so a
+ * second server can never empty the folder of a live one. Each blob is one file with a random
+ * name, created with `O_EXCL` and mode 0600 and opened with `O_NOFOLLOW`; names never derive from
+ * anything a user or the model chose.
  */
 import { constants, type Stats } from "node:fs";
-import { chmod, lstat, mkdir, open, readdir, rm, unlink } from "node:fs/promises";
+import { chmod, lstat, mkdir, open, readdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
 
 import { type KeySet } from "../http/keys.js";
@@ -53,6 +56,8 @@ export interface BlobStoreOptions {
 
 /** Blob ids: 16 random bytes, base64url. */
 const BLOB_ID = /^[A-Za-z0-9_-]{22}$/;
+/** The name of a blob file (`<id>.bin`): the only thing the store removes when it opens. */
+const BLOB_FILE = /^[A-Za-z0-9_-]{22}\.bin$/;
 const DIR_MODE = 0o700;
 const FILE_MODE = 0o600;
 const NO_FOLLOW: number = (constants as Partial<typeof constants>).O_NOFOLLOW ?? 0;
@@ -66,8 +71,9 @@ export class BlobStoreError extends Error {
 }
 
 /**
- * Opens a blob store: in memory, or in `options.dir`, which is created (0700) or emptied first.
- * Rejects with {@link BlobStoreError} when the folder cannot be prepared.
+ * Opens a blob store: in memory, or in `options.dir`, which is created (0700) or cleared of an
+ * earlier process's blobs first. Rejects with {@link BlobStoreError} when the folder cannot be
+ * prepared or holds anything else.
  */
 export async function openBlobStore(options: BlobStoreOptions = {}): Promise<BlobStore> {
   const keys = options.keys ?? createEphemeralKeys().current;
@@ -178,14 +184,22 @@ async function diskBlobStore(keys: KeySet, dir: string): Promise<BlobStore> {
 }
 
 /**
- * Creates `dir` (0700) or empties it. Something else at the path (a file, a symlink) is removed
- * and replaced by a directory: the folder belongs to this server alone.
+ * Creates `dir` (0700), or removes the blob files an earlier process left in it. A symlink at the
+ * path is removed (only the link, never what it points to) and replaced by a directory. A regular
+ * file at the path, or anything in the folder this store cannot have written, is refused rather
+ * than deleted: the folder may be the operator's (review 2026-11-20).
  */
 async function prepareFolder(dir: string): Promise<void> {
   const failed = (what: string): BlobStoreError =>
     new BlobStoreError(
       `SEVDESK_HTTP_STATE_DIR: cannot ${what} ${dir} for uploaded and downloadable files. ` +
         "Check that the state directory is writable by this process.",
+    );
+  const foreign = (what: string): BlobStoreError =>
+    new BlobStoreError(
+      `SEVDESK_HTTP_STATE_DIR: ${dir} ${what}, which this server did not write and will not ` +
+        "delete. The folder holds the server's encrypted transfer files only: move the other " +
+        "content away, or choose another state directory.",
     );
   let info: Stats | undefined;
   try {
@@ -194,20 +208,29 @@ async function prepareFolder(dir: string): Promise<void> {
     if (!isMissing(error)) throw failed("inspect");
     info = undefined;
   }
+  if (info !== undefined && !info.isDirectory() && !info.isSymbolicLink()) {
+    throw foreign("is a file, not a folder");
+  }
+  let leftovers: string[] = [];
   try {
-    if (info !== undefined && (!info.isDirectory() || info.isSymbolicLink())) {
-      await rm(dir, { force: true });
+    if (info?.isSymbolicLink() === true) {
+      await unlink(dir);
       info = undefined;
     }
     if (info === undefined) {
       await mkdir(dir, { mode: DIR_MODE });
     } else {
-      for (const entry of await readdir(dir)) {
-        await rm(join(dir, entry), { recursive: true, force: true });
-      }
+      const entries = await readdir(dir);
+      const named = entries.filter((entry) => BLOB_FILE.test(entry));
+      if (named.length !== entries.length) throw foreign("holds other files or folders");
+      const kinds = await Promise.all(named.map((entry) => lstat(join(dir, entry))));
+      if (kinds.some((kind) => !kind.isFile())) throw foreign("holds other files or folders");
+      leftovers = named;
     }
+    for (const entry of leftovers) await unlink(join(dir, entry));
     await chmod(dir, DIR_MODE);
-  } catch {
+  } catch (error) {
+    if (error instanceof BlobStoreError) throw error;
     throw failed("prepare");
   }
   const after = await lstat(dir).catch(() => undefined);

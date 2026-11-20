@@ -12,7 +12,8 @@
  *
  * Browser sessions live in the grant store, so bearer mode opens it too when a browser page is
  * on. The transfer store opens after the grant store took the state directory's lock, and only
- * then empties `<stateDir>/files` (a second server never touches a live server's files).
+ * then clears `<stateDir>/files` of an earlier process's blobs (a second server never touches a
+ * live server's files; anything else in the folder stops the start instead of being deleted).
  *
  * Nothing here prints secrets: the HTTP logger redacts every configured secret, sealed tokens and
  * token-shaped hex runs; config problems never contain values.
@@ -279,7 +280,7 @@ async function browserParts(
   return { runtime, routes, transfer };
 }
 
-/** The transfer store, its blobs in `<stateDir>/files` (emptied first) or in memory. */
+/** The transfer store, its blobs in `<stateDir>/files` (old blobs cleared first) or in memory. */
 async function openTransferStore(
   files: HttpFilesConfig,
   stateDir: string | undefined,
