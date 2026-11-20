@@ -11,6 +11,7 @@ import type { CallToolResult } from "@modelcontextprotocol/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
+import { expectSingle } from "../../src/sevdesk/envelope.js";
 import { defineWriteTool } from "../../src/tools/define-tool.js";
 import type { AnyToolDefinition } from "../../src/tools/types.js";
 import { dryRunInputShape } from "../../src/tools/write-input.js";
@@ -319,5 +320,47 @@ describe("refused confirmations", () => {
       }),
     ).rejects.toThrow(/Invalid or expired requestState/);
     expect(writesOf(fake)).toEqual([]);
+  });
+});
+
+describe("errors after a write was sent (review 2026-11-20)", () => {
+  /** A create whose 2xx answer holds no record: it may still have created one. */
+  const emptyAnswer = defineWriteTool({
+    name: "sevdesk_dummy_empty_answer",
+    title: "Empty answer (dummy)",
+    description: "Creates a contact and reads the id from the answer. Test fixture for errors.",
+    toolset: "contacts",
+    tier: "write",
+    annotations: WRITE_ANNOTATIONS,
+    input: z.strictObject({ name: z.string(), ...dryRunInputShape }),
+    output: z.object({ ok: z.boolean() }),
+    prepare: () =>
+      Promise.resolve({
+        preview: { action: "Create a contact.", facts: [], warnings: [], irreversible: false },
+        state: null,
+      }),
+    execute: async ({ name }, _plan, ctx) => {
+      const answer = await ctx.client.request({ method: "POST", path: "/Contact", body: { name } });
+      expectSingle(answer, "created contact");
+      return { data: { ok: true }, summary: "Created.", affected: [] };
+    },
+  });
+
+  it("says the change may have been made instead of asking to call again", async () => {
+    const { client, fake } = await writeHarness({
+      tools: [emptyAnswer],
+      routes: [{ method: "POST", path: "/Contact", response: { body: { objects: [] } } }],
+    });
+
+    const result = await client.callTool({
+      name: "sevdesk_dummy_empty_answer",
+      arguments: { name: "Muster GmbH" },
+    });
+
+    expect(result.isError).toBe(true);
+    const text = resultText(result);
+    expect(text).toContain("the change may or may not have been applied in sevDesk");
+    expect(text).not.toContain("call this tool again");
+    expect(writesOf(fake)).toHaveLength(1);
   });
 });

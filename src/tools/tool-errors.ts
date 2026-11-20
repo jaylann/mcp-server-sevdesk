@@ -29,6 +29,12 @@ export interface ToolErrorContext {
   readonly toolName: string;
   readonly tier: Tier;
   readonly config: Config;
+  /**
+   * The error came from a write tool's `execute`, which sends the change: an answer sevDesk gave
+   * to a request that was sent may follow a change it made, so a missing record in that answer is
+   * no proof that nothing happened.
+   */
+  readonly executing?: boolean | undefined;
 }
 
 /**
@@ -87,6 +93,12 @@ export function describeSevdeskError(error: SevdeskError, context: ToolErrorCont
     case "auth":
       return authText(status, context.config.deployment);
     case "not_found":
+      // No HTTP status while executing: a 2xx answer without the record it should hold (a write's
+      // answer, say). The write may have gone through, so "call again" could repeat it (review
+      // 2026-11-20).
+      if (context.executing === true && error.status === undefined) {
+        return `sevDesk's answer held no record where one was expected: ${sentence(details)}${mayHaveChanged}`;
+      }
       return (
         `sevDesk has no such record${status}: ${sentence(details)} Do not guess ids: look the ` +
         "id up with the matching list or search tool, then call this tool again."
@@ -103,10 +115,17 @@ export function describeSevdeskError(error: SevdeskError, context: ToolErrorCont
       // A refusal sevDesk is known to give, explained in our own words by the domain layer
       // (`SevdeskError.explained`): the explanation says what to do instead.
       if (error.explained) return `sevDesk refused the request${status}: ${sentence(details)}`;
-      const text =
-        `sevDesk rejected the request as invalid${status}. Check the arguments against the tool ` +
-        "description, fix what sevDesk complains about and try again; repeating the same call " +
-        "unchanged will fail again.";
+      // A 5xx that reads like a validation problem is still a server error: sevDesk has been seen
+      // to make the change before answering it (D-021: sendBy finalized a document and answered
+      // 500 TypeError), so a write must not be told it surely failed (review 2026-11-20).
+      const serverSide = error.status >= 500 && mayHaveChanged !== "";
+      const text = serverSide
+        ? `sevDesk answered with an error that reads like invalid input${status}.${mayHaveChanged} ` +
+          "If nothing changed, check the arguments against the tool description and fix what " +
+          "sevDesk complains about."
+        : `sevDesk rejected the request as invalid${status}. Check the arguments against the tool ` +
+          "description, fix what sevDesk complains about and try again; repeating the same call " +
+          "unchanged will fail again.";
       if (error.upstreamMessage === undefined || error.upstreamMessage.trim() === "") {
         return text;
       }

@@ -64,10 +64,12 @@ import { readOnlyClient, tierScopedClient } from "../sevdesk/scoped-client.js";
 import type { ErasedWriteTool, RegistryDeps } from "./registry.js";
 import { errorResult, successResult } from "./result.js";
 import {
+  cancelledResult,
   type HiddenCharacterProblem,
   hiddenCharactersResult,
   outputValidationFailedResult,
   type ToolErrorContext,
+  toolErrorResult,
 } from "./tool-errors.js";
 import type { ConfirmationPreview, ToolContext, WritePlan } from "./types.js";
 import { DRY_RUN_ARGUMENT } from "./write-input.js";
@@ -594,7 +596,9 @@ async function execute(
       error: errorKind(error),
       affected: error instanceof SevdeskError ? error.completedWrites : [],
     });
-    throw error;
+    // Mapped here rather than by the registry: the text must know the change may have been sent.
+    if (context.signal.aborted) return cancelledResult(call.errorContext);
+    return toolErrorResult(error, { ...call.errorContext, executing: true });
   }
   const data = await tool.output.safeParseAsync(output.data);
   if (!data.success) {
