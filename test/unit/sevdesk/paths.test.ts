@@ -204,6 +204,37 @@ describe("resolveGetSafety", () => {
     });
   });
 
+  it("reads the flags as PHP names their keys, brackets included (review 2026-11-20)", () => {
+    // PHP's last key wins, or the value becomes an array: a later bracketed key could undo the
+    // flag the gate checked.
+    expect(
+      resolveGetSafety(
+        "/Invoice/5/getPdf",
+        { preventSendBy: "true", "preventSendBy[]": "0" },
+        false,
+      ),
+    ).toMatchObject({ sideEffect: true, effect: "it marks the document as sent" });
+    expect(resolveGetSafety("/Export/datevCSV", { "enshrine[]": "1" }, false)).toMatchObject({
+      sideEffect: true,
+      effect: expect.stringMatching(/enshrines/) as unknown,
+    });
+    expect(
+      resolveGetSafety(
+        "/Order/Factory/getNextOrderNumber",
+        { orderType: "AN", useNextNumber: "false", "useNextNumber[0]": "true" },
+        false,
+      ),
+    ).toMatchObject({ sideEffect: true, effect: "it reserves the next document number" });
+    // The plain flags still read as before.
+    expect(
+      resolveGetSafety(
+        "/Order/Factory/getNextOrderNumber",
+        { orderType: "AN", useNextNumber: "false" },
+        false,
+      ).sideEffect,
+    ).toBe(false);
+  });
+
   it("treats an enshrine flag as a side effect on any endpoint", () => {
     expect(
       resolveGetSafety("/Export/createDatevCsvZipExportJob", { enshrineDocuments: "1" }, false),
@@ -385,8 +416,10 @@ describe("minimumWriteTier for creating a bank transaction (#88, D-096, D-098)",
     ["/CheckAccountTransaction/9/enshrine", "commit"],
     ["/CheckAccountTransactionLog", "write"],
     ["/CheckAccount/Factory/fileImportAccount", "write"],
-    ["/CheckAccount/5", "write"],
-  ] as const)("leaves %s at %s", (path, tier) => {
+    // Archiving or changing a payment account binds like a transaction (review 2026-11-20).
+    ["/CheckAccount/5", "commit"],
+    ["/checkaccount/5", "commit"],
+  ] as const)("puts %s at %s", (path, tier) => {
     expect(minimumWriteTier(path, undefined, transaction)).toBe(tier);
   });
 });
@@ -414,7 +447,7 @@ describe("minimumWriteTier for private-transaction rules (#131, D-099)", () => {
   it.each([
     ["/PrivateTransactionRules", "write"],
     ["/PrivateTransaction", "write"],
-    ["/CheckAccount/5", "write"],
+    ["/CheckAccount/5/notes", "write"],
   ] as const)("leaves the neighbour %s at %s", (path, tier) => {
     expect(minimumWriteTier(path, undefined, rule)).toBe(tier);
   });

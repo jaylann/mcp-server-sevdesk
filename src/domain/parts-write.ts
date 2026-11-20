@@ -11,7 +11,8 @@
  * convert back to exactly the same decimal, so no float rounding can creep in.
  *
  * Updates read the part first and send only what changes (`PUT /Part/{id}`, `Model_PartUpdate`
- * has no required fields). Changing the tax rate without a new price keeps the net price and
+ * has no required fields; a partial update, recorded 2026-11-20, D-062: a name-only PUT kept
+ * prices, tax rate, unit and stock). Changing the tax rate without a new price keeps the net price and
  * recomputes the gross price.
  */
 import { z } from "zod";

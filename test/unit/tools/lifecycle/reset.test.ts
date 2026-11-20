@@ -185,6 +185,52 @@ describe("sevdesk_invoice_reset (spec resetToOpen/resetToDraft; behaviour per se
     );
     expect(await refusal(invoiceRow({ status: "100" }), "draft")).toContain("already a draft");
   });
+
+  describe("a paid invoice without a paid amount (review 2026-11-20)", () => {
+    // After a reset to open sevDesk reads paidAmount back as null (D-060), and cancelInvoice
+    // changes only the status (D-037): a cancelled original can look like this.
+    const noAmount = invoiceRow({ status: "1000", paidAmount: null });
+    const cancellation = invoiceRow({
+      id: "1002",
+      invoiceNumber: "STORNO-1001",
+      invoiceType: "SR",
+      status: "1000",
+      origin: { id: "1001", objectName: "Invoice" },
+    });
+
+    function staged(invoices: readonly Row[]): StagedClient {
+      return new StagedClient(
+        [
+          documentRoute("invoice", noAmount),
+          { path: "/Invoice", response: { body: { objects: invoices } } },
+        ],
+        [
+          writeRoute("PUT", "/Invoice/1001/resetToOpen", "invoice-reset.json"),
+          documentRoute("invoice", invoiceRow()),
+        ],
+      );
+    }
+
+    it("refuses when a cancellation invoice refers to it", async () => {
+      const client = staged([cancellation]);
+      const error = await prepareWrite(tool, { id: 1001, to: "open" }, client).catch(
+        (e: unknown) => e,
+      );
+      expect((error as SevdeskError).message).toBe(
+        "Invoice 1001 was cancelled (Storno) by cancellation invoice 1002; a cancelled invoice " +
+          "cannot be reset to open.",
+      );
+      expect(client.writes()).toEqual([]);
+    });
+
+    it("resets it when no cancellation refers to it", async () => {
+      const client = staged([]);
+      await executeWrite(tool, { id: 1001, to: "open" }, client);
+      expect(client.writes()).toEqual([
+        expect.objectContaining({ method: "PUT", path: "/Invoice/1001/resetToOpen" }),
+      ]);
+    });
+  });
 });
 
 describe("sevdesk_credit_note_reset", () => {

@@ -197,6 +197,23 @@ class AuditLogOwnerError extends Error {
   }
 }
 
+/**
+ * The audit path is not a regular file (a named pipe, a device): nothing is appended. A pipe whose
+ * reader stopped would block the append for good, and with it the record locks of the call and
+ * every later audit line (review 2026-11-20).
+ */
+class AuditLogNotAFileError extends Error {
+  readonly code = "AUDIT_LOG_NOT_A_REGULAR_FILE";
+
+  constructor(path: string) {
+    super(
+      `audit log: ${path} is not a regular file (a pipe or a device). Point SEVDESK_AUDIT_LOG ` +
+        "to a regular file.",
+    );
+    this.name = "AuditLogNotAFileError";
+  }
+}
+
 export function createAuditLog(options: AuditLogOptions): AuditLog {
   const { path, secrets } = options;
   const now = options.now ?? (() => new Date());
@@ -214,6 +231,7 @@ export function createAuditLog(options: AuditLogOptions): AuditLog {
       // Judged on the opened file, so the answer is about the file the line goes to. The mode
       // check below cannot stand in for it: on macOS an ACL grants access no mode bit shows, and
       // the owner can loosen the mode again at any time (review 2026-11, round 3).
+      if (!info.isFile()) throw new AuditLogNotAFileError(path as string);
       if (ownedByOtherUser(info, options.getuid)) throw new AuditLogOwnerError(path as string);
       if ((info.mode & 0o077) !== 0) {
         await handle.chmod(FILE_MODE);

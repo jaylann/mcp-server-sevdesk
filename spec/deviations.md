@@ -2398,12 +2398,16 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   2026-10-01, not recorded). Recorded for contacts: `PUT /Contact/{id}` with only `description`
   changed the description and kept name, customer number, category and status. `PUT /Contact/{id}`
   with only `parent` sets, changes and, with `parent: null`, clears a person's organisation
-  (recorded 2026-11-16, D-083). Addresses, communication ways and `PUT /Part/{partId}`
-  (`Model_PartUpdate`, no required fields either) are not measured by us.
+  (recorded 2026-11-16, D-083). `PUT /Part/{partId}` (`Model_PartUpdate`, no required fields
+  either) with only `name` changed the name and kept prices, tax rate, unit, stock and part number
+  (recorded 2026-11-20). Addresses and communication ways are not measured by us.
+  `GET /Part?partNumber=` matches the number exactly: the number without its last character and
+  a longer one found nothing (recorded 2026-11-20).
 - **Sources:** spec (the three update models); [jernoxit/sevdesk-rs](https://github.com/jernoxit/sevdesk-rs)
   (`src/endpoints/contact.rs`, `src/document_payload/contact.rs`); recorded 2026-11-07, trial
   account, Update 2.0 (probe `write-contact-partial-update`, in both write runs); recorded
-  2026-11-16, trial account, Update 2.0 (probe `write-contact-parent`).
+  2026-11-16, trial account, Update 2.0 (probe `write-contact-parent`); recorded 2026-11-20, trial
+  account, Update 2.0 (probe `write-part-put-partial`, run tag `MCP-E2E 20261120-1852-e6nw`).
 - **Impact:** `sevdesk_contact_update` sends only the fields that change, to the contact, its
   billing address and its main communication ways (`src/domain/contacts-write.ts`). A text field
   is never cleared (empty strings are rejected by the input schema); what an update takes away is
@@ -2919,8 +2923,8 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   a voucher can be deleted.
 - **Actual behavior:** Recorded 2026-11-08: `DELETE /Voucher/{voucherId}` on a draft (status 50)
   answers `{objects: [null]}`, after which GET answers 404. On an open voucher (100) it answers 409
-  "Voucher can only be deleted in status 50 but is status 100", and the voucher stays. Whether
-  the attached receipt file is deleted with a draft was not checked. Orders, credit notes and
+  "Voucher can only be deleted in status 50 but is status 100", and the voucher stays. The
+  attached receipt file (its Document) is deleted with a draft (recorded later, D-100). Orders, credit notes and
   recurring invoice templates answer the same way (2026-11-16): `{objects: [null]}` for a draft,
   409 "… can only be deleted in status 100 but is status 200" otherwise (D-109, D-112).
 - **Sources:** recorded 2026-11-08, trial account, Update 2.0 (probe `write-voucher-delete`: the
@@ -3360,10 +3364,18 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   referencing document stay unchanged (the voucher keeps its `costCentre`). The same trap as the
   `cancelInvoice` refusals (D-058). The same HTTP 200 refusal comes for an organisation when a
   draft invoice names one of its contact persons; then the organisation and the person stay too
-  (recorded 2026-11-18, D-084).
+  (recorded 2026-11-18, D-084). A draft offer (order) or a draft credit note that names the
+  contact gets the same HTTP 200 refusal (recorded 2026-11-20); a voucher could not be checked
+  (the trial account refused `saveVoucher` with 403 by then).
+  `GET /Contact/{id}/getTabsItemCount` answers `{objects: {orders, invoices, creditNotes,
+documents, persons, vouchers, letters, parts, invoicePos}}`, every value a JSON number (the spec
+  gives the object without the envelope and `parts` as a string); it counted the draft offer as
+  `orders: 1` and the draft credit note as `creditNotes: 1` (recorded 2026-11-20).
 - **Sources:** spec (`deleteContact`); recorded 2026-11-16, trial account, Update 2.0 (probes
   `write-contact-delete-referenced`, `write-cost-centre-delete`); recorded 2026-11-18, trial
-  account, Update 2.0 (probe `write-contact-delete-cascade`).
+  account, Update 2.0 (probe `write-contact-delete-cascade`); recorded 2026-11-20, trial account,
+  Update 2.0 (probe `write-contact-tabs-count-by-reference`, run tag
+  `MCP-E2E 20261120-1852-e6nw`).
 - **Impact:** The client already turns a 2xx body with an `error` member and no `objects` into an
   `unexpected_response` error with status 200 and sevDesk's message as `upstreamMessage`
   (`readJsonEnvelope` in `src/sevdesk/client.ts`), so such a refusal never passes as a successful
@@ -5396,10 +5408,14 @@ true, price: 200}`) in `invoicePosSave`, a new position C in `invoicePosSave` an
   and stored none of them (`autoMapTransaction` stayed `"1"`, the type `online`, the status 100).
   A clearing account was renamed the same way. `defaultAccount` was not tried (it would move the
   trial's default account). A `name` another active account has (its exact name) was stored as
-  well, with 200: sevDesk does not keep account names apart.
+  well, with 200: sevDesk does not keep account names apart. A `PUT` with only `iban`, and one
+  with only `autoMapTransaction`, changed that field and kept every other one (name, bic,
+  booking account, default flag, type, import type, status; recorded 2026-11-20).
 - **Sources:** spec (`updateCheckAccount`, `Model_CheckAccountUpdate`); recorded 2026-11-18,
   trial account, Update 2.0 (one-off check by the orchestrator, run tag
-  `MCP-E2E 20261118-0925-lgtm`; the duplicate name in a follow-up check of the same run).
+  `MCP-E2E 20261118-0925-lgtm`; the duplicate name in a follow-up check of the same run);
+  recorded 2026-11-20, trial account, Update 2.0 (probe `write-check-account-put-one-field`, run
+  tag `MCP-E2E 20261120-1852-e6nw`).
 - **Impact:** A 200 to this `PUT` proves nothing about the fields sent. Handling (#128):
   `sevdesk_bank_account_update` (tier `commit`) sends only the fields that change, under the keys
   sevDesk stores (`autoMapTransaction` singular, `accountingNumber` as a string), never `type`,

@@ -24,7 +24,8 @@ Was jede Stufe abdeckt, ihre Voreinstellung und die Schalter (`SEVDESK_ALLOW`,
    `paths.ts`: `sendBy`, `bookAmount`, `enshrine`, `cancelInvoice`, `resetToDraft`, `resetToOpen`,
    `changeParameter`, ein versendendes `getPdf`, DATEV-Exporte mit `enshrine`, ein `saveVoucher`,
    dessen Beleg kein Entwurf ist (das Fertigstellen des Belegs),
-   `PUT`/`DELETE /CheckAccountTransaction/{id}` (als privat markieren, zurücksetzen), eine
+   `PUT`/`DELETE /CheckAccountTransaction/{id}` (als privat markieren, zurücksetzen),
+   `PUT`/`DELETE /CheckAccount/{id}` (Zahlungskonto ändern oder archivieren), eine
    Banktransaktion anlegen (`POST /CheckAccountTransaction`), eine Regel für Privatumsätze anlegen
    oder löschen (`POST /PrivateTransactionRule`, `DELETE /PrivateTransactionRule/{id}`), der
    Status eines Dokuments direkt gesetzt (ein `status` im Body oder in der Query einer Anfrage an
@@ -64,9 +65,10 @@ beide Texte.
 Jeder Aufruf führt `prepare` aus, dann endet ein Probelauf, Aufrufe der Stufen `commit`/`external`
 werden bestätigt, das Audit-Log verzeichnet `executing`, und erst dann läuft `execute`. Ergebnisse
 werden als
-`{status: "done" | "dry_run" | "approval_pending" | "declined", result?, preview?, approval?}`
-verpackt (`result` nur bei `done`); für `outputSchema` und `structuredContent` gelten dieselben
-Regeln je Protokollgeneration wie bei Lesezugriffen.
+`{status: "done" | "dry_run" | "approval_pending" | "declined", result?, warnings?, preview?, approval?}`
+verpackt (`result` nur bei `done`; `warnings`, die Warnungen der Vorschau, bei `done`, wenn es
+welche gab, weil ein `write`-Aufruf seine Vorschau niemandem zeigt); für `outputSchema` und
+`structuredContent` gelten dieselben Regeln je Protokollgeneration wie bei Lesezugriffen.
 
 ## Bestätigung durch einen Menschen
 

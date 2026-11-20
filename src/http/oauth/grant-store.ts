@@ -411,35 +411,46 @@ class Store implements GrantStore {
     this.#prune(this.#seconds(), false);
     const snapshot = this.#snapshot();
     const temporary = `${path}.${newId()}.tmp`;
-    const output = await open(
+    // The handle written here becomes the store's handle once the rename put it in place. Opening
+    // the path again after the rename could fail (EMFILE) and leave the server appending to the
+    // old, unlinked file, where `grants` commands never see its events and its next compaction
+    // overwrites theirs (review 2026-11-20).
+    const handle = await open(
       temporary,
-      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | NO_FOLLOW,
+      constants.O_RDWR | constants.O_APPEND | constants.O_CREAT | constants.O_EXCL | NO_FOLLOW,
       0o600,
     );
     try {
-      await output.writeFile(snapshot);
-      await output.sync();
+      await handle.writeFile(snapshot);
+      await handle.sync();
+      await rename(temporary, path);
     } catch (error) {
       // A full volume: do not leave a partial copy behind for every retry.
+      await handle.close();
       await unlink(temporary).catch(() => undefined);
       throw error;
-    } finally {
-      await output.close();
     }
-    await rename(temporary, path);
-    const tail = previous === undefined ? Buffer.alloc(0) : await readFrom(previous, readEnd);
-    // Only complete lines move over: a writer still in the middle of a line appended it to the
-    // old file and appends it again to the new one when it sees the replaced inode.
-    const complete = tail.subarray(0, tail.lastIndexOf(0x0a) + 1);
-    const handle = await open(
-      path,
-      constants.O_RDWR | constants.O_APPEND | constants.O_CREAT | NO_FOLLOW,
-      0o600,
-    );
     // The new file is the store from here on, also when carrying the lines over fails below.
     this.#handle = handle;
     this.#offset = Buffer.byteLength(snapshot);
     this.#partial = Buffer.alloc(0);
+    let tail: Buffer;
+    try {
+      tail = previous === undefined ? Buffer.alloc(0) : await readFrom(previous, readEnd);
+    } catch (error) {
+      // What a `grants` command appended to the old file after `readEnd` is not in memory and
+      // can no longer be read: a revocation among it would be lost. The store stops instead.
+      this.#fail(
+        new StateDirError(
+          `Cannot read the end of the replaced ${GRANTS_FILE}; events a grants command ` +
+            "appended to it may be missing. Restart the server.",
+        ),
+      );
+      throw error;
+    }
+    // Only complete lines move over: a writer still in the middle of a line appended it to the
+    // old file and appends it again to the new one when it sees the replaced inode.
+    const complete = tail.subarray(0, tail.lastIndexOf(0x0a) + 1);
     if (complete.length > 0) {
       try {
         // Every carried byte, or the swap fails: a short write here would cut a revocation a
@@ -447,8 +458,10 @@ class Store implements GrantStore {
         await writeAll(handle, Buffer.from(complete));
       } catch (error) {
         // The file misses carried lines now. They still apply in this process (applying twice
-        // changes nothing), so a revocation among them holds and reaches the next snapshot.
+        // changes nothing), so a revocation among them holds and reaches the next snapshot,
+        // which the repair flag asks for at the next sync.
         this.#applyText(Buffer.from(complete), false);
+        this.#repair = true;
         throw error;
       }
     }
@@ -477,9 +490,16 @@ class Store implements GrantStore {
       if (!(await this.#confirmOwnership())) return;
       await this.#readAppended();
       // Reset before the swap: a broken line that arrives while it runs asks for another one.
+      const repairing = this.#repair;
       this.#repair = false;
       try {
         await this.#swap(dir, old, this.#offset - this.#partial.length);
+      } catch (error) {
+        // A failed repair is still owed: the file misses an event this server holds (a
+        // revocation, say). Clearing the flag let the next try wait for a day or 1 MiB, and a
+        // restart meanwhile loaded the file without the event (review 2026-11-20).
+        if (repairing) this.#repair = true;
+        throw error;
       } finally {
         // Also when the swap failed after it put the new file in place.
         if (this.#handle !== old) await old.close();
@@ -1025,6 +1045,10 @@ class Store implements GrantStore {
 
   async close(): Promise<void> {
     if (this.#closed) return;
+    // An event the file misses (a failed append or repair) is written out one last time before
+    // the store closes; the next start reads only the file. A failure is logged and the close
+    // goes on.
+    if (this.#repair) await this.#maybeCompact();
     this.#closed = true;
     await this.#syncing?.catch(() => undefined);
     await this.#writes;

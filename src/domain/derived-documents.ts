@@ -150,8 +150,8 @@ export interface OrderToInvoiceState {
 }
 
 /**
- * Checks that the order can be invoiced (an offer or order confirmation, sent or accepted or
- * partly invoiced; amounts within the order; AR/TR only with tax rule 1 or 11; no invoice draft
+ * Checks that the order can be invoiced (an accepted or partly invoiced offer, or an order
+ * confirmation that is sent, accepted or partly invoiced; amounts within the order; AR/TR only with tax rule 1 or 11; no invoice draft
  * from it yet) and builds the preview. Reads only.
  */
 export async function planOrderToInvoice(
@@ -187,6 +187,19 @@ export async function planOrderToInvoice(
           "the invoices created from it.",
       );
     case 200:
+      // Invoicing a sent offer moves it to "Berechnet" (1000, recorded) without anyone accepting
+      // it, and no tool moves it back; accepting an offer is a commit action a human confirms
+      // (sevdesk_order_set_offer_status), so this write-tier tool refuses until it is accepted
+      // (review 2026-11-20). A sent confirmation (AB) is already the customer's order.
+      if (order.type.code === "AN") {
+        throw validation(
+          `${ref} is an offer that was sent but not accepted (status 200). Invoicing it would mark ` +
+            "it as billed (Berechnet, 1000) without anyone accepting it, and that cannot be " +
+            "undone. Record the customer's acceptance first with sevdesk_order_set_offer_status " +
+            "(action accept; a human confirms it), then call this tool again.",
+        );
+      }
+      break;
     case 500:
     case 750:
       break;
@@ -1034,6 +1047,53 @@ function isInvoiceRef(
 
 function invoiceTypeOf(row: DerivedRow): string | undefined {
   return row.invoiceType?.trim().toUpperCase();
+}
+
+/**
+ * Refuses to reset invoice `invoice` to open when it was cancelled (Storno). A cancelled original
+ * is paid (1000) with `paidAmount` 0, which `assertResettable` refuses by itself; but after a
+ * reset to open sevDesk reads the paid amount back as null (D-060), and `cancelInvoice` changes
+ * only the status (D-037), so a cancelled invoice can show no paid amount at all. Only then (paid
+ * without a paid amount, as foreign-currency invoices are too) its cancellation invoices are
+ * looked up; a lookup that cannot read every candidate refuses as well (review 2026-11-20).
+ */
+export async function refuseCancelledInvoiceReset(
+  client: SevdeskClient,
+  invoice: {
+    readonly id: number;
+    readonly status: number;
+    readonly paidAmount: string | undefined;
+    readonly contact?: { readonly id: number } | undefined;
+  },
+  signal?: AbortSignal,
+): Promise<void> {
+  if (invoice.status !== 1000 || invoice.paidAmount !== undefined) return;
+  const ref = `Invoice ${String(invoice.id)}`;
+  const cancellations = await findDerived(
+    client,
+    "/Invoice",
+    {
+      ...contactQuery(invoice.contact?.id),
+      "origin[id]": invoice.id,
+      "origin[objectName]": "Invoice",
+    },
+    (row) => isInvoiceRef(row.origin, invoice.id) && invoiceTypeOf(row) === "SR",
+    signal,
+  );
+  if (cancellations.ids.length > 0) {
+    throw validation(
+      `${ref} was cancelled (Storno) by ${idList("cancellation invoice", cancellations.ids)}; ` +
+        "a cancelled invoice cannot be reset to open.",
+    );
+  }
+  if (cancellations.truncated) {
+    throw validation(
+      `${ref} is marked paid but sevDesk shows no paid amount, as a cancelled invoice can look, ` +
+        "and sevDesk listed too many invoices to rule out a cancellation. Check with " +
+        "sevdesk_invoices_list (type cancellation) and reset it in the sevDesk web app if it " +
+        "must be done; nothing was reset.",
+    );
+  }
 }
 
 /** An invoice's detail DTO plus what changes when sevDesk touches it (status, last update). */

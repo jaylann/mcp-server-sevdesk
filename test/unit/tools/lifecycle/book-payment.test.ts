@@ -23,6 +23,11 @@ const creditNoteTool = bookPaymentTool("creditNote");
 
 /** 2026-11-02 12:00 Europe/Berlin (CET) in Unix seconds. */
 const NOON_NOV_2 = 1_793_617_200;
+/** The bank transaction dates of the linked tests: the booking date of `full`. */
+const SAME_DAY = {
+  valueDate: "2026-11-02T00:00:00+01:00",
+  entryDate: "2026-11-02T00:00:00+01:00",
+};
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-11-07T12:00:00+01:00") });
@@ -45,7 +50,8 @@ function invoiceClient(
   const reads: FakeRoute[] = [
     documentRoute("invoice", options.invoice ?? invoiceRow()),
     accountRoute(account),
-    transactionRoute(options.transaction ?? transactionRow()),
+    // Dated on the booking date of `full`, which a linked payment should use (review 2026-11-20).
+    transactionRoute({ ...(options.transaction ?? transactionRow()), ...SAME_DAY }),
     ...(options.extra ?? []),
     transactionLogRoute(),
   ];
@@ -73,6 +79,30 @@ describe("sevdesk_invoice_book_payment (spec bookInvoice; community record shape
     expect(tool.tier).toBe("commit");
     expect(tool.annotations.destructiveHint).toBe(true);
     expect(tool.annotations.openWorldHint).toBe(false);
+  });
+
+  describe("the date of a payment linked to a bank transaction (review 2026-11-20)", () => {
+    const linked = { id: 1001, amount: "177.33", checkAccountId: 4002, transactionId: 5101 };
+
+    it("defaults to the transaction's date, not today", async () => {
+      const client = invoiceClient();
+      const { plan } = await executeWrite(tool, linked, client);
+      expect(client.writes()[0]?.body).toMatchObject({ date: NOON_NOV_2 });
+      expect(plan.preview.facts).toContainEqual({ label: "Booking date", value: "2026-11-02" });
+      expect(plan.preview.warnings).toEqual([]);
+    });
+
+    it("warns when an explicit date differs from the transaction's", async () => {
+      const plan = await prepareWrite(tool, { ...linked, date: "2026-11-05" }, invoiceClient());
+      expect(plan.preview.warnings).toContain(
+        "The booking date 2026-11-05 differs from the bank transaction's date 2026-11-02; the " +
+          "payment date decides the VAT period under cash accounting (Istversteuerung).",
+      );
+      expect(plan.previewDe.warnings).toContain(
+        "Das Buchungsdatum 05.11.2026 weicht vom Datum des Umsatzes 02.11.2026 ab; bei " +
+          "Istversteuerung bestimmt das Zahlungsdatum den Voranmeldungszeitraum.",
+      );
+    });
   });
 
   it("books the full open amount linked to the bank transaction and reads the invoice back", async () => {
@@ -107,7 +137,7 @@ describe("sevdesk_invoice_book_payment (spec bookInvoice; community record shape
       { label: "Check account", value: "Geschäftskonto Musterbank (id 4002, EUR, bank)" },
       {
         label: "Linked bank transaction",
-        value: "id 5101, 177.33 EUR, 2026-01-05, Musterfirma GmbH, RE-1001",
+        value: "id 5101, 177.33 EUR, 2026-11-02, Musterfirma GmbH, RE-1001",
       },
       { label: "Open after booking", value: "0.00 EUR (settled)" },
     ]);

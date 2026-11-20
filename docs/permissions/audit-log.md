@@ -85,7 +85,8 @@ For example (shortened):
 - **The file.** It is created with mode 0600 (and tightened to 0600 if it already exists), opened
   append-only and never through a symbolic link. On macOS and Linux a file that belongs to another
   user is refused, whatever its mode: its owner could rewrite it, and an ACL can grant access the
-  mode does not show.
+  mode does not show. So is anything but a regular file, such as a named pipe, which could block
+  every write once its reader stops.
 - **Whole lines.** Every line is written whole or the write fails; a short write is continued, not
   accepted.
 - **Fail closed.** If the `executing` line cannot be written, the action is not run and nothing is

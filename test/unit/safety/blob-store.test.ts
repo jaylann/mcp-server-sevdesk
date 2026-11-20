@@ -82,19 +82,51 @@ describe("disk blob store", () => {
     await store.close();
   });
 
-  it("empties a folder left by an earlier process when it opens", async () => {
+  it("removes the blobs an earlier process left when it opens", async () => {
     const dir = join(tempDir(), "files");
     mkdirSync(dir, { mode: 0o755 });
-    writeFileSync(join(dir, "old.bin"), "leftover");
-    mkdirSync(join(dir, "nested"));
-    writeFileSync(join(dir, "nested", "deep.bin"), "leftover");
+    writeFileSync(join(dir, "AAAAAAAAAAAAAAAAAAAAAA.bin"), "leftover");
+    writeFileSync(join(dir, "b-_0123456789abcdefghi.bin"), "leftover");
     const store = await openBlobStore({ dir });
     expect(readdirSync(dir)).toEqual([]);
     expect(statSync(dir).mode & 0o777).toBe(0o700);
     await store.close();
   });
 
-  it("replaces a file or a symlink at the folder's path, never following the link", async () => {
+  it("refuses to open over files it did not write, and deletes none (review 2026-11-20)", async () => {
+    const cases: Array<(dir: string) => void> = [
+      (dir) => {
+        writeFileSync(join(dir, "notes.txt"), "the operator's");
+      },
+      (dir) => {
+        mkdirSync(join(dir, "invoices-2025"));
+        writeFileSync(join(dir, "invoices-2025", "RE-1001.pdf"), "the operator's");
+      },
+      (dir) => {
+        // Named like a blob, but a folder: not something the store writes.
+        mkdirSync(join(dir, "AAAAAAAAAAAAAAAAAAAAAA.bin"));
+      },
+    ];
+    for (const plant of cases) {
+      const dir = join(tempDir(), "files");
+      mkdirSync(dir);
+      writeFileSync(join(dir, "AAAAAAAAAAAAAAAAAAAAAB.bin"), "leftover");
+      plant(dir);
+      const before = readdirSync(dir, { recursive: true }).sort();
+      await expect(openBlobStore({ dir })).rejects.toThrow(BlobStoreError);
+      await expect(openBlobStore({ dir })).rejects.toThrow(/did not write and will not delete/);
+      expect(readdirSync(dir, { recursive: true }).sort()).toEqual(before);
+    }
+  });
+
+  it("refuses a file at the folder's path instead of deleting it (review 2026-11-20)", async () => {
+    const file = join(tempDir(), "files");
+    writeFileSync(file, "the operator's");
+    await expect(openBlobStore({ dir: file })).rejects.toThrow(/is a file, not a folder/);
+    expect(readFileSync(file, "utf8")).toBe("the operator's");
+  });
+
+  it("replaces a symlink at the folder's path, never following the link", async () => {
     const root = tempDir();
     const elsewhere = join(root, "elsewhere");
     mkdirSync(elsewhere);
@@ -106,12 +138,6 @@ describe("disk blob store", () => {
     expect(lstatSync(linked).isDirectory()).toBe(true);
     expect(readdirSync(elsewhere)).toEqual(["keep.txt"]);
     await store.close();
-
-    const file = join(root, "file");
-    writeFileSync(file, "x");
-    const second = await openBlobStore({ dir: file });
-    expect(lstatSync(file).isDirectory()).toBe(true);
-    await second.close();
   });
 
   it("refuses a folder it cannot create", async () => {

@@ -28,6 +28,7 @@ import {
   type TransactionDto,
 } from "../banking.js";
 import type { CountryReadOptions } from "../country-codes.js";
+import { refuseCancelledInvoiceReset } from "../derived-documents.js";
 import {
   documentRef,
   KINDS,
@@ -155,6 +156,9 @@ export type ResetPlan =
 /** Most documents one reset may take back. */
 export const MAX_RESET_DOCUMENTS = 10;
 
+/** Most other bank transactions on those documents a reset reads to check they can be unlinked. */
+const MAX_OTHER_TRANSACTIONS = 10;
+
 /**
  * Plans undoing a transaction's bookings. Private (300) → back to unbooked. Linked (200), booked
  * (400) or auto-booked (350) with log entries → every document in the log reset to open, in the
@@ -255,9 +259,11 @@ export async function planTransactionReset(
       );
     }
     assertResettable(doc, "open");
+    if (doc.kind === "invoice") await refuseCancelledInvoiceReset(client, doc, signal);
     resettable.push({ doc, share, otherPayments: otherPayments(doc, share, transaction) });
   }
   const documents = await withOtherTransactions(client, transaction, resettable, signal);
+  await assertOthersUnlinkable(client, transaction, documents, signal);
 
   const account =
     transaction.account === undefined
@@ -339,6 +345,51 @@ async function withOtherTransactions(
       }));
     return { ...document, otherTransactions };
   });
+}
+
+/**
+ * Reads the other bank transactions a reset to open would unlink and refuses when one is
+ * enshrined or deleted: sevDesk then refuses `resetToOpen` on its document (HTTP 400 "Already
+ * enshrined by transaction", D-098) after the documents before it were already reset, which left
+ * the transaction half undone (review 2026-11-20). Refuses too when there are more than
+ * {@link MAX_OTHER_TRANSACTIONS} to read.
+ */
+async function assertOthersUnlinkable(
+  client: SevdeskClient,
+  transaction: TransactionDto,
+  documents: readonly ResetDocument[],
+  signal: AbortSignal | undefined,
+): Promise<void> {
+  const ids = [
+    ...new Set(documents.flatMap(({ otherTransactions }) => otherTransactions.map(({ id }) => id))),
+  ].sort((a, b) => a - b);
+  if (ids.length === 0) return;
+  const ref = `Bank transaction ${String(transaction.id)}`;
+  const oneByOne =
+    "Reset the documents in the sevDesk web app or one by one with their reset tools " +
+    "(sevdesk_invoice_reset, sevdesk_credit_note_reset, sevdesk_voucher_reset).";
+  if (ids.length > MAX_OTHER_TRANSACTIONS) {
+    refuse(
+      `${ref}: the documents it paid have ${String(ids.length)} other bank transactions, more ` +
+        `than the ${String(MAX_OTHER_TRANSACTIONS)} this tool checks before a reset; nothing is ` +
+        `reset. ${oneByOne}`,
+    );
+  }
+  for (const id of ids) {
+    const other = await lookup(
+      () => getTransaction(client, id, signal),
+      `${ref}: bank transaction ${String(id)}, which also paid one of its documents, no longer ` +
+        `exists, so the reset could stop half-way; nothing is reset. ${oneByOne}`,
+    );
+    if (other.enshrined || other.deleted === true) {
+      refuse(
+        `${ref}: bank transaction ${String(id)}, which also paid one of its documents, is ` +
+          `${other.enshrined ? "enshrined (festgeschrieben)" : "deleted"}. sevDesk refuses to ` +
+          "reset that document to open, so the reset would stop half-way; nothing is reset. A " +
+          "correction needs a new document (for an invoice a cancellation or a credit note).",
+      );
+    }
+  }
 }
 
 /** Paid amount minus this transaction's share, when the paid amount can be compared. */

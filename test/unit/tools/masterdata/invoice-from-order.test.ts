@@ -235,6 +235,20 @@ describe("sevdesk_invoice_create_from_order", () => {
     }
   });
 
+  it("refuses a sent offer nobody accepted (review 2026-11-20)", async () => {
+    // Invoicing it moved the offer to Berechnet (1000, recorded), at write tier, for good.
+    const client = new FakeSevdeskClient(
+      routes({ order: order({ orderType: "AN", status: "200" }) }),
+    );
+    await expect(prepareWrite(tool, { orderId: 3002 }, client)).rejects.toMatchObject({
+      kind: "validation",
+      message: expect.stringContaining(
+        "is an offer that was sent but not accepted (status 200)",
+      ) as string,
+    });
+    expect(client.writes()).toEqual([]);
+  });
+
   it("refuses delivery notes", async () => {
     const client = new FakeSevdeskClient(routes({ order: order({ orderType: "LI" }) }));
     await expect(prepareWrite(tool, { orderId: 3002 }, client)).rejects.toMatchObject({

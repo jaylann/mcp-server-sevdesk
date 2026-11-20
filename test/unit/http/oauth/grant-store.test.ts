@@ -1081,4 +1081,73 @@ describe("grant store: incomplete writes (review 2026-11, round 3)", () => {
     const restarted = await server({ stateDir: dir });
     expect(restarted.get(grant.gid)).toMatchObject({ status: "revoked", reason: "operator" });
   });
+
+  /** Makes the next append and the next file write fail as on a full volume. */
+  async function failAppendAndRepair(running: GrantStore, gid: string): Promise<void> {
+    const probe = await fsOpen(join(dir, "probe"), "a");
+    const proto = Object.getPrototypeOf(probe) as {
+      write: (...args: unknown[]) => unknown;
+      writeFile: (...args: unknown[]) => unknown;
+    };
+    await probe.close();
+    await rm(join(dir, "probe"));
+    const full = () => Object.assign(new Error("no space"), { code: "ENOSPC" });
+    vi.spyOn(proto, "write").mockRejectedValueOnce(full());
+    vi.spyOn(proto, "writeFile").mockRejectedValueOnce(full());
+    await expect(running.revoke(gid, "operator")).rejects.toThrow("no space");
+    // The repair runs at the next sync and fails too.
+    await running.sync(true);
+  }
+
+  it("keeps a failed repair owed, so the next sync tries again (review 2026-11-20)", async () => {
+    const log = captureLog();
+    const running = await server({ stateDir: dir, log });
+    const grant = await pending(running);
+    await running.activate(grant.gid, "jti-0000000001");
+    await failAppendAndRepair(running, grant.gid);
+    expect(log.events()).toContain("grant_store_compaction_failed");
+    expect(log.events()).not.toContain("grant_store_compacted");
+
+    await running.sync(true);
+
+    expect(log.events()).toContain("grant_store_compacted");
+    expect((await fileLines()).join("\n")).toContain('"revoked"');
+  });
+
+  it("writes an owed repair out when it closes (review 2026-11-20)", async () => {
+    const running = await server({ stateDir: dir });
+    const grant = await pending(running);
+    await running.activate(grant.gid, "jti-0000000001");
+    await failAppendAndRepair(running, grant.gid);
+
+    await running.close();
+
+    const restarted = await server({ stateDir: dir });
+    expect(restarted.get(grant.gid)).toMatchObject({ status: "revoked", reason: "operator" });
+  });
+
+  it("stops when the end of the replaced file cannot be read (review 2026-11-20)", async () => {
+    const fatal = vi.fn();
+    const running = await server({ stateDir: dir, onFatal: fatal, compactBytes: 1 });
+    await pending(running);
+    const probe = await fsOpen(join(dir, "probe"), "a");
+    const proto = Object.getPrototypeOf(probe) as {
+      read: (...args: unknown[]) => Promise<unknown>;
+    };
+    await probe.close();
+    await rm(join(dir, "probe"));
+    const read = proto.read;
+    // Reads of the file that is still at the path work; reads of the replaced one fail.
+    vi.spyOn(proto, "read").mockImplementation(async function (
+      this: Awaited<ReturnType<typeof fsOpen>>,
+      ...args: unknown[]
+    ) {
+      const [own, current] = await Promise.all([this.stat(), stat(join(dir, GRANTS_FILE))]);
+      if (own.ino !== current.ino) throw Object.assign(new Error("I/O error"), { code: "EIO" });
+      return read.apply(this, args);
+    });
+
+    await expect(running.sync(true)).rejects.toThrow(StateDirError);
+    expect(fatal).toHaveBeenCalledOnce();
+  });
 });

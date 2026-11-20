@@ -98,7 +98,8 @@ Der Start verweigert sich unter anderem bei:
 - `SEVDESK_CONFIRM_OPEN=1` bei einem Lauschen außerhalb von Loopback;
 - einem Zustandsverzeichnis, das nicht beschreibbar ist, einer beschädigten `grants.jsonl`, einem
   Zustandsverzeichnis, das eine andere laufende Instanz nutzt, oder einem Ordner `files/` darin,
-  der sich nicht leeren lässt;
+  der sich nicht leeren lässt oder etwas enthält, das der Server nicht geschrieben hat (er löscht
+  nur seine eigenen übrig gebliebenen Dateien, nie deine);
 - jedem anderen Wert außerhalb dessen, was die Tabellen oben erlauben, etwa einer Variablen, die
   zusammen mit ihrer `_FILE`-Variante gesetzt ist, `SEVDESK_HTTP_SECRET_PREVIOUS` ohne
   `SEVDESK_HTTP_SECRET`, mehr als zwei Bearer-Geheimnissen, einem relativen Zustandsverzeichnis,

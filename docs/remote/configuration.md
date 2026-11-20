@@ -91,7 +91,8 @@ Startup refuses, among others:
   or `SEVDESK_HTTP_FILES_TTL` outside 5 minutes to 24 hours;
 - `SEVDESK_CONFIRM_OPEN=1` with a non-loopback bind;
 - a state directory that cannot be written, a corrupt `grants.jsonl`, a state directory that
-  another live instance uses, or a `files/` folder in it that cannot be emptied;
+  another live instance uses, or a `files/` folder in it that cannot be cleared or that holds
+  anything the server did not write (it deletes only its own leftover files, never yours);
 - any other value outside what the tables above allow, for example a variable set together with
   its `_FILE` variant, `SEVDESK_HTTP_SECRET_PREVIOUS` without `SEVDESK_HTTP_SECRET`, more than two
   bearer secrets, a relative state directory, an OAuth lifetime out of range, an invalid host or

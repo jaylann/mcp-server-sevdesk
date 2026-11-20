@@ -184,6 +184,11 @@ export interface DocumentHeader {
   readonly eur: EurTotals | undefined;
   /** Gross in the document's currency (for the share a payment settles). */
   readonly gross: Decimal | undefined;
+  /**
+   * Tax in the document's currency: whether a document without EUR values carries VAT the VAT
+   * summary would miss. `undefined` when sevDesk gave none (counted as carrying VAT).
+   */
+  readonly taxInCurrency?: Decimal | undefined;
   /** The document's cost centre (Kostenstelle, D-092): one per document, none on orders. */
   readonly costCentreId?: number | undefined;
   /** Day the document was created in sevDesk (Europe/Berlin), YYYY-MM-DD, when sevDesk says. */
@@ -318,6 +323,7 @@ function invoiceHeader(raw: unknown, today: string): DocumentHeader {
     countryId: dto.address?.countryId,
     eur: eurTotals(foreign ? dto.totalsEur : dto.totals),
     gross: moneyDecimal(dto.totals.gross),
+    taxInCurrency: moneyDecimal(dto.totals.tax),
     costCentreId: dto.costCentreId,
     createdAt: dto.createdAt,
     excluded:
@@ -369,6 +375,7 @@ function creditNoteHeader(raw: unknown): DocumentHeader {
     countryId: dto.address?.countryId,
     eur: eurTotals(foreign ? dto.totalsEur : dto.totals),
     gross: moneyDecimal(dto.totals.gross),
+    taxInCurrency: moneyDecimal(dto.totals.tax),
     costCentreId: dto.costCentreId,
     createdAt: dto.createdAt,
     excluded: dto.status.code === CREDIT_NOTE_DRAFT ? "draft" : undefined,
@@ -397,6 +404,7 @@ function voucherHeader(raw: unknown): DocumentHeader {
     contact: dto.supplier,
     eur: eurTotals(foreign ? dto.totalsEur : totals),
     gross: moneyDecimal(dto.totals.gross),
+    taxInCurrency: moneyDecimal(dto.totals.tax),
     costCentreId: dto.costCentreId,
     createdAt: dto.createdAt,
     receipt: voucherReceiptOf(raw),
@@ -665,6 +673,8 @@ export interface PositionScan {
   readonly timedOut: boolean;
   /** Foreign-currency documents without EUR values (left out). */
   readonly unconvertible: readonly DocumentRef[];
+  /** How many of {@link unconvertible} carry VAT (or do not say): their tax is missing too. */
+  readonly unconvertibleWithTax: number;
 }
 
 export interface PositionScanOptions extends ReportRunOptions {
@@ -694,7 +704,11 @@ export async function scanPositions(
   options: PositionScanOptions = {},
 ): Promise<PositionScan> {
   const max = options.maxDocuments ?? MAX_SCAN_DOCUMENTS;
-  const unconvertible = headers.filter((header) => header.eur === undefined).map(refOf);
+  const unconvertibleHeaders = headers.filter((header) => header.eur === undefined);
+  const unconvertible = unconvertibleHeaders.map(refOf);
+  const unconvertibleWithTax = unconvertibleHeaders.filter(
+    (header) => header.taxInCurrency === undefined || !isZero(header.taxInCurrency),
+  ).length;
   const convertible = headers.filter((header) => header.eur !== undefined);
   const selected = convertible.slice(0, max);
   let done = 0;
@@ -719,6 +733,7 @@ export async function scanPositions(
     notRead: convertible.length - documents.length,
     timedOut: documents.length < selected.length,
     unconvertible,
+    unconvertibleWithTax,
   };
 }
 

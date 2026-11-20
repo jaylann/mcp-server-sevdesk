@@ -756,6 +756,14 @@ export async function planContactUpdate(
         }),
       });
       facts.push({ label: `${label} (new)`, value });
+      const kept = waysOfType(details, type).filter((way) => !removedWayIds.has(way.id));
+      if (current === undefined && kept.length > 0) {
+        warnings.push(
+          `The contact has ${String(kept.length)} ${label.toLowerCase()} entries and none is the ` +
+            "main one: a new main entry is added and the others are kept. Remove an old one with " +
+            "remove if it is no longer needed.",
+        );
+      }
     }
     changed.push(label.toLowerCase());
   }
@@ -1033,15 +1041,30 @@ function targetAddress(details: ContactDetails): ContactDetails["addresses"][num
   );
 }
 
-/** The main communication way of a type, else the one with the lowest id, as the contact was read. */
+/** The communication ways of a type, as the contact was read, lowest id first. */
+function waysOfType(
+  details: ContactDetails,
+  type: CommunicationType,
+): Array<ContactDetails["communicationWays"][number]> {
+  return details.communicationWays
+    .filter((way) => way.type.toUpperCase() === type)
+    .sort((a, b) => a.id - b.id);
+}
+
+/**
+ * The communication way of a type an update changes, as the contact was read: the main one, else
+ * the only one (sevDesk often stores a contact's single phone or website as not main);
+ * `undefined` (add a new main entry) when there is neither. With several entries and none marked
+ * main, picking one to overwrite was a guess that lost the other value (review 2026-11-20).
+ */
 function mainWay(
   details: ContactDetails,
   type: CommunicationType,
 ): ContactDetails["communicationWays"][number] | undefined {
-  const ofType = details.communicationWays
-    .filter((way) => way.type.toUpperCase() === type)
-    .sort((a, b) => a.id - b.id);
-  return ofType.find((way) => way.main) ?? ofType[0];
+  const ofType = waysOfType(details, type);
+  const main = ofType.find((way) => way.main);
+  if (main !== undefined) return main;
+  return ofType.length === 1 && details.communicationWaysComplete ? ofType[0] : undefined;
 }
 
 // ---------------------------------------------------------------------------------------------

@@ -26,8 +26,9 @@ export const contactDeleteTool = defineWriteTool({
     "field values (Kontaktfelder), e.g. a " +
     "duplicate, a test contact or for an erasure request (DSGVO). Deleting an organisation also " +
     "deletes all its contact persons (Ansprechpartner); the preview lists them. Cannot be " +
-    "undone. sevDesk refuses it while documents (invoices, also drafts) still reference the " +
-    "contact, or one of an organisation's contact persons; then nothing is deleted and the " +
+    "undone. Refused while invoices, orders, credit notes, vouchers or letters still use the " +
+    "contact (sevDesk's count); sevDesk itself refuses it while documents reference the " +
+    "contact or one of an organisation's contact persons, and then nothing is deleted and the " +
     "result says so (stillReferenced). To remove only " +
     "one address, e-mail or phone number, or a person's link to its organisation (which keeps " +
     "the person), use sevdesk_contact_update with remove. Commit tier: asks a human to confirm " +

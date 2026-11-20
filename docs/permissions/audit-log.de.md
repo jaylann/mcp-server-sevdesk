@@ -90,6 +90,8 @@ Zum Beispiel (gekürzt):
   existiert), nur zum Anhängen geöffnet und nie über einen symbolischen Link. Unter macOS und Linux
   wird eine Datei abgelehnt, die einem anderen Benutzer gehört, gleich mit welchem Modus: Ihr
   Besitzer könnte sie umschreiben, und eine ACL kann Zugriff geben, den der Modus nicht zeigt.
+  Ebenso alles, was keine gewöhnliche Datei ist, etwa eine benannte Pipe: Hört ihr Leser auf, könnte
+  sie jedes Schreiben blockieren.
 - **Ganze Zeilen.** Jede Zeile wird ganz geschrieben, oder das Schreiben schlägt fehl; ein
   unvollständiger Schreibvorgang wird fortgesetzt, nicht hingenommen.
 - **Im Zweifel ablehnen.** Kann die Zeile `executing` nicht geschrieben werden, wird die Aktion

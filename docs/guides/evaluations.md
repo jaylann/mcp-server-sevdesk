@@ -96,8 +96,10 @@ labelled as expected, not booked.
 [`sevdesk_vat_summary`](../tools.md#sevdesk_vat_summary) estimates the Umsatzsteuer-Voranmeldung
 (UStVA) for a month, quarter or year: the form lines (Kennzahlen, 2026 form) with base and tax, the
 expected payment or refund (Kz 83), the Zusammenfassende Meldung per buyer VAT ID, OSS sales per
-country, and the amounts it cannot place. It reads the account's tax regime itself; a
-Kleinunternehmer account gets no UStVA.
+country, and the amounts it cannot place. When an amount it cannot place carries VAT (a document
+without a tax rule, a rule used in the wrong direction, a foreign-currency document sevDesk gave no
+EUR values), it gives no Kz 83 estimate and says why: place those amounts by hand first. It reads
+the account's tax regime itself; a Kleinunternehmer account gets no UStVA.
 
 The basis is accrual (Sollversteuerung) unless you ask for cash (Istversteuerung). sevDesk's API
 does not say which one your account files with, so name it if you file on the cash basis. The

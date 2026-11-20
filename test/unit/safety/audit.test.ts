@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import {
   chmod,
   mkdir,
@@ -363,6 +364,20 @@ describe.skipIf(process.getuid === undefined)("audit log: ownership", () => {
     });
     expect(await readFile(path, "utf8")).toBe('{"existing":true}\n');
   });
+
+  it.skipIf(process.platform === "win32")(
+    "refuses a named pipe instead of blocking on it (review 2026-11-20)",
+    async () => {
+      const path = join(await tempDir(), "audit.pipe");
+      execFileSync("mkfifo", [path]);
+      const log = createAuditLog({ path, secrets: [TEST_TOKEN] });
+
+      await expect(log.record(event({ event: "executing" }))).rejects.toMatchObject({
+        code: "AUDIT_LOG_NOT_A_REGULAR_FILE",
+        message: expect.stringContaining("is not a regular file") as string,
+      });
+    },
+  );
 
   it("does not loosen or tighten the mode of someone else's file", async () => {
     const path = join(await tempDir(), "audit.jsonl");

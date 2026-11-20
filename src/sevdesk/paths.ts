@@ -141,6 +141,14 @@ export function resolveGetSafety(
 
   if (endpoint === "getpdf") {
     if (declaredSideEffect) return { sideEffect: true, effect: MARKS_SENT, query };
+    // Another key PHP reads as preventSendBy (`preventSendBy[]`, `preventSendBy[0]`) could
+    // override the literal sent below: what sevDesk then does is unknown, so it counts as sending
+    // (review 2026-11-20).
+    const aliased = Object.entries(query ?? {}).some(
+      ([key, value]) =>
+        value !== undefined && key !== "preventSendBy" && phpQueryName(key) === "preventsendby",
+    );
+    if (aliased) return { sideEffect: true, effect: MARKS_SENT, query };
     const preventSendBy = query?.["preventSendBy"];
     // Missing or "on" in any spelling: a read that always goes out as the verified literal.
     if (preventSendBy === undefined || isTrueFlag(preventSendBy)) {
@@ -286,6 +294,7 @@ function endpointTier(
   if (listed !== undefined) return listed;
   if (endpoint === "getpdf" || enshrineFlagSet(query)) return "commit";
   if (TRANSACTION_RECORD.test(path) || TRANSACTION_COLLECTION.test(path)) return "commit";
+  if (ACCOUNT_RECORD.test(path)) return "commit";
   if (PRIVATE_RULE_PATH.test(path)) return "commit";
   const save = FACTORY_SAVES.get(endpoint);
   if (save !== undefined) return savesBindingDocument(save, query, body, form) ? "commit" : "write";
@@ -377,6 +386,14 @@ const VOUCHER_DRAFT_STATUS = 50;
 
 /** `/CheckAccountTransaction/{id}` exactly (case-insensitive), not its sub-resources. */
 const TRANSACTION_RECORD = /^\/checkaccounttransaction\/[^/]+$/i;
+
+/**
+ * One payment account (`/CheckAccount/{id}`, case-insensitive): `DELETE` archives it and
+ * soft-deletes its open transactions, `PUT` renames or changes it. Both tools are commit; the
+ * client needs commit too, as for a single transaction (review 2026-11-20). The factories
+ * (`/CheckAccount/Factory/…`, new accounts) stay `write`.
+ */
+const ACCOUNT_RECORD = /^\/checkaccount\/(?!factory$)[^/]+$/i;
 
 /**
  * `/CheckAccountTransaction` itself (case-insensitive): a request that changes data there creates
@@ -541,8 +558,10 @@ function ownValues(record: Readonly<Record<string, unknown>>, key: string): unkn
 }
 
 function enshrineFlagSet(query: Readonly<Record<string, QueryValue>> | undefined): boolean {
+  // Read as PHP names the key, so `enshrine[]=1` counts too (review 2026-11-20).
   return Object.entries(query ?? {}).some(
-    ([key, value]) => ENSHRINE_KEYS.has(key.toLowerCase()) && !isFalseFlag(value),
+    ([key, value]) =>
+      value !== undefined && ENSHRINE_KEYS.has(phpQueryName(key)) && !isFalseFlag(value),
   );
 }
 
@@ -556,8 +575,9 @@ function reservesNumber(
   query: Readonly<Record<string, QueryValue>> | undefined,
 ): boolean {
   if (!NEXT_NUMBER_ENDPOINT.test(endpoint) || endpoint === NEXT_CUSTOMER_NUMBER) return false;
+  // Read as PHP names the key: `useNextNumber[0]=true` after `useNextNumber=false` reserves.
   const flags = Object.entries(query ?? {}).filter(
-    ([key, value]) => key.toLowerCase() === "usenextnumber" && value !== undefined,
+    ([key, value]) => phpQueryName(key) === "usenextnumber" && value !== undefined,
   );
   return flags.length === 0 || flags.some(([, value]) => !isFalseFlag(value));
 }

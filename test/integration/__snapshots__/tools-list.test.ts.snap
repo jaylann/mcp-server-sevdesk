@@ -1775,7 +1775,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "type": "integer",
         },
         "date": {
-          "description": "Booking date (Zahlungsdatum), YYYY-MM-DD; defaults to today (Berlin).",
+          "description": "Booking date (Zahlungsdatum), YYYY-MM-DD; defaults to the linked transaction's date, else today (Berlin).",
           "type": "string",
         },
         "dryRun": {
@@ -2877,7 +2877,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "type": "integer",
         },
         "date": {
-          "description": "Booking date (Zahlungsdatum), YYYY-MM-DD; defaults to today (Berlin).",
+          "description": "Booking date (Zahlungsdatum), YYYY-MM-DD; defaults to the linked transaction's date, else today (Berlin).",
           "type": "string",
         },
         "dryRun": {
@@ -6685,7 +6685,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "type": "integer",
         },
         "date": {
-          "description": "Booking date (Zahlungsdatum), YYYY-MM-DD; defaults to today (Berlin).",
+          "description": "Booking date (Zahlungsdatum), YYYY-MM-DD; defaults to the linked transaction's date, else today (Berlin).",
           "type": "string",
         },
         "dryRun": {

@@ -74,6 +74,8 @@ function client(options: {
   readonly documents?: readonly FakeRoute[];
   /** The unfiltered log (`GET /CheckAccountTransactionLog` without a transaction filter). */
   readonly wholeLog?: readonly Row[];
+  /** Other bank transactions on the documents, read before a reset (review 2026-11-20). */
+  readonly others?: readonly Row[];
 }): FakeSevdeskClient {
   const transaction =
     options.transaction ?? transactionRow({ id: "5201", amount: "238", status: "400" });
@@ -88,8 +90,14 @@ function client(options: {
         invoiceRoute(paidInvoice(1002, "119")),
       ]),
       listRoute("/CheckAccountTransactionLog", options.wholeLog ?? []),
+      ...(options.others ?? []).map((row) => transactionRoute(row)),
     ]),
   );
+}
+
+/** A booked bank transaction other than 5201. */
+function other(id: number, overrides: Row = {}): Row {
+  return transactionRow({ id: String(id), amount: "50", status: "400", ...overrides });
 }
 
 async function refusal(fake: FakeSevdeskClient, id = 5201): Promise<string> {
@@ -163,6 +171,7 @@ describe("planTransactionReset", () => {
         logEntry(7, 5305, "Invoice", 1001, 1),
         logEntry(8, 5305, "Voucher", 2001, 5),
       ],
+      others: [other(5302), other(5305)],
     });
     const plan = await planTransactionReset(fake, 5201, { cacheOwner: fake });
     if (plan.mode !== "linked") throw new Error("expected linked");
@@ -190,6 +199,7 @@ describe("planTransactionReset", () => {
       log: [logEntry(1, 5201, "Invoice", 1001, 119)],
       documents: [invoiceRoute(paidInvoice(1001, "177.33", { sumGross: "177.33" }))],
       wholeLog: [logEntry(1, 5201, "Invoice", 1001, 119), logEntry(2, 5302, "Invoice", 1001, null)],
+      others: [other(5302)],
     });
     const plan = await planTransactionReset(fake, 5201, { cacheOwner: fake });
     if (plan.mode !== "linked") throw new Error("expected linked");
@@ -204,6 +214,32 @@ describe("planTransactionReset", () => {
       "Invoice 1001 shows 58.33 EUR more paid than its bank transactions explain; that payment " +
         "is removed too.",
     );
+  });
+
+  it("refuses before anything is sent when another payment on a document is enshrined (review 2026-11-20)", async () => {
+    const options = {
+      log: [logEntry(1, 5201, "Invoice", 1001, 119)],
+      documents: [invoiceRoute(paidInvoice(1001, "177.33", { sumGross: "177.33" }))],
+      wholeLog: [
+        logEntry(1, 5201, "Invoice", 1001, 119),
+        logEntry(2, 5302, "Invoice", 1001, 58.33),
+      ],
+    };
+    expect(
+      await refusal(
+        client({ ...options, others: [other(5302, { enshrined: "2026-11-16T10:00:00+01:00" })] }),
+      ),
+    ).toBe(
+      "Bank transaction 5201: bank transaction 5302, which also paid one of its documents, is " +
+        "enshrined (festgeschrieben). sevDesk refuses to reset that document to open, so the " +
+        "reset would stop half-way; nothing is reset. A correction needs a new document (for an " +
+        "invoice a cancellation or a credit note).",
+    );
+    expect(
+      await refusal(
+        client({ ...options, others: [other(5302, { deletedAt: "2026-11-16T10:00:00+01:00" })] }),
+      ),
+    ).toContain("bank transaction 5302, which also paid one of its documents, is deleted");
   });
 
   it("scans the log for credit notes, which report no paid amount", async () => {

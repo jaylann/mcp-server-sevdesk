@@ -30,7 +30,9 @@
  * was not read: a cap, the time budget of an HTTP deployment (`ReportDeadline`), a document
  * whose positions could not all be read (its amounts were then split over the positions that
  * were read, so the lines may hold the wrong rates), or a day with more documents than one page,
- * read page by page (`coverage.pagedRead`, D-100, D-146).
+ * read page by page (`coverage.pagedRead`, D-100, D-146). It is also left out (without
+ * `truncated`) when VAT that was read could not be placed on a form line: unmapped amounts with
+ * tax, or foreign-currency documents with VAT that sevDesk gave no EUR values.
  *
  * Kleinunternehmer accounts (§ 19 UStG) file no UStVA; the report says so and reads nothing else.
  * The result is an estimate for checking, never a filing.
@@ -356,8 +358,10 @@ export const vatSummarySchema = z.object({
     })
     .optional()
     .describe(
-      "Left out when no UStVA is required or reading was incomplete (coverage.truncated: a cap, " +
-        "the time budget, documents with unread positions, or a day read page by page).",
+      "Left out when no UStVA is required, when reading was incomplete (coverage.truncated: a " +
+        "cap, the time budget, documents with unread positions, or a day read page by page), or " +
+        "when VAT could not be placed on a form line (unmapped amounts with tax, foreign-currency " +
+        "documents with VAT but without EUR values).",
     ),
   zm: z.object({
     entries: z.array(zmEntrySchema).describe("Zusammenfassende Meldung, per VAT id and kind."),
@@ -636,8 +640,16 @@ export async function vatSummary(
     notes.push(...smallBusinessNotes(applicable, declarable, unconfirmed));
   }
   notes.push(...aggregate.notes);
+  // VAT that was read but sits on no form line (unmapped amounts with tax, foreign-currency
+  // documents without EUR values) is missing from Kz 83 just as unread documents are: an estimate
+  // without it would look final and be wrong (review 2026-11-20). Unmapped amounts without tax
+  // (Update 1.0 `eu`, a 0 % rate) change no balance and keep the estimate.
+  const unmappedWithTax = aggregate.unmapped.filter((entry) => !isZero(entry.tax.amount)).length;
+  const unplaced = unmappedWithTax > 0 || scan.unconvertibleWithTax > 0;
   if (truncated && applicable) {
     notes.push("Kz 83 is not estimated: reading was incomplete, so the balance would be biased.");
+  } else if (unplaced && applicable) {
+    notes.push(unplacedTaxNote(unmappedWithTax, scan.unconvertibleWithTax));
   }
   if (advances !== undefined) notes.push(advanceInvoiceNote(advances));
   notes.push(
@@ -659,7 +671,7 @@ export async function vatSummary(
     ...base,
     applicable,
     boxes: aggregate.boxes,
-    ...(applicable && !truncated ? { estimate: aggregate.estimate } : {}),
+    ...(applicable && !truncated && !unplaced ? { estimate: aggregate.estimate } : {}),
     zm: aggregate.zm,
     oss: aggregate.oss,
     notInUstva: aggregate.notInUstva,
@@ -782,6 +794,24 @@ function advanceInvoiceNote(advances: AdvanceInvoices): string {
   );
 }
 
+/** Why Kz 83 is left out when VAT that was read could not be placed on a form line. */
+function unplacedTaxNote(unmappedWithTax: number, unconvertibleWithTax: number): string {
+  const parts: string[] = [];
+  if (unmappedWithTax > 0) {
+    parts.push(`${plural(unmappedWithTax, "unmapped amount")} with VAT (unmapped)`);
+  }
+  if (unconvertibleWithTax > 0) {
+    parts.push(
+      `${plural(unconvertibleWithTax, "foreign-currency document")} with VAT but without EUR ` +
+        "values (coverage.unconvertible)",
+    );
+  }
+  return (
+    `Kz 83 is not estimated: VAT this report could not place on a form line would be missing ` +
+    `from it: ${parts.join(" and ")}. Place these by hand, then compute Kz 83.`
+  );
+}
+
 /** Trusted one-line summary (counts and the Kz 83 estimate only). */
 export function vatSummarySentence(report: VatSummary): string {
   if (!report.applicable) {
@@ -791,7 +821,12 @@ export function vatSummarySentence(report: VatSummary): string {
     );
   }
   const kz83 = report.estimate?.kz83;
-  const estimate = kz83 === undefined ? "" : `; Kz 83 estimate ${kz83.amount} ${kz83.currency}`;
+  const estimate =
+    kz83 !== undefined
+      ? `; Kz 83 estimate ${kz83.amount} ${kz83.currency}`
+      : report.coverage.truncated
+        ? ""
+        : "; Kz 83 not estimated, VAT left to place by hand (see the notes)";
   return (
     `VAT summary ${report.period.label} (${report.basis}): ${plural(report.coverage.documentsScanned, "document")} ` +
     `scanned, ${plural(report.boxes.length, "form line")}${estimate}.${incompleteSuffix(report.coverage)}`

@@ -594,6 +594,7 @@ describe("gap probes (#86, #87): catalog", () => {
         "write-tag-relation-paging",
         "write-contact-name-search",
         "write-contact-delete-cascade",
+        "write-contact-tabs-count-by-reference",
       ]),
     );
     const deviations = new Set(GAPS_CONTACTS_PROBES.flatMap((probe) => probe.deviations));

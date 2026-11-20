@@ -1423,6 +1423,53 @@ export const GAPS_CONTACTS_PROBES: readonly ProbeDefinition[] = [
     },
   },
   {
+    id: "write-contact-tabs-count-by-reference",
+    title:
+      "getTabsItemCount and DELETE /Contact for a contact a voucher, offer or credit note uses",
+    mode: "write",
+    question:
+      "What does GET /Contact/{id}/getTabsItemCount answer (shape, value types), does it count a draft voucher (supplier), offer and credit note that reference the contact, and does DELETE /Contact/{id} refuse such a contact or delete it (review 2026-11-20)?",
+    deviations: ["D-085", "D-084"],
+    async run(ctx) {
+      const lines: string[] = [];
+      const cases = [
+        ["Voucher", "supplier"],
+        ["Order", "contact"],
+        ["CreditNote", "contact"],
+      ] as const;
+      for (const [kind, field] of cases) {
+        const contact = await organisation(ctx, `Verwendet ${kind}`);
+        if (contact.id === undefined) {
+          lines.push(`${kind}: contact not created (${outcomeOf(contact.result)})`);
+          continue;
+        }
+        const draft = await draftOf(ctx, kind, `used-${kind}`, {
+          [field]: ref("Contact", contact.id),
+        });
+        if (draft.id === undefined) {
+          lines.push(`${kind}: draft not created (${draft.failure})`);
+          continue;
+        }
+        const counts = await ctx.http.get(`/Contact/${contact.id}/getTabsItemCount`);
+        const deleted = await ctx.http.write("DELETE", `/Contact/${contact.id}`, {
+          tier: "write",
+        });
+        const after = await ctx.http.get(`/Contact/${contact.id}`);
+        markIfGone(ctx, "Contact", contact.id, after);
+        const document = await ctx.http.get(`/${kind}/${draft.id}`);
+        const row = firstRow(document.objects);
+        lines.push(
+          `${kind} draft ${draft.id} of contact ${contact.id}: getTabsItemCount ${outcomeOf(counts)}, ` +
+            `body ${JSON.stringify(counts.json ?? null)}; DELETE contact: ${outcomeOf(deleted)}, ` +
+            `answer ${shapeOf(deleted.objects)}; contact afterwards ${presence(after)}; draft ` +
+            `afterwards ${presence(document)}` +
+            (document.ok && !isGone(document) ? `, ${field} ${describeRef(row, field)}` : ""),
+        );
+      }
+      return { verdict: "observed", finding: `${lines.join(". ")}.` };
+    },
+  },
+  {
     id: "write-contact-address-delete",
     title: "DELETE /ContactAddress/{id}: the billing address and the last address",
     mode: "write",

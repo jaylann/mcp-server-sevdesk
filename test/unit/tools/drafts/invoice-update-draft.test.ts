@@ -381,6 +381,34 @@ describe("sevdesk_invoice_update_draft (community shapes, fake data)", () => {
       });
     });
 
+    it("keeps printed lines the parts do not hold, as for free text (review 2026-11-20)", async () => {
+      const both = storedDraft({
+        address:
+          "Musterfirma GmbH\nz. Hd. Frau Beispiel\nAbteilung Einkauf\nMusterstraße 1\n" +
+          "12345 Musterstadt",
+        addressName: "Musterfirma GmbH",
+        addressStreet: "Musterstraße 1",
+        addressZip: "12345",
+        addressCity: "Musterstadt",
+      });
+      const error = await rejection({ id: 2102, addressZip: "54321" }, withRoutes(routes, both));
+      expect(error.message).toContain("The stored address of this draft is free text");
+
+      // Parts that match the printed text, with a country line last, stay structured.
+      const matching = storedDraft({
+        address: "Musterfirma GmbH\nMusterstraße 1\n12345 Musterstadt\nÖsterreich",
+        addressName: "Musterfirma GmbH",
+        addressStreet: "Musterstraße 1",
+        addressZip: "12345",
+        addressCity: "Musterstadt",
+      });
+      const { plan } = await prepare(
+        { id: 2102, addressZip: "54321" },
+        withRoutes(routes, matching),
+      );
+      expect(plan.state.body.invoice).toMatchObject({ addressZip: "54321" });
+    });
+
     it("takes the contact's address for a draft without one", async () => {
       const none = storedDraft({ address: null, addressCountry: null });
       const { plan } = await prepare(
