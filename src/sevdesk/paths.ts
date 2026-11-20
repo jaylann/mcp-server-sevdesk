@@ -294,6 +294,7 @@ function endpointTier(
   if (listed !== undefined) return listed;
   if (endpoint === "getpdf" || enshrineFlagSet(query)) return "commit";
   if (TRANSACTION_RECORD.test(path) || TRANSACTION_COLLECTION.test(path)) return "commit";
+  if (ACCOUNT_RECORD.test(path)) return "commit";
   if (PRIVATE_RULE_PATH.test(path)) return "commit";
   const save = FACTORY_SAVES.get(endpoint);
   if (save !== undefined) return savesBindingDocument(save, query, body, form) ? "commit" : "write";
@@ -385,6 +386,14 @@ const VOUCHER_DRAFT_STATUS = 50;
 
 /** `/CheckAccountTransaction/{id}` exactly (case-insensitive), not its sub-resources. */
 const TRANSACTION_RECORD = /^\/checkaccounttransaction\/[^/]+$/i;
+
+/**
+ * One payment account (`/CheckAccount/{id}`, case-insensitive): `DELETE` archives it and
+ * soft-deletes its open transactions, `PUT` renames or changes it. Both tools are commit; the
+ * client needs commit too, as for a single transaction (review 2026-11-20). The factories
+ * (`/CheckAccount/Factory/…`, new accounts) stay `write`.
+ */
+const ACCOUNT_RECORD = /^\/checkaccount\/(?!factory$)[^/]+$/i;
 
 /**
  * `/CheckAccountTransaction` itself (case-insensitive): a request that changes data there creates

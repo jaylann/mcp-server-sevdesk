@@ -20,7 +20,8 @@ its default and the switches (`SEVDESK_ALLOW`, `SEVDESK_READ_ONLY`, dry run) are
    endpoint's minimum (`minimumWriteTier` in `paths.ts`: `sendBy`, `bookAmount`, `enshrine`,
    `cancelInvoice`, `resetToDraft`, `resetToOpen`, `changeParameter`, a sending `getPdf`, DATEV
    `enshrine` exports, a `saveVoucher` whose voucher is not a draft (the voucher's finalize),
-   `PUT`/`DELETE /CheckAccountTransaction/{id}` (private marking, reset), creating a bank
+   `PUT`/`DELETE /CheckAccountTransaction/{id}` (private marking, reset),
+   `PUT`/`DELETE /CheckAccount/{id}` (change or archive a payment account), creating a bank
    transaction (`POST /CheckAccountTransaction`), creating or deleting a private-transaction rule
    (`POST /PrivateTransactionRule`, `DELETE /PrivateTransactionRule/{id}`), a document's status
    set directly (a `status` in the body or query of a request to one document record;

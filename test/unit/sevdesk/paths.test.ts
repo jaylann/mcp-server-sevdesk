@@ -416,8 +416,10 @@ describe("minimumWriteTier for creating a bank transaction (#88, D-096, D-098)",
     ["/CheckAccountTransaction/9/enshrine", "commit"],
     ["/CheckAccountTransactionLog", "write"],
     ["/CheckAccount/Factory/fileImportAccount", "write"],
-    ["/CheckAccount/5", "write"],
-  ] as const)("leaves %s at %s", (path, tier) => {
+    // Archiving or changing a payment account binds like a transaction (review 2026-11-20).
+    ["/CheckAccount/5", "commit"],
+    ["/checkaccount/5", "commit"],
+  ] as const)("puts %s at %s", (path, tier) => {
     expect(minimumWriteTier(path, undefined, transaction)).toBe(tier);
   });
 });
@@ -445,7 +447,7 @@ describe("minimumWriteTier for private-transaction rules (#131, D-099)", () => {
   it.each([
     ["/PrivateTransactionRules", "write"],
     ["/PrivateTransaction", "write"],
-    ["/CheckAccount/5", "write"],
+    ["/CheckAccount/5/notes", "write"],
   ] as const)("leaves the neighbour %s at %s", (path, tier) => {
     expect(minimumWriteTier(path, undefined, rule)).toBe(tier);
   });

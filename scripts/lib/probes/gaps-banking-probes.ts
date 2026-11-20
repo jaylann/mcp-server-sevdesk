@@ -988,7 +988,7 @@ async function ruleStorage(ctx: ProbeContext, own: number[]): Promise<ProbeOutco
 async function archiveAccounts(ctx: ProbeContext, ids: readonly number[]): Promise<string[]> {
   const notes: string[] = [];
   for (const id of ids) {
-    const deleted = await ctx.http.write("DELETE", `/CheckAccount/${id}`, { tier: "write" });
+    const deleted = await ctx.http.write("DELETE", `/CheckAccount/${id}`, { tier: "commit" });
     const after = await ctx.http.get(`/CheckAccount/${id}`);
     const archived = str(firstRow(after.objects), "status") === "0";
     if (isGone(after)) data(ctx).mark("CheckAccount", id, "deleted by the probe");
@@ -1604,7 +1604,7 @@ export const GAPS_BANKING_PROBES: readonly ProbeDefinition[] = [
           `POST /CheckAccountTransaction on it: ${posted.id === undefined ? outcomeOf(posted.result) : `accepted (${await deleteTransaction(ctx, posted.id)})`}`,
         );
         const put = await ctx.http.write("PUT", `/CheckAccount/${clearingId}`, {
-          tier: "write",
+          tier: "commit",
           body: { name: `${tag} Verrechnung umbenannt` },
         });
         const renamed = await ctx.read.byId("CheckAccount", clearingId);
@@ -1612,7 +1612,7 @@ export const GAPS_BANKING_PROBES: readonly ProbeDefinition[] = [
           `PUT /CheckAccount/${clearingId} {name}: ${outcomeOf(put)}, answer ${shapeOf(put.objects)}; changed: ${Object.keys(changedFieldsMap(row, renamed)).join(", ") || "nothing"}`,
         );
         const deleted = await ctx.http.write("DELETE", `/CheckAccount/${clearingId}`, {
-          tier: "write",
+          tier: "commit",
         });
         const after = await ctx.http.get(`/CheckAccount/${clearingId}`);
         if (isGone(after)) data(ctx).mark("CheckAccount", clearingId, "deleted by the probe");
@@ -1640,7 +1640,7 @@ export const GAPS_BANKING_PROBES: readonly ProbeDefinition[] = [
           purpose: "account delete",
         });
         const deleted = await ctx.http.write("DELETE", `/CheckAccount/${importId}`, {
-          tier: "write",
+          tier: "commit",
         });
         const after = await ctx.http.get(`/CheckAccount/${importId}`);
         const accountGone = isGone(after);
@@ -1659,7 +1659,7 @@ export const GAPS_BANKING_PROBES: readonly ProbeDefinition[] = [
         } else if (transaction.id !== undefined) {
           note += `; cleanup: transaction ${await deleteTransaction(ctx, transaction.id)}`;
           const again = await ctx.http.write("DELETE", `/CheckAccount/${importId}`, {
-            tier: "write",
+            tier: "commit",
           });
           const gone = isGone(await ctx.http.get(`/CheckAccount/${importId}`));
           if (gone) data(ctx).mark("CheckAccount", importId, "deleted by the probe");
@@ -1687,7 +1687,7 @@ export const GAPS_BANKING_PROBES: readonly ProbeDefinition[] = [
         data(ctx).register("CheckAccount", registerId, "cash register (delete it in the web app)");
         const row = await ctx.read.byId("CheckAccount", registerId);
         const deleted = await ctx.http.write("DELETE", `/CheckAccount/${registerId}`, {
-          tier: "write",
+          tier: "commit",
         });
         const gone = isGone(await ctx.http.get(`/CheckAccount/${registerId}`));
         if (gone) data(ctx).mark("CheckAccount", registerId, "deleted by the probe");
@@ -2205,7 +2205,7 @@ export const GAPS_BANKING_PROBES: readonly ProbeDefinition[] = [
           }
           own.push(row.id);
           const archive = await ctx.http.write("DELETE", `/CheckAccount/${accountId}`, {
-            tier: "write",
+            tier: "commit",
           });
           const accountAfter = await ctx.read.byId("CheckAccount", accountId);
           state.archived = str(accountAfter, "status") === "0";

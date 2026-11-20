@@ -24,7 +24,8 @@ Was jede Stufe abdeckt, ihre Voreinstellung und die Schalter (`SEVDESK_ALLOW`,
    `paths.ts`: `sendBy`, `bookAmount`, `enshrine`, `cancelInvoice`, `resetToDraft`, `resetToOpen`,
    `changeParameter`, ein versendendes `getPdf`, DATEV-Exporte mit `enshrine`, ein `saveVoucher`,
    dessen Beleg kein Entwurf ist (das Fertigstellen des Belegs),
-   `PUT`/`DELETE /CheckAccountTransaction/{id}` (als privat markieren, zurücksetzen), eine
+   `PUT`/`DELETE /CheckAccountTransaction/{id}` (als privat markieren, zurücksetzen),
+   `PUT`/`DELETE /CheckAccount/{id}` (Zahlungskonto ändern oder archivieren), eine
    Banktransaktion anlegen (`POST /CheckAccountTransaction`), eine Regel für Privatumsätze anlegen
    oder löschen (`POST /PrivateTransactionRule`, `DELETE /PrivateTransactionRule/{id}`), der
    Status eines Dokuments direkt gesetzt (ein `status` im Body oder in der Query einer Anfrage an
