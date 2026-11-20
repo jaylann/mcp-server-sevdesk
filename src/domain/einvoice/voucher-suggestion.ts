@@ -375,6 +375,35 @@ export function suggestVoucherFields(
       "The type code (BT-3) does not mark an invoice, so the document is not imported " +
         "automatically.",
     );
+  } else if (parsed.typeCode === "384") {
+    // A corrected invoice replaces an earlier one in full: imported as a new voucher, the expense
+    // and its input VAT count twice once the original is booked (review 2026-11-20).
+    blocking.push(
+      "The document is a corrected invoice (Rechnungskorrektur, type code 384): it replaces an " +
+        "earlier invoice. Imported as a new voucher, the expense and its input VAT would count " +
+        "twice if the original is booked. Correct the original voucher instead (reset it to " +
+        "draft and update it), or, if the original was never booked, book this one by hand with " +
+        "sevdesk_voucher_create_draft.",
+    );
+  }
+  if (parsed.documentKind === "invoice" && parsed.typeCode !== "384") {
+    if (parsed.precedingInvoice !== undefined) {
+      warnings.push(
+        de
+          ? "Die Rechnung verweist auf eine frühere Rechnung (BT-25). Ersetzt oder korrigiert sie diese, buche nicht beide: Prüfe zuerst den Beleg der früheren Rechnung."
+          : "The invoice refers to an earlier invoice (BT-25). If it replaces or corrects that " +
+              "one, do not book both: check the earlier invoice's voucher first.",
+      );
+    }
+    if (parsed.typeCode === "386") {
+      warnings.push(
+        de
+          ? "Das ist eine Vorauszahlungsrechnung (Typ 386). Die Schlussrechnung weist die Vorauszahlung meist als bereits bezahlt aus (BT-113) und nennt die volle Umsatzsteuer noch einmal: Buche die Vorsteuer auf diesen Teil nur einmal."
+          : "This is a prepayment invoice (type code 386). The final invoice usually lists this " +
+              "prepayment as already paid (BT-113) and states the full VAT again: deduct the " +
+              "input VAT on this part only once.",
+      );
+    }
   }
   if (parsed.currency !== "EUR" && inputs.exchangeRateSelected !== true) {
     warnings.push(
@@ -403,9 +432,10 @@ export function suggestVoucherFields(
   if (parsed.totals.prepaid !== undefined && !isZero(parsed.totals.prepaid)) {
     warnings.push(
       de
-        ? `Die Rechnung weist ${numberText(parsed.totals.prepaid, lang)} ${parsed.currency} als bereits bezahlt aus (BT-113); buche diese Zahlung separat.`
+        ? `Die Rechnung weist ${numberText(parsed.totals.prepaid, lang)} ${parsed.currency} als bereits bezahlt aus (BT-113); buche diese Zahlung separat. Wurde die Vorauszahlung mit einer eigenen Rechnung abgerechnet, die schon gebucht ist, ist deren Vorsteuer in dieser Rechnung noch einmal enthalten: Buche sie nicht doppelt.`
         : `The invoice states ${parsed.totals.prepaid} ${parsed.currency} as already paid (BT-113); ` +
-            "book that payment separately.",
+            "book that payment separately. If the prepayment had an invoice of its own that is " +
+            "already booked, this invoice states its VAT again: do not deduct it twice.",
     );
   }
 

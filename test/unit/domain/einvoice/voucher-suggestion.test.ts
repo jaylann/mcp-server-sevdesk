@@ -61,17 +61,23 @@ function contact(id: number, displayName: string, extra: Partial<ContactDto> = {
   return { id, kind: "organisation", displayName, ...extra };
 }
 
-function suggest(
-  parsed: ParsedEInvoice,
-  inputs: Partial<Parameters<typeof suggestVoucherFields>[1]> = {},
-) {
-  return suggestVoucherFields(parsed, {
+function inputs(
+  extra: Partial<Parameters<typeof suggestVoucherFields>[1]> = {},
+): Parameters<typeof suggestVoucherFields>[1] {
+  return {
     regime: "regular",
     company: BUYER_COMPANY,
     contacts: NO_CONTACTS,
     ownInvoice: { status: "none" },
-    ...inputs,
-  });
+    ...extra,
+  };
+}
+
+function suggest(
+  parsed: ParsedEInvoice,
+  extra: Partial<Parameters<typeof suggestVoucherFields>[1]> = {},
+) {
+  return suggestVoucherFields(parsed, inputs(extra));
 }
 
 describe("directionOf", () => {
@@ -285,6 +291,41 @@ describe("suggestVoucherFields", () => {
       "The invoice has no VAT breakdown, so no tax rule can be suggested.",
       "The invoice has no VAT breakdown (BG-23), so no voucher positions can be built.",
     ]);
+  });
+
+  describe("invoices that correct or anticipate another (review 2026-11-20)", () => {
+    it("blocks a corrected invoice (384), which replaces an earlier one", () => {
+      const corrected = variant((invoice) => {
+        invoice.typeCode = "384";
+        invoice.precedingInvoice = "RE-100";
+      });
+      expect(suggest(corrected).blocking.join(" ")).toContain(
+        "corrected invoice (Rechnungskorrektur, type code 384)",
+      );
+      // The preceding invoice number is the sender's text: never repeated in a message.
+      expect(JSON.stringify(suggest(corrected).blocking)).not.toContain("RE-100");
+    });
+
+    it("warns about an invoice that refers to an earlier one (BT-25)", () => {
+      const referring = variant((invoice) => void (invoice.precedingInvoice = "RE-100"));
+      expect(suggest(referring).blocking).toEqual([]);
+      expect(suggest(referring).warnings.join(" ")).toContain(
+        "The invoice refers to an earlier invoice (BT-25)",
+      );
+      expect(suggestVoucherFields(referring, inputs(), "de").warnings.join(" ")).toContain(
+        "Die Rechnung verweist auf eine frühere Rechnung (BT-25)",
+      );
+    });
+
+    it("warns that a prepayment invoice's VAT comes back on the final invoice", () => {
+      const prepayment = variant((invoice) => void (invoice.typeCode = "386"));
+      expect(suggest(prepayment).blocking).toEqual([]);
+      expect(suggest(prepayment).warnings.join(" ")).toContain(
+        "deduct the input VAT on this part only once",
+      );
+      const final = variant((invoice) => void (invoice.totals.prepaid = "119.00"));
+      expect(suggest(final).warnings.join(" ")).toContain("do not deduct it twice");
+    });
   });
 
   it("blocks credit notes, other documents and amount errors; currency requires a rate at import", () => {
