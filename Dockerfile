@@ -13,7 +13,7 @@
 # dependencies for $TARGETPLATFORM instead.
 
 # Node.js with pnpm. corepack installs the version pinned by `packageManager` in package.json.
-FROM --platform=$BUILDPLATFORM node:24-trixie-slim@sha256:0820eaa85e07d0490446dd01d14707e17e6108a36988cf374899cd057eb3812d AS base
+FROM --platform=$BUILDPLATFORM node:24-trixie-slim@sha256:af02d57b57719b9657a45199a79264a9437940cd55b3c7b3fc99615654f124a0 AS base
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
@@ -40,7 +40,7 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store,sharing=locked \
 # Runtime: distroless Node.js, no shell or package manager, non-root user 65532 ("nonroot"). The
 # application files belong to root and are read-only for the server; only /data is writable, so the
 # container runs with a read-only root filesystem.
-FROM gcr.io/distroless/nodejs24-debian13:nonroot@sha256:6abfcb367ebc291572c774c1592a986be2ab26a2486f73093401327495a5962a AS runtime
+FROM gcr.io/distroless/nodejs24-debian13:nonroot@sha256:39b0407357c9fadf1a9708d22088f02de21f0e1e8a688474eea2d8701e7d5693 AS runtime
 LABEL org.opencontainers.image.title="mcp-server-sevdesk" \
       org.opencontainers.image.description="Safety-first MCP server for the sevDesk accounting API (remote mode over Streamable HTTP). Unofficial." \
       org.opencontainers.image.source="https://github.com/jaylann/mcp-server-sevdesk" \
