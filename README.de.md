@@ -9,6 +9,7 @@
 [![CI](https://github.com/jaylann/mcp-server-sevdesk/actions/workflows/ci.yml/badge.svg)](https://github.com/jaylann/mcp-server-sevdesk/actions/workflows/ci.yml)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/jaylann/mcp-server-sevdesk/badge)](https://scorecard.dev/viewer/?uri=github.com/jaylann/mcp-server-sevdesk)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![jaylann/mcp-server-sevdesk MCP server](https://glama.ai/mcp/servers/jaylann/mcp-server-sevdesk/badges/score.svg)](https://glama.ai/mcp/servers/jaylann/mcp-server-sevdesk)
 
 **Ein auf Sicherheit ausgelegter [Model-Context-Protocol](https://modelcontextprotocol.io)-Server
 für die [sevDesk](https://sevdesk.de)-API.** KI-Assistenten (Claude, Cursor, VS Code, Codex, …)
