@@ -90,7 +90,7 @@ das voreingestellte `--http` des Images:
         "--read-only",
         "-e",
         "SEVDESK_API_TOKEN",
-        "ghcr.io/jaylann/mcp-server-sevdesk:1.6.0",
+        "ghcr.io/jaylann/mcp-server-sevdesk:1.7.0",
         "--stdio"
       ],
       "env": {
